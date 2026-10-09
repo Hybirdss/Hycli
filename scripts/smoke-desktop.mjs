@@ -20,7 +20,7 @@ function run(args,options={}){return new Promise((resolve,reject)=>{
  child.once('close',code=>{clearTimeout(timer);code===0?resolve(stdout):reject(Error(`${args.join(' ')} (${code}): ${stderr}${stdout}`));});
 });}
 const json=async args=>JSON.parse(await run(args));
-const blocker=net.createServer(socket=>socket.end('HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\n\r\n'));
+const blocker=net.createServer(socket=>socket.end('HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n',()=>socket.destroy()));
 await new Promise((resolve,reject)=>{blocker.once('error',reject);blocker.listen(0,'127.0.0.1',resolve);});
 const occupied=blocker.address().port;
 let browser;
