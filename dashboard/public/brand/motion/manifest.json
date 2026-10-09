@@ -1,0 +1,32 @@
+{
+  "scurry": {
+    "frames": 80,
+    "columns": 10,
+    "rows": 8,
+    "fps": 16,
+    "width": 192,
+    "height": 160,
+    "bytes": 391372,
+    "source": "docs/design/motion/kling/scurry/shima-scurry-v1.mp4"
+  },
+  "waiting": {
+    "frames": 80,
+    "columns": 10,
+    "rows": 8,
+    "fps": 16,
+    "width": 192,
+    "height": 160,
+    "bytes": 345998,
+    "source": "docs/design/motion/kling/waiting/shima-waiting-v1.mp4"
+  },
+  "celebrate": {
+    "frames": 80,
+    "columns": 10,
+    "rows": 8,
+    "fps": 16,
+    "width": 192,
+    "height": 160,
+    "bytes": 407210,
+    "source": "docs/design/motion/kling/celebrate/shima-celebrate-v1.mp4"
+  }
+}

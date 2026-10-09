@@ -1,0 +1,48 @@
+/target/
+/.cache/
+/.localdata/
+/.repowise/
+/dashboard/node_modules/
+/dashboard/test-results/
+/dashboard/playwright-report/
+/web/
+*.log
+
+/docs/design/e2e-failure.png
+
+# Local packaged executables
+/dist/
+/hycli-rs-bin
+/specs/
+
+# Local media-generation state, upload receipts and absolute source paths
+**/.klingx-state.json
+**/.gen-*.yaml
+/docs/design/motion/kling/**/manifest.json
+
+# Credentials and user data never belong in source or packages
+.env
+.env.*
+!.env.example
+*.sqlite
+*.sqlite3
+*.db
+*.db-shm
+*.db-wal
+*.har
+!examples/*.har
+
+# Legacy generated drafts belong in the private data directory
+/*-draft.yaml
+
+# Local visual authoring material
+/docs/brand/README.plan.md
+/docs/design/README.source.md
+/docs/design/IMPLEMENTATION.md
+/docs/design/motion/kling-prompts.json
+/docs/design/motion/kling/
+/docs/design/motion/shima-*-v1.png
+/scripts/build-motion.py
+/dashboard/inspect-ui.mjs
+/dashboard/progress-visual.mjs
+/dashboard/visual-fixture.mjs

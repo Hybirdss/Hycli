@@ -1,0 +1,47 @@
+name: Report a problem
+description: Help reproduce a CLI, MCP, dashboard or preparation problem.
+title: "[Bug] "
+body:
+  - type: markdown
+    attributes:
+      value: Describe a reproducible problem. Remove credentials, cookies, account details and private website data from any attachments.
+  - type: input
+    id: version
+    attributes:
+      label: Hycli version and operating system
+      placeholder: "0.1.0 · Ubuntu 24.04 · x64"
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where does it happen?
+      options:
+        - Dashboard
+        - CLI
+        - MCP
+        - Website preparation
+        - Account or browser connection
+        - Build or package
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Include a minimal command or a safe example website when possible.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual result
+      description: Add a short error message or screenshot with sensitive details removed.
+    validations:
+      required: true

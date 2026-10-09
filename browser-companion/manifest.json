@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "Hycli browser companion",
+  "version": "0.1.0",
+  "description": "Connect a signed-in website to Hycli without sharing sign-in secrets with your AI.",
+  "permissions": ["cookies", "activeTab", "storage", "webRequest"],
+  "host_permissions": ["http://127.0.0.1/*"],
+  "optional_host_permissions": ["https://*/*", "http://*/*"],
+  "background": {"service_worker": "background.js"},
+  "action": {"default_title": "Connect to Hycli", "default_popup": "popup.html"},
+  "incognito": "split"
+}

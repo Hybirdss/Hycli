@@ -1,0 +1,46 @@
+let csrf = '';
+let locale = 'en';
+let renewing: Promise<void> | null = null;
+export class ApiError extends Error { constructor(public code: string, public status: number) { super(code); } }
+export function setApiLocale(value: string) { locale = value; }
+export function session(): Promise<void> {
+  if (renewing) return renewing;
+  renewing = (async () => {
+    let response: Response;
+    try { response = await fetch('/api/session', { cache: 'no-store', credentials: 'same-origin' }); }
+    catch { throw new ApiError('connection_lost', 0); }
+    if (!response.ok) throw new ApiError('connection_lost', response.status);
+    csrf = ((await response.json()) as { csrf: string }).csrf;
+  })().finally(() => { renewing = null; });
+  return renewing;
+}
+async function guardedFetch(path: string, method: string, body?: unknown): Promise<Response> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    let response: Response;
+    try {
+      response = await fetch(path, {
+        method, credentials: 'same-origin', cache: 'no-store',
+        headers: { 'Content-Type': 'application/json', 'X-Hycli-CSRF': csrf, 'Accept-Language': locale },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+    } catch { throw new ApiError('connection_lost', 0); }
+    if (response.ok) return response;
+    const data = await response.json().catch(() => ({}));
+    // Only this middleware error proves the handler never ran; never replay an ambiguous write.
+    if (attempt === 0 && response.status === 401 && data.error?.code === 'session_expired') { await session(); continue; }
+    throw new ApiError(data.error?.code || 'internal', response.status);
+  }
+  throw new ApiError('connection_lost', 0);
+}
+export async function request<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
+  const response = await guardedFetch(path, method, body);
+  if (response.status === 204) return undefined as T;
+  return response.json() as Promise<T>;
+}
+export async function download(path: string, name: string) {
+  const response = await guardedFetch(path, 'GET');
+  const url = URL.createObjectURL(await response.blob());
+  const link = document.createElement('a'); link.href = url; link.download = name; link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+export async function copyText(value: string) { await navigator.clipboard.writeText(value); }

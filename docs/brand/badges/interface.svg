@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="151" height="24" role="img" aria-label="interface: CLI + MCP">
+  <title>interface: CLI + MCP</title>
+  <clipPath id="pill"><rect width="151" height="24" rx="5"/></clipPath>
+  <g clip-path="url(#pill)"><path fill="#e8ece4" d="M0 0h70v24H0z"/><path fill="#2f5141" d="M70 0h81v24H70z"/></g>
+  <g text-anchor="middle" font-family="Verdana,DejaVu Sans,sans-serif" font-size="11"><text x="35" y="16" fill="#304137">interface</text><text x="110.5" y="16" fill="#fff">CLI + MCP</text></g>
+</svg>

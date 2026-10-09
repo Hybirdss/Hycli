@@ -1,0 +1,4 @@
+Source: https://claude.com/ homepage HTML favicon link to https://assets.claude.com/95a868946ac8a31e5ff832e2899f294aa368b836.png?w=32&h=32
+Public CDN copy: https://cdn.sanity.io/images/4zrzovbb/claude-com/369b14e80ac643cc09dccd581ccb91f82b559190-32x32.png
+The two official-host URLs returned byte-identical 1,198-byte PNG data (SHA-256 4004381309500f25e49a1ae639912ce307ea81da74cc383954a1ac8b9d343fe6). The public CDN copy returned HTTP 200 with ordinary urllib without custom User-Agent.
+Asset is for visual identification of the available Claude integration; it does not imply a partnership or endorsement.
