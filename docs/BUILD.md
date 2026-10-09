@@ -96,3 +96,5 @@ node scripts/smoke-installer.mjs dist/artifacts/hycli-0.1.0-linux-x64.deb
 ```
 
 Use `.exe` for the binary on Windows and the corresponding `.dmg` or `*-setup.exe` artifact on macOS/Windows. `--browser` exercises the actual translated Quit action through Playwright; omit it for non-browser native checks. Tests cover concurrent launches, port conflicts, stale discovery records, shutdown authorization, launcher execution and saved settings across restarts. Installer checks inspect an extracted DEB, a mounted DMG or a silent per-user Windows installation. They do not replace testing the final signed installer on a clean user machine.
+
+Windows release builds select the MSVC target explicitly and link the C runtime statically. The build checks both PE import tables and refuses a direct Visual C++ runtime DLL dependency. Packages target Windows 10 or newer; Windows system DLLs remain runtime dependencies. No separate Rust, Node.js or Visual C++ redistributable installation is needed for these release binaries.

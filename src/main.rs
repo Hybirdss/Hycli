@@ -318,7 +318,7 @@ fn find_spec(name: &str) -> Result<hycli::spec::Spec, AppError> {
     if !path.exists() {
         return Err(apperr::spec(
             format!("Website is not installed: {name}"),
-            "Use `hycli prepare URL`, open `hycli dashboard`, or install a definition with `hycli spec install FILE`.",
+            "Use `hycli prepare URL`, open `hycli open`, or install a definition with `hycli spec install FILE`.",
         ));
     }
     let spec = hycli::spec::parse(&hycli::util::read_bounded(&path, 2 * 1024 * 1024)?)?;
@@ -588,7 +588,7 @@ async fn dispatch(deps: Deps, cmd: Cmd, emit: &Emitter) -> Result<(), AppError> 
             let (result, _) = if cdp.is_some() {
                 return Err(apperr::usage(
                     "CDP attach는 대시보드의 Accounts 페어링을 사용한다",
-                    "hycli dashboard",
+                    "hycli open",
                 ));
             } else if browser.is_some() {
                 core.probe_browser_stealth(&deps.site, &url).await?

@@ -96,6 +96,16 @@ pub async fn running(root: &Path) -> Option<Instance> {
     Some(instance)
 }
 
+fn open_browser(instance: &Instance) -> AppResult<()> {
+    crate::dashboard::open_url(&instance.url()).map_err(|error| {
+        apperr::runtime(
+            error,
+            "Hycli is running, but the browser could not be opened",
+            format!("Open {} in your browser.", instance.url()),
+        )
+    })
+}
+
 pub async fn open(
     port: u16,
     browser: bool,
@@ -123,7 +133,7 @@ pub async fn open(
         loop {
             if let Some(instance) = running(&root).await {
                 if browser {
-                    crate::dashboard::open_url(&instance.url())?;
+                    open_browser(&instance)?;
                 }
                 return Ok(instance);
             }
@@ -216,7 +226,7 @@ pub async fn open(
         }
     };
     if browser {
-        crate::dashboard::open_url(&instance.url())?;
+        open_browser(&instance)?;
     }
     Ok(instance)
 }

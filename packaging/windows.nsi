@@ -1,6 +1,7 @@
 Unicode true
 !include "MUI2.nsh"
 !include "x64.nsh"
+!include "WinVer.nsh"
 Name "Hycli"
 OutFile "${OUTPUT}"
 InstallDir "$LOCALAPPDATA\Programs\Hycli"
@@ -21,6 +22,10 @@ UninstallIcon "${ICON}"
 !insertmacro MUI_UNPAGE_INSTFILES
 !insertmacro MUI_LANGUAGE "English"
 Function .onInit
+  ${IfNot} ${AtLeastWin10}
+    MessageBox MB_ICONSTOP "Hycli requires Windows 10 or newer."
+    Abort
+  ${EndIf}
 !if "${ARCH}" == "arm64"
   ${IfNot} ${IsNativeARM64}
 !else

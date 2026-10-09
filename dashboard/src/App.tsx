@@ -87,7 +87,7 @@ function Workspace({ locale, setLocale }: { locale: string; setLocale: (locale: 
   const pending = data?.approvals.filter(a => a.status === 'pending') || [];
   const nav: { id: View; icon: ReactNode }[] = [{ id: 'websites', icon: <LayoutGrid /> }, { id: 'accounts', icon: <UsersRound /> }, { id: 'activity', icon: <Clock3 /> }, { id: 'connections', icon: <Sparkles /> }, { id: 'settings', icon: <Settings2 /> }];
   const quit = () => setConfirm({ title: t('settings.quit'), description: t('settings.quitConfirm'), run: async () => { await request('/api/shutdown', 'POST'); setClosed(true); } });
-  if (closed) return <main className="loading-screen"><Wordmark /><Bird /><h1>{t('settings.stopped')}</h1><p>{t('settings.stoppedHint')}</p></main>;
+  if (closed) return <main className="loading-screen"><Bird /><h1>{t('settings.stopped')}</h1><p>{t('settings.stoppedHint')}</p></main>;
   return <div className="app-shell">
     {mobile && <button className="nav-scrim" aria-label={t('nav.close')} onClick={() => setMobile(false)} />}
     <aside className={`sidebar ${mobile ? 'sidebar--open' : ''}`}>

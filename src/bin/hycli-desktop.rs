@@ -84,9 +84,15 @@ fn main() {
             .status()
             .is_err()
         {
-            let _ = Command::new("notify-send")
-                .args(["Hycli", &message])
-                .status();
+            if Command::new("kdialog")
+                .args(["--error", &message, "--title", "Hycli"])
+                .status()
+                .is_err()
+            {
+                let _ = Command::new("notify-send")
+                    .args(["Hycli", &message])
+                    .status();
+            }
         }
         std::process::exit(1);
     }
