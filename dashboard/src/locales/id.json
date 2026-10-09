@@ -484,5 +484,12 @@
   "errors.response_mismatch": "Situs mengembalikan hasil yang berbeda dari perkiraan. Hubungkan kembali akun Anda atau siapkan ulang situs.",
   "sites.intentLabel": "Apa yang ingin Anda lakukan?",
   "sites.intentPlaceholder": "Misalnya, mencari artikel yang disimpan dan mengelompokkannya berdasarkan topik",
-  "errors.query_failed": "Situs tidak dapat menyelesaikan kueri ini. Periksa masukan atau siapkan ulang situs."
+  "errors.query_failed": "Situs tidak dapat menyelesaikan kueri ini. Periksa masukan atau siapkan ulang situs.",
+  "settings.quit": "Keluar dari Hycli",
+  "settings.quitHint": "Hycli tetap berjalan setelah browser ditutup. Keluar di sini untuk menghentikannya.",
+  "settings.quitConfirm": "Keluar dari Hycli? Selesaikan atau batalkan pekerjaan yang sedang berjalan terlebih dahulu. Situs web dan akun tersimpan akan tetap ada di perangkat ini.",
+  "settings.stopped": "Hycli telah ditutup",
+  "settings.stoppedHint": "Anda dapat menutup tab ini. Buka Hycli dari menu aplikasi untuk kembali.",
+  "errors.work_in_progress": "Selesaikan atau batalkan pekerjaan yang sedang berjalan di Aktivitas, lalu keluar lagi.",
+  "errors.shutting_down": "Hycli sedang ditutup."
 }

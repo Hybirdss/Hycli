@@ -27,13 +27,15 @@
 <a id="get-started"></a>
 ## शुरुआत करें
 
+नए डेस्कटॉप पैकेज: Windows (`*-setup.exe`), macOS (`.dmg`) और Linux (`.deb` या निकालने के बाद `./install.sh`)। आइकन से Hycli खोलें: इंजन पृष्ठभूमि में शुरू होकर ब्राउज़र खोलता है। टर्मिनल खुला रखने की ज़रूरत नहीं है। सेटिंग से बंद करें या `hycli open`, `hycli status` और `hycli stop` इस्तेमाल करें। ये विकासाधीन पैकेज v0.1.0 से अलग हैं; प्लेटफ़ॉर्म जाँच और हस्ताक्षर की स्थिति [गाइड](../BUILD.md) और [CI](https://github.com/Hybirdss/Hycli/actions/workflows/verify.yml) में देखें।
+
 **[डाउनलोड v0.1.0 · Linux x64](https://github.com/Hybirdss/Hycli/releases/tag/v0.1.0)** · glibc ≥ 2.39 · [SHA-256](https://github.com/Hybirdss/Hycli/releases/download/v0.1.0/hycli-0.1.0-linux-x64.tar.gz.sha256)
 
 Hycli एक Rust ऐप है जिसका वेब डैशबोर्ड आपके डिवाइस पर चलता है। रिपॉज़िटरी की इस कॉपी से डैशबोर्ड और प्रोग्राम बिल्ड करें:
 
 ```sh
 node scripts/build.mjs
-./dist/hycli dashboard
+./dist/hycli open
 ```
 
 डैशबोर्ड `http://127.0.0.1:4318` पर खुलता है। ब्राउज़र खोले बिना पता दिखाने के लिए `hycli dashboard --no-open` इस्तेमाल करें। दूसरा पोर्ट चुनने के लिए `--port 4320` दें। वेबसाइट का इंजन और डैशबोर्ड एक ही प्रोग्राम में शामिल हैं।

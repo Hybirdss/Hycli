@@ -484,5 +484,12 @@
   "errors.response_mismatch": "De website gaf een ander resultaat dan verwacht. Verbind je account opnieuw of bereid de website opnieuw voor.",
   "sites.intentLabel": "Wat wil je doen?",
   "sites.intentPlaceholder": "Bijvoorbeeld opgeslagen artikelen zoeken en ordenen op onderwerp",
-  "errors.query_failed": "De website kon deze zoekopdracht niet voltooien. Controleer de invoer of bereid de website opnieuw voor."
+  "errors.query_failed": "De website kon deze zoekopdracht niet voltooien. Controleer de invoer of bereid de website opnieuw voor.",
+  "settings.quit": "Hycli afsluiten",
+  "settings.quitHint": "Hycli blijft actief als je de browser sluit. Sluit Hycli hier af om het te stoppen.",
+  "settings.quitConfirm": "Hycli afsluiten? Voltooi of annuleer eerst het lopende werk. Je opgeslagen websites en accounts blijven op dit apparaat.",
+  "settings.stopped": "Hycli is afgesloten",
+  "settings.stoppedHint": "Je kunt dit tabblad sluiten. Open Hycli via het toepassingenmenu om terug te keren.",
+  "errors.work_in_progress": "Voltooi of annuleer het lopende werk in Activiteit en sluit Hycli daarna opnieuw af.",
+  "errors.shutting_down": "Hycli wordt afgesloten."
 }

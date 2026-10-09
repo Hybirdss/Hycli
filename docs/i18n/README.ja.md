@@ -34,13 +34,15 @@
 <a id="get-started"></a>
 ## はじめに
 
+新しいデスクトップパッケージはWindows（`*-setup.exe`）、macOS（`.dmg`）、Linux（`.deb`、または展開後に `./install.sh`）に対応します。インストール後はHycliのアイコンを押すだけでエンジンとブラウザーが起動します。ターミナルを開いたままにする必要はありません。再度押すと起動中の画面が開き、設定の **Hycliを終了** から終了できます。`hycli open`、`hycli status`、`hycli stop` も使えます。以下のv0.1.0とは別の開発中パッケージです。OSごとの検証と署名の状況は[ビルド案内](../BUILD.md)と[CI](https://github.com/Hybirdss/Hycli/actions/workflows/verify.yml)をご確認ください。
+
 **[ダウンロード v0.1.0 · Linux x64](https://github.com/Hybirdss/Hycli/releases/tag/v0.1.0)** · glibc ≥ 2.39 · [SHA-256](https://github.com/Hybirdss/Hycli/releases/download/v0.1.0/hycli-0.1.0-linux-x64.tar.gz.sha256)
 
 Hycliはローカルのウェブダッシュボードを備えたRustアプリケーションです。チェックアウトしたこのソースから、ダッシュボードと実行ファイルをビルドします。
 
 ```sh
 node scripts/build.mjs
-./dist/hycli dashboard
+./dist/hycli open
 ```
 
 ダッシュボードは `http://127.0.0.1:4318` で開きます。ブラウザーを開かずにアドレスだけを表示するには `hycli dashboard --no-open`、別のポートを使うには `--port 4320` を指定してください。ウェブサイトエンジンとダッシュボードは同じ実行ファイルに含まれます。

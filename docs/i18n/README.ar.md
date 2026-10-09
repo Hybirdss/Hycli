@@ -27,13 +27,15 @@
 <a id="get-started"></a>
 ## البدء
 
+حزم سطح المكتب الجديدة: Windows ‏(`*-setup.exe`) وmacOS ‏(`.dmg`) وLinux ‏(`.deb` أو `./install.sh` بعد فك الضغط). افتح Hycli من الأيقونة ليبدأ المحرك في الخلفية ويفتح المتصفح. لا حاجة لإبقاء الطرفية مفتوحة. أنهِ التطبيق من الإعدادات أو استخدم `hycli open` و`hycli status` و`hycli stop`. هذه الحزم قيد التطوير منفصلة عن v0.1.0؛ راجع التحقق من المنصات والتوقيع في [الدليل](../BUILD.md) و[CI](https://github.com/Hybirdss/Hycli/actions/workflows/verify.yml).
+
 **[تنزيل v0.1.0 · Linux x64](https://github.com/Hybirdss/Hycli/releases/tag/v0.1.0)** · glibc ≥ 2.39 · [SHA-256](https://github.com/Hybirdss/Hycli/releases/download/v0.1.0/hycli-0.1.0-linux-x64.tar.gz.sha256)
 
 Hycli تطبيق بلغة Rust مزوّد بلوحة تحكم محلية في المتصفح. من هذه النسخة من المستودع، ابنِ لوحة التحكم والملف التنفيذي:
 
 ```sh
 node scripts/build.mjs
-./dist/hycli dashboard
+./dist/hycli open
 ```
 
 تفتح لوحة التحكم على `http://127.0.0.1:4318`. استخدم `hycli dashboard --no-open` لعرض العنوان دون فتح المتصفح، أو `--port 4320` لاختيار منفذ آخر. محرك المواقع ولوحة التحكم مضمّنان في الملف التنفيذي نفسه.

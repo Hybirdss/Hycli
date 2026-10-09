@@ -484,5 +484,12 @@
   "errors.response_mismatch": "Web sitesi beklenenden farklı bir sonuç döndürdü. Hesabınızı yeniden bağlayın veya web sitesini yeniden hazırlayın.",
   "sites.intentLabel": "Ne yapmak istersiniz?",
   "sites.intentPlaceholder": "Örneğin, kaydedilmiş makaleleri bulup konularına göre düzenlemek",
-  "errors.query_failed": "Web sitesi bu sorguyu tamamlayamadı. Girdileri kontrol edin veya siteyi yeniden hazırlayın."
+  "errors.query_failed": "Web sitesi bu sorguyu tamamlayamadı. Girdileri kontrol edin veya siteyi yeniden hazırlayın.",
+  "settings.quit": "Hycli’den çık",
+  "settings.quitHint": "Tarayıcı kapatıldığında Hycli çalışmaya devam eder. Durdurmak için buradan çıkın.",
+  "settings.quitConfirm": "Hycli’den çıkılsın mı? Önce devam eden işleri tamamlayın veya iptal edin. Kayıtlı siteleriniz ve hesaplarınız bu cihazda kalır.",
+  "settings.stopped": "Hycli kapatıldı",
+  "settings.stoppedHint": "Bu sekmeyi kapatabilirsiniz. Geri dönmek için uygulama menüsünden Hycli’yi açın.",
+  "errors.work_in_progress": "Etkinlik bölümünde devam eden işleri tamamlayın veya iptal edin, ardından yeniden çıkın.",
+  "errors.shutting_down": "Hycli kapatılıyor."
 }

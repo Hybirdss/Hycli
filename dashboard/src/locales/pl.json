@@ -484,5 +484,12 @@
   "errors.response_mismatch": "Witryna zwróciła inny wynik niż oczekiwany. Połącz konto ponownie lub ponownie przygotuj witrynę.",
   "sites.intentLabel": "Co chcesz zrobić?",
   "sites.intentPlaceholder": "Na przykład znaleźć zapisane artykuły i uporządkować je według tematu",
-  "errors.query_failed": "Witryna nie mogła wykonać tego zapytania. Sprawdź dane lub przygotuj witrynę ponownie."
+  "errors.query_failed": "Witryna nie mogła wykonać tego zapytania. Sprawdź dane lub przygotuj witrynę ponownie.",
+  "settings.quit": "Zamknij Hycli",
+  "settings.quitHint": "Hycli działa dalej po zamknięciu przeglądarki. Zakończ go tutaj.",
+  "settings.quitConfirm": "Zamknąć Hycli? Najpierw zakończ lub anuluj trwające zadania. Zapisane witryny i konta pozostaną na tym urządzeniu.",
+  "settings.stopped": "Hycli zostało zamknięte",
+  "settings.stoppedHint": "Możesz zamknąć tę kartę. Aby wrócić, otwórz Hycli z menu aplikacji.",
+  "errors.work_in_progress": "Zakończ lub anuluj trwające zadania w Aktywności, a następnie ponownie zamknij Hycli.",
+  "errors.shutting_down": "Hycli jest zamykane."
 }

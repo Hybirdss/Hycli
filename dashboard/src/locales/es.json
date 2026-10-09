@@ -484,5 +484,12 @@
   "errors.response_mismatch": "El sitio devolvió un resultado diferente del esperado. Vuelve a conectar tu cuenta o prepara el sitio de nuevo.",
   "sites.intentLabel": "¿Qué te gustaría hacer?",
   "sites.intentPlaceholder": "Por ejemplo, encontrar artículos guardados y organizarlos por tema",
-  "errors.query_failed": "El sitio no pudo completar esta consulta. Revisa los datos o vuelve a preparar el sitio."
+  "errors.query_failed": "El sitio no pudo completar esta consulta. Revisa los datos o vuelve a preparar el sitio.",
+  "settings.quit": "Salir de Hycli",
+  "settings.quitHint": "Hycli sigue funcionando al cerrar el navegador. Sal aquí para detenerlo.",
+  "settings.quitConfirm": "¿Salir de Hycli? Primero termina o cancela las tareas en curso. Los sitios y las cuentas guardados permanecerán en este dispositivo.",
+  "settings.stopped": "Hycli se ha cerrado",
+  "settings.stoppedHint": "Puedes cerrar esta pestaña. Abre Hycli desde el menú de aplicaciones para volver.",
+  "errors.work_in_progress": "Termina o cancela las tareas en curso en Actividad y vuelve a salir.",
+  "errors.shutting_down": "Hycli se está cerrando."
 }

@@ -484,5 +484,12 @@
   "errors.response_mismatch": "ウェブサイトから想定と異なる結果が返されました。アカウントを再接続するか、ウェブサイトの準備をやり直してください。",
   "sites.intentLabel": "何をしたいですか？",
   "sites.intentPlaceholder": "例：保存した記事を探して、トピックごとに整理する",
-  "errors.query_failed": "ウェブサイトでクエリを完了できませんでした。入力内容を確認するか、ウェブサイトを再準備してください。"
+  "errors.query_failed": "ウェブサイトでクエリを完了できませんでした。入力内容を確認するか、ウェブサイトを再準備してください。",
+  "settings.quit": "Hycliを終了",
+  "settings.quitHint": "ブラウザーを閉じてもHycliは動作し続けます。終了するにはこちらを押してください。",
+  "settings.quitConfirm": "Hycliを終了しますか？実行中の作業を完了するか、先にキャンセルしてください。保存したサイトとアカウントはこの端末に残ります。",
+  "settings.stopped": "Hycliを終了しました",
+  "settings.stoppedHint": "このタブを閉じてかまいません。再開するにはアプリメニューからHycliを開いてください。",
+  "errors.work_in_progress": "アクティビティで実行中の作業を完了またはキャンセルしてから、もう一度終了してください。",
+  "errors.shutting_down": "Hycliを終了しています。"
 }

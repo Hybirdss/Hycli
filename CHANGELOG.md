@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Open Hycli from a native app icon or `hycli open` without keeping a terminal or manually starting a server. Reuse running instances and select a free local port when necessary.
+- Quit from Settings in all 20 languages, or use `hycli status` / `hycli stop`. Preserve active work and saved data.
+- Build per-user Windows installers, macOS app/DMG packages and Linux DEBs, plus portable archives with a Linux menu installer, for x64 and ARM64.
+- Verify background lifecycle and actual installer payloads in each native CI job. Support optional Windows signing and macOS Developer ID signing/notarization.
+
 ## 0.1.0
 
 The first packaged Hycli release: websites, ready for AI.

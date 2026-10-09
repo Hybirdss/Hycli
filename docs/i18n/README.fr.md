@@ -34,13 +34,15 @@ Ajoutez un site web. Hycli prépare des actions utilisables par votre IA et expl
 <a id="get-started"></a>
 ## Premiers pas
 
+Les nouveaux paquets de bureau sont Windows (`*-setup.exe`), macOS (`.dmg`) et Linux (`.deb` ou `./install.sh` après extraction). Ouvrez Hycli depuis son icône : le moteur démarre en arrière-plan et ouvre le navigateur. Aucun terminal ne doit rester ouvert. Quittez depuis les paramètres ou utilisez `hycli open`, `hycli status` et `hycli stop`. Ces paquets en développement sont distincts de v0.1.0 ; consultez les vérifications et signatures dans [le guide](../BUILD.md) et [CI](https://github.com/Hybirdss/Hycli/actions/workflows/verify.yml).
+
 **[Télécharger v0.1.0 · Linux x64](https://github.com/Hybirdss/Hycli/releases/tag/v0.1.0)** · glibc ≥ 2.39 · [SHA-256](https://github.com/Hybirdss/Hycli/releases/download/v0.1.0/hycli-0.1.0-linux-x64.tar.gz.sha256)
 
 Hycli est une application Rust dotée d'un tableau de bord web local. Depuis cette copie du dépôt, compilez le tableau de bord et l'exécutable :
 
 ```sh
 node scripts/build.mjs
-./dist/hycli dashboard
+./dist/hycli open
 ```
 
 Le tableau de bord s'ouvre à l'adresse `http://127.0.0.1:4318`. Utilisez `hycli dashboard --no-open` pour afficher l'adresse sans ouvrir de navigateur, ou `--port 4320` pour choisir un autre port. Le moteur des sites web et le tableau de bord sont inclus dans le même exécutable.

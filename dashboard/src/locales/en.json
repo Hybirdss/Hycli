@@ -484,5 +484,12 @@
   "errors.response_mismatch": "The website returned a different result than expected. Reconnect your account or prepare the website again.",
   "sites.intentLabel": "What would you like to do?",
   "sites.intentPlaceholder": "For example, find saved articles and organize them by topic",
-  "errors.query_failed": "The website could not complete this query. Check the inputs or prepare the website again."
+  "errors.query_failed": "The website could not complete this query. Check the inputs or prepare the website again.",
+  "settings.quit": "Quit Hycli",
+  "settings.quitHint": "Closing the browser keeps Hycli running. Quit here to stop it.",
+  "settings.quitConfirm": "Quit Hycli? Finish or cancel active work first. Your saved websites and accounts will stay on this device.",
+  "settings.stopped": "Hycli has closed",
+  "settings.stoppedHint": "You can close this tab. Open Hycli from your application menu to return.",
+  "errors.work_in_progress": "Finish or cancel active work in Activity, then quit again.",
+  "errors.shutting_down": "Hycli is shutting down."
 }

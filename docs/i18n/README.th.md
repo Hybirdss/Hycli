@@ -34,13 +34,15 @@
 <a id="get-started"></a>
 ## เริ่มต้นใช้งาน
 
+แพ็กเกจเดสก์ท็อปใหม่: Windows (`*-setup.exe`), macOS (`.dmg`) และ Linux (`.deb` หรือรัน `./install.sh` หลังแตกไฟล์) เปิด Hycli จากไอคอนเพื่อเริ่มเอนจินเบื้องหลังและเปิดเบราว์เซอร์โดยอัตโนมัติ ไม่ต้องเปิดเทอร์มินัลค้างไว้ ออกจากแอปผ่านการตั้งค่า หรือใช้ `hycli open`, `hycli status` และ `hycli stop` แพ็กเกจระหว่างพัฒนาเหล่านี้แยกจาก v0.1.0 โปรดตรวจสอบการทดสอบแต่ละแพลตฟอร์มและลายเซ็นใน[คู่มือ](../BUILD.md)และ [CI](https://github.com/Hybirdss/Hycli/actions/workflows/verify.yml)
+
 **[ดาวน์โหลด v0.1.0 · Linux x64](https://github.com/Hybirdss/Hycli/releases/tag/v0.1.0)** · glibc ≥ 2.39 · [SHA-256](https://github.com/Hybirdss/Hycli/releases/download/v0.1.0/hycli-0.1.0-linux-x64.tar.gz.sha256)
 
 Hycli เป็นแอปพลิเคชัน Rust ที่มีเว็บแดชบอร์ดทำงานบนเครื่อง สร้างแดชบอร์ดและไฟล์ปฏิบัติการจากซอร์สโค้ดที่เช็กเอาต์ไว้นี้:
 
 ```sh
 node scripts/build.mjs
-./dist/hycli dashboard
+./dist/hycli open
 ```
 
 แดชบอร์ดจะเปิดที่ `http://127.0.0.1:4318` ใช้ `hycli dashboard --no-open` เพื่อแสดงที่อยู่โดยไม่เปิดเบราว์เซอร์ หรือใช้ `--port 4320` เพื่อเลือกพอร์ตอื่น กลไกสำหรับเว็บไซต์และแดชบอร์ดรวมอยู่ในไฟล์ปฏิบัติการเดียวกัน

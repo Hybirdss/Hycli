@@ -11,7 +11,7 @@ Use Rust 1.98 or newer and Node.js 20.19+ or 22.12+. The lockfiles select the Ru
 The standard HTTP transport uses Rustls with AWS-LC. A native C/C++ compiler is required; CMake covers the TLS library's fallback build path. The locked dependencies use generated bindings and do not require Perl or libclang. On Debian/Ubuntu:
 
 ```sh
-sudo apt-get install build-essential cmake pkg-config git
+sudo apt-get install build-essential cmake pkg-config git dpkg-dev binutils
 ```
 
 On macOS, install Xcode command-line tools and CMake. On Windows, use the MSVC Rust toolchain with the Visual Studio C++ build tools and CMake available in the build environment. The Linux build is exercised locally; the native macOS/Windows CI jobs provide additional build coverage when run.
@@ -19,16 +19,16 @@ On macOS, install Xcode command-line tools and CMake. On Windows, use the MSVC R
 ```sh
 node scripts/build.mjs --check
 node scripts/build.mjs
-./dist/hycli dashboard
+./dist/hycli open
 ```
 
-In PowerShell, the last command is `./dist/hycli.exe dashboard`. The build script installs the locked dashboard dependencies, checks TypeScript and all translations, builds the dashboard, builds the Rust release executable and writes `dist/SHA256SUMS`. `--skip-dependencies` reuses an existing `dashboard/node_modules` directory; normal builds use `npm ci`.
+In PowerShell, the last command is `./dist/hycli.exe open`. The build script installs the locked dashboard dependencies, checks TypeScript and all translations, builds the dashboard, builds the Rust engine and desktop launcher and writes `dist/SHA256SUMS`. `--skip-dependencies` reuses an existing `dashboard/node_modules` directory; normal builds use `npm ci`.
 
 To place the executable in a directory you already use on PATH:
 
 ```sh
 node scripts/build.mjs --install-dir "$HOME/.local/bin"
-hycli dashboard
+hycli open
 ```
 
 Windows example: `node scripts/build.mjs --install-dir "$env:LOCALAPPDATA\Hycli\bin"`. Add that directory to your user PATH or run the printed absolute executable path. Installation does not edit shell profiles or machine settings.
@@ -37,7 +37,11 @@ Windows example: `node scripts/build.mjs --install-dir "$env:LOCALAPPDATA\Hycli\
 
 ## Start and reconnect
 
-The dashboard binds to `127.0.0.1:4318`. `hycli dashboard --port 4320 --no-open` prints a different local address without launching a browser. Keep that process running while using the dashboard. If a port is occupied, choose another port. If the same data directory already has a running dashboard, use that instance instead of starting a second writer.
+Open Hycli from its installed application icon, by running `hycli open`, or by running `hycli` without arguments. The launcher starts the background engine and opens the default browser. It prefers `127.0.0.1:4318`, falls back to a free loopback port if occupied, and reuses a responding instance for the same data directory. The terminal can close immediately. `hycli open --port 4320 --no-open` starts without a browser and prints the actual address; `hycli status` reports it later.
+
+Closing the browser keeps the engine running. Use **Settings → Quit Hycli** or `hycli stop` to stop it; active work must finish or be cancelled first. No system service or login startup is installed. Startup diagnostics are in `dashboard.log` in the data directory. The `dashboard-instance.json` file is only a discovery record: Hycli verifies a random instance ID over loopback before reusing or stopping it, and never kills a PID read from that file.
+
+For development, `hycli dashboard --port 4320 --no-open` retains foreground operation and fails if its requested port is occupied. SIGINT and SIGTERM (Unix) shut it down. Use the same data directory for the foreground and desktop modes.
 
 An open dashboard reconnects after a server restart. Preparation and descriptions can be retried from Activity. Completed results persist. A change interrupted after authorization may already have reached its website; its activity entry tells you to check the website before running it again. Hycli never replays that change automatically.
 
@@ -74,9 +78,21 @@ An optional live check uses the already signed-in Codex connection and an explic
 
 ```sh
 node scripts/package.mjs
+node scripts/package-desktop.mjs
 node scripts/package.mjs --source
 ```
 
-The first command packages the native executable already built in `dist/`; the second creates an allowlisted public source snapshot without Git history. Both write archives, checksums and file manifests under `dist/artifacts/`. Neither copies installed site definitions, accounts or browser profiles. See [RELEASING.md](RELEASING.md) for archive extraction and fresh-data smoke verification.
+The first command packages the native binaries already built in `dist/`; the desktop command creates a DEB, DMG or Windows installer on its native OS; `--source` creates an allowlisted public source snapshot without Git history. Both write archives, checksums and file manifests under `dist/artifacts/`. Neither copies installed site definitions, accounts or browser profiles. See [RELEASING.md](RELEASING.md) for archive extraction and fresh-data smoke verification.
 
 Native release packages contain `agent/AGENTS.md`, the byte-identical `agent/CLAUDE.md`, `skills/hycli/` and the [operation reference](SITESPEC.md). `hycli mcp` exposes preparation and execution together. Use `--sites-only` only when that restricted scope is intended.
+
+Desktop packaging prerequisites: Linux needs `dpkg-deb` and `objdump`; macOS uses `sips`, `iconutil`, `codesign` and `hdiutil` from the system tools; Windows needs NSIS 3.11+ (`makensis` on PATH, or set `MAKENSIS`). macOS packages require macOS 13 or later. Set `MACOSX_DEPLOYMENT_TARGET=13.0` when compiling for the documented floor. The DEB's libc dependency is derived from the built ELF symbols instead of claiming compatibility with an older distribution.
+
+Desktop-specific verification:
+
+```sh
+node scripts/smoke-desktop.mjs dist/hycli --browser
+node scripts/smoke-installer.mjs dist/artifacts/hycli-0.1.0-linux-x64.deb
+```
+
+Use `.exe` for the binary on Windows and the corresponding `.dmg` or `*-setup.exe` artifact on macOS/Windows. `--browser` exercises the actual translated Quit action through Playwright; omit it for non-browser native checks. Tests cover concurrent launches, port conflicts, stale discovery records, shutdown authorization, launcher execution and saved settings across restarts. Installer checks inspect an extracted DEB, a mounted DMG or a silent per-user Windows installation. They do not replace testing the final signed installer on a clean user machine.

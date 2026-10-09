@@ -33,19 +33,25 @@ const rustTarget=targetTriple||hostTriple;
 const platform=rustTarget?.includes('windows')?'win32':rustTarget?.includes('apple-darwin')?'darwin':rustTarget?.includes('linux')?'linux':null;
 const arch=rustTarget?.startsWith('x86_64-')?'x64':rustTarget?.startsWith('aarch64-')?'arm64':null;
 if(!platform||!arch)throw Error(`Unsupported release target: ${rustTarget}. Supported: Linux, macOS and Windows on x64 or ARM64.`);
-run('cargo',['build','--release','--locked','--bin','hycli'],{env:{...process.env,CARGO_ENCODED_RUSTFLAGS:rustflags}});
+run('cargo',['build','--release','--locked','--bins'],{env:{...process.env,CARGO_ENCODED_RUSTFLAGS:rustflags}});
 const name=platform==='win32'?'hycli.exe':'hycli';
 const target=path.resolve(root,process.env.CARGO_TARGET_DIR||'target');
 const binary=path.join(target,...(targetTriple?[targetTriple]:[]),'release',name);
 const output=path.join(root,'dist');fs.mkdirSync(output,{recursive:true});
-const artifact=path.join(output,name),stagedArtifact=path.join(output,`.${name}.package-${process.pid}`);
-try{fs.copyFileSync(binary,stagedArtifact);if(process.platform!=='win32')fs.chmodSync(stagedArtifact,0o755);fs.renameSync(stagedArtifact,artifact);}
-finally{fs.rmSync(stagedArtifact,{force:true});}
-const digest=createHash('sha256').update(fs.readFileSync(artifact)).digest('hex');
-fs.writeFileSync(path.join(output,'SHA256SUMS'),`${digest}  ${name}\n`);
-fs.writeFileSync(path.join(output,'build.json'),JSON.stringify({rust_target:rustTarget,platform,arch,sha256:digest},null,2)+'\n');
+const artifact=path.join(output,name);
+const binaries={};
+for(const base of ['hycli','hycli-desktop']){
+ const filename=base+(platform==='win32'?'.exe':'');
+ const built=path.join(path.dirname(binary),filename),destination=path.join(output,filename),temporary=path.join(output,`.${filename}.package-${process.pid}`);
+ try{fs.copyFileSync(built,temporary);if(process.platform!=='win32')fs.chmodSync(temporary,0o755);fs.renameSync(temporary,destination);}
+ finally{fs.rmSync(temporary,{force:true});}
+ binaries[filename]=createHash('sha256').update(fs.readFileSync(destination)).digest('hex');
+}
+const digest=binaries[name];
+fs.writeFileSync(path.join(output,'SHA256SUMS'),Object.entries(binaries).map(([file,hash])=>`${hash}  ${file}\n`).join(''));
+fs.writeFileSync(path.join(output,'build.json'),JSON.stringify({rust_target:rustTarget,platform,arch,sha256:digest,binaries},null,2)+'\n');
 fs.copyFileSync(path.join(root,'LICENSE'),path.join(output,'LICENSE'));
-fs.writeFileSync(path.join(output,'README.md'),`# Hycli\n\nFrom the unpacked package directory, start the local dashboard: \`./${name} dashboard\` (PowerShell on Windows). Open the printed local address if your browser does not open automatically.\n\nConnect your AI, add a website and optional task, and review its available actions. Changes require your approval in the dashboard.\n\nThe executable includes the website engine and dashboard. Rust and Node.js are not needed to run it. ChatGPT login additionally uses an installed Codex CLI; API-key connections do not.\n\nCLI/MCP: \`./${name} --help\`. After adding the executable to PATH, the general agent connection is \`hycli mcp\`. Coding agents in the dashboard provides the configuration with your current executable path. Portable instructions and skill are included in native archives.\n\nThis package contains the native build for ${platform}/${arch} (${rustTarget}). Check SHA256SUMS before installing.\n\nTo the extent permitted by law, the authors and contributors are not liable for account bans, suspensions, or restrictions resulting from the use of Hycli. Do not use Hycli for hacking, unauthorized access, or attacks.\n`);
+fs.writeFileSync(path.join(output,'README.md'),`# Hycli\n\nFrom the unpacked package directory, open Hycli with \`./${name} open\` or double-click \`hycli-desktop${platform==='win32'?'.exe':''}\`. The engine starts in the background and opens your browser. You can close the terminal. Open Hycli again to reuse the running instance; quit from Settings or with \`./${name} stop\`. Open the printed local address if your browser does not open automatically.\n\nConnect your AI, add a website and optional task, and review its available actions. Changes require your approval in the dashboard.\n\nThe executable includes the website engine and dashboard. Rust and Node.js are not needed to run it. ChatGPT login additionally uses an installed Codex CLI; API-key connections do not.\n\nCLI/MCP: \`./${name} --help\`. After adding the executable to PATH, the general agent connection is \`hycli mcp\`. Coding agents in the dashboard provides the configuration with your current executable path. Portable instructions and skill are included in native archives.\n\nThis package contains the native build for ${platform}/${arch} (${rustTarget}). Check SHA256SUMS before installing.\n\nTo the extent permitted by law, the authors and contributors are not liable for account bans, suspensions, or restrictions resulting from the use of Hycli. Do not use Hycli for hacking, unauthorized access, or attacks.\n`);
 if(rustTarget===hostTriple)run(artifact,['--version']);
 else console.log(`Cross-compiled ${rustTarget}; run the package smoke check on that target platform.`);
 if(values['install-dir']){
@@ -53,6 +59,6 @@ if(values['install-dir']){
  const destination=path.join(install,name),temporary=path.join(install,`.${name}.install-${process.pid}`);
  try {fs.copyFileSync(artifact,temporary);if(process.platform!=='win32')fs.chmodSync(temporary,0o755);fs.renameSync(temporary,destination);}
  finally{fs.rmSync(temporary,{force:true});}
- console.log(`Installed: ${destination}\nRun it with: ${JSON.stringify(destination)} dashboard`);
+ console.log(`Installed: ${destination}\nRun it with: ${JSON.stringify(destination)} open`);
 }
-console.log(`Ready: ${artifact}\nStart: ${JSON.stringify(artifact)} dashboard\nChecksum: ${path.join(output,'SHA256SUMS')}`);
+console.log(`Ready: ${artifact}\nStart: ${JSON.stringify(artifact)} open\nChecksum: ${path.join(output,'SHA256SUMS')}`);

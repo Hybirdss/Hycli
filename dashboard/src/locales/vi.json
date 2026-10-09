@@ -484,5 +484,12 @@
   "errors.response_mismatch": "Trang web trả về kết quả khác dự kiến. Hãy kết nối lại tài khoản hoặc chuẩn bị lại trang web.",
   "sites.intentLabel": "Bạn muốn làm gì?",
   "sites.intentPlaceholder": "Ví dụ: tìm các bài viết đã lưu và sắp xếp theo chủ đề",
-  "errors.query_failed": "Trang web không thể hoàn tất truy vấn này. Hãy kiểm tra dữ liệu nhập hoặc chuẩn bị lại trang web."
+  "errors.query_failed": "Trang web không thể hoàn tất truy vấn này. Hãy kiểm tra dữ liệu nhập hoặc chuẩn bị lại trang web.",
+  "settings.quit": "Thoát Hycli",
+  "settings.quitHint": "Hycli vẫn chạy khi bạn đóng trình duyệt. Thoát tại đây để dừng ứng dụng.",
+  "settings.quitConfirm": "Thoát Hycli? Hãy hoàn tất hoặc hủy công việc đang chạy trước. Các trang web và tài khoản đã lưu vẫn được giữ trên thiết bị này.",
+  "settings.stopped": "Hycli đã đóng",
+  "settings.stoppedHint": "Bạn có thể đóng thẻ này. Mở Hycli từ menu ứng dụng để quay lại.",
+  "errors.work_in_progress": "Hoàn tất hoặc hủy công việc đang chạy trong Hoạt động, rồi thoát lại.",
+  "errors.shutting_down": "Hycli đang đóng."
 }

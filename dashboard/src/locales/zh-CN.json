@@ -484,5 +484,12 @@
   "errors.response_mismatch": "网站返回了与预期不同的结果。请重新连接账户或重新准备网站。",
   "sites.intentLabel": "您想做什么？",
   "sites.intentPlaceholder": "例如，查找已保存的文章并按主题整理",
-  "errors.query_failed": "网站无法完成此查询。请检查输入内容或重新准备网站。"
+  "errors.query_failed": "网站无法完成此查询。请检查输入内容或重新准备网站。",
+  "settings.quit": "退出 Hycli",
+  "settings.quitHint": "关闭浏览器后 Hycli 仍会继续运行。请在此退出。",
+  "settings.quitConfirm": "要退出 Hycli 吗？请先完成或取消正在进行的任务。已保存的网站和账户将保留在此设备上。",
+  "settings.stopped": "Hycli 已退出",
+  "settings.stoppedHint": "可以关闭此标签页了。要继续使用，请从应用菜单打开 Hycli。",
+  "errors.work_in_progress": "请在活动中完成或取消正在进行的任务，然后再次退出。",
+  "errors.shutting_down": "Hycli 正在退出。"
 }

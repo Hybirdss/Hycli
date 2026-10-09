@@ -484,5 +484,12 @@
   "errors.response_mismatch": "웹사이트가 예상과 다른 결과를 반환했습니다. 계정을 다시 연결하거나 웹사이트를 다시 준비하세요.",
   "sites.intentLabel": "무엇을 하고 싶으신가요?",
   "sites.intentPlaceholder": "예: 저장한 글을 찾아 주제별로 정리하기",
-  "errors.query_failed": "웹사이트에서 조회를 완료하지 못했습니다. 입력값을 확인하거나 웹사이트를 다시 준비해 주세요."
+  "errors.query_failed": "웹사이트에서 조회를 완료하지 못했습니다. 입력값을 확인하거나 웹사이트를 다시 준비해 주세요.",
+  "settings.quit": "Hycli 종료",
+  "settings.quitHint": "브라우저를 닫아도 Hycli는 계속 실행됩니다. 완전히 종료하려면 이 버튼을 누르세요.",
+  "settings.quitConfirm": "Hycli를 종료할까요? 진행 중인 작업은 먼저 완료하거나 취소해 주세요. 저장된 웹사이트와 계정은 이 기기에 유지됩니다.",
+  "settings.stopped": "Hycli가 종료되었습니다",
+  "settings.stoppedHint": "이 탭을 닫아도 됩니다. 다시 사용하려면 앱 메뉴에서 Hycli를 여세요.",
+  "errors.work_in_progress": "활동에서 진행 중인 작업을 완료하거나 취소한 뒤 다시 종료해 주세요.",
+  "errors.shutting_down": "Hycli를 종료하는 중입니다."
 }

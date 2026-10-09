@@ -34,13 +34,15 @@ Füge eine Website hinzu. Hycli bereitet Aktionen vor, die deine KI nutzen kann,
 <a id="get-started"></a>
 ## Erste Schritte
 
+Neue Desktop-Pakete: Windows (`*-setup.exe`), macOS (`.dmg`) und Linux (`.deb` oder nach dem Entpacken `./install.sh`). Öffnen Sie Hycli über das App-Symbol: Die Engine startet im Hintergrund und öffnet den Browser. Kein Terminal muss offen bleiben. Beenden Sie Hycli in den Einstellungen oder nutzen Sie `hycli open`, `hycli status` und `hycli stop`. Diese Entwicklungspakete sind von v0.1.0 getrennt; Plattformprüfungen und Signaturen sind in der [Anleitung](../BUILD.md) und [CI](https://github.com/Hybirdss/Hycli/actions/workflows/verify.yml) dokumentiert.
+
 **[Herunterladen v0.1.0 · Linux x64](https://github.com/Hybirdss/Hycli/releases/tag/v0.1.0)** · glibc ≥ 2.39 · [SHA-256](https://github.com/Hybirdss/Hycli/releases/download/v0.1.0/hycli-0.1.0-linux-x64.tar.gz.sha256)
 
 Hycli ist eine Rust-Anwendung mit einem lokalen Web-Dashboard. Baue aus diesem ausgecheckten Repository das Dashboard und die ausführbare Datei:
 
 ```sh
 node scripts/build.mjs
-./dist/hycli dashboard
+./dist/hycli open
 ```
 
 Das Dashboard öffnet sich unter `http://127.0.0.1:4318`. Mit `hycli dashboard --no-open` wird die Adresse ausgegeben, ohne einen Browser zu öffnen. Mit `--port 4320` wählst du einen anderen Port. Die Website-Engine und das Dashboard sind in derselben ausführbaren Datei enthalten.

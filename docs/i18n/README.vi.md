@@ -34,13 +34,15 @@ Thêm một trang web. Hycli chuẩn bị các thao tác mà AI có thể sử d
 <a id="get-started"></a>
 ## Bắt đầu
 
+Gói ứng dụng mới: Windows (`*-setup.exe`), macOS (`.dmg`) và Linux (`.deb` hoặc chạy `./install.sh` sau khi giải nén). Mở Hycli bằng biểu tượng: bộ máy tự chạy nền và mở trình duyệt. Không cần giữ cửa sổ terminal. Thoát trong Cài đặt hoặc dùng `hycli open`, `hycli status`, `hycli stop`. Các gói đang phát triển này tách biệt với v0.1.0; xem kiểm chứng nền tảng và chữ ký trong [hướng dẫn](../BUILD.md) và [CI](https://github.com/Hybirdss/Hycli/actions/workflows/verify.yml).
+
 **[Tải xuống v0.1.0 · Linux x64](https://github.com/Hybirdss/Hycli/releases/tag/v0.1.0)** · glibc ≥ 2.39 · [SHA-256](https://github.com/Hybirdss/Hycli/releases/download/v0.1.0/hycli-0.1.0-linux-x64.tar.gz.sha256)
 
 Hycli là ứng dụng Rust có bảng điều khiển web chạy cục bộ. Từ bản mã nguồn đã tải về này, hãy biên dịch bảng điều khiển và tệp thực thi:
 
 ```sh
 node scripts/build.mjs
-./dist/hycli dashboard
+./dist/hycli open
 ```
 
 Bảng điều khiển mở tại `http://127.0.0.1:4318`. Dùng `hycli dashboard --no-open` để in địa chỉ mà không mở trình duyệt, hoặc `--port 4320` để chọn cổng khác. Bộ máy xử lý trang web và bảng điều khiển nằm trong cùng một tệp thực thi.

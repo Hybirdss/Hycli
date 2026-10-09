@@ -484,5 +484,12 @@
   "errors.response_mismatch": "Die Website hat ein unerwartetes Ergebnis zurückgegeben. Verbinde dein Konto erneut oder bereite die Website erneut vor.",
   "sites.intentLabel": "Was möchtest du tun?",
   "sites.intentPlaceholder": "Zum Beispiel gespeicherte Artikel finden und nach Themen sortieren",
-  "errors.query_failed": "Die Website konnte diese Abfrage nicht abschließen. Prüfe die Eingaben oder bereite die Website erneut vor."
+  "errors.query_failed": "Die Website konnte diese Abfrage nicht abschließen. Prüfe die Eingaben oder bereite die Website erneut vor.",
+  "settings.quit": "Hycli beenden",
+  "settings.quitHint": "Hycli läuft weiter, wenn Sie den Browser schließen. Beenden Sie es hier.",
+  "settings.quitConfirm": "Hycli beenden? Schließen Sie laufende Aufgaben zuerst ab oder brechen Sie sie ab. Gespeicherte Websites und Konten bleiben auf diesem Gerät.",
+  "settings.stopped": "Hycli wurde beendet",
+  "settings.stoppedHint": "Sie können diesen Tab schließen. Öffnen Sie Hycli im Anwendungsmenü, um fortzufahren.",
+  "errors.work_in_progress": "Schließen Sie laufende Aufgaben unter Aktivitäten ab oder brechen Sie sie ab. Beenden Sie Hycli dann erneut.",
+  "errors.shutting_down": "Hycli wird beendet."
 }

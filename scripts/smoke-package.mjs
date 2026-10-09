@@ -56,6 +56,15 @@ try{
  for(const name of ['hycli_prepare','hycli_run','hycli_sites','hycli_accounts'])if(!tools.some(tool=>tool.name===name))throw Error('Missing tool: '+name);
  const result=await rpc('tools/call',{name:'hycli_sites',arguments:{}});
  if(result.isError||JSON.parse(result.content.find(content=>content.type==='text').text).length!==0)throw Error('Fresh MCP websites are not empty');
+ if(process.platform==='linux'){
+  const prefix=path.join(directory,'user install with spaces');
+  const installed=spawnSync('/bin/sh',[path.join(packageRoot,'install.sh'),'--prefix',prefix],{cwd,env:{...process.env,HYCLI_DATA_DIR:path.join(directory,'installer-data')},encoding:'utf8'});
+  if(installed.error||installed.status!==0)throw Error('User installation failed: '+installed.stderr);
+  const desktop=await fs.readFile(path.join(prefix,'share/applications/io.github.hybirdss.Hycli.desktop'),'utf8');
+  if(!desktop.includes(`Exec="${prefix}/lib/hycli/hycli-desktop"`))throw Error('Invalid desktop shortcut path');
+  const check=spawnSync(path.join(prefix,'bin/hycli'),['--version'],{cwd,env,encoding:'utf8'});
+  if(check.error||check.status!==0)throw Error('Installed CLI link failed');
+ }
  console.log(JSON.stringify({package:path.basename(archive),checksums:'passed',fresh_data:'empty',embedded_assets:assets.length,cli:'passed',mcp:'passed',runtime_path:'package directory only',directory}));
 }finally{
  if(mcp){mcp.stdin.end();mcp.kill('SIGTERM');}

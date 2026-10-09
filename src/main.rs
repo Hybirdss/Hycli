@@ -16,7 +16,7 @@ struct Cli {
     #[arg(long, global = true)]
     allow_local: bool,
     #[command(subcommand)]
-    cmd: Cmd,
+    cmd: Option<Cmd>,
 }
 
 #[derive(Subcommand)]
@@ -137,12 +137,25 @@ enum Cmd {
         #[arg(long)]
         only_site: Option<String>,
     },
-    /// Open the local website and account dashboard.
+    /// Open Hycli, starting its background engine only when needed.
+    Open {
+        #[arg(long, default_value_t = 4318)]
+        port: u16,
+        #[arg(long)]
+        no_open: bool,
+    },
+    /// Show whether the local dashboard is running.
+    Status,
+    /// Stop the local dashboard after its active work has finished.
+    Stop,
+    /// Run the local dashboard in the foreground (for development or servers).
     Dashboard {
         #[arg(long, default_value_t = 4318)]
         port: u16,
         #[arg(long)]
         no_open: bool,
+        #[arg(long, hide = true)]
+        auto_port: bool,
     },
 }
 
@@ -251,7 +264,15 @@ async fn main() {
         allow_local: cli.allow_local,
     };
     let emit = Emitter::new(deps.force_json);
-    let code = run(deps, cli.cmd, &emit).await;
+    let code = run(
+        deps,
+        cli.cmd.unwrap_or(Cmd::Open {
+            port: 4318,
+            no_open: false,
+        }),
+        &emit,
+    )
+    .await;
     std::process::exit(code);
 }
 
@@ -507,8 +528,34 @@ async fn dispatch(deps: Deps, cmd: Cmd, emit: &Emitter) -> Result<(), AppError> 
             emit.data(&result.mapped.or(result.body));
             Ok(())
         }
-        Cmd::Dashboard { port, no_open } => {
-            hycli::dashboard::serve(runtime(&deps, true, deps.allow_local)?, port, !no_open).await
+        Cmd::Open { port, no_open } => {
+            let instance =
+                hycli::desktop::open(port, !no_open, deps.allow_local, deps.kb.as_deref()).await?;
+            emit.data(&serde_json::json!({"running": true, "url": instance.url()}));
+            Ok(())
+        }
+        Cmd::Status => {
+            let instance = hycli::desktop::running(&hycli::platform::data_dir()).await;
+            emit.data(&serde_json::json!({"running": instance.is_some(), "url": instance.map(|i| i.url())}));
+            Ok(())
+        }
+        Cmd::Stop => {
+            hycli::desktop::stop(&hycli::platform::data_dir()).await?;
+            emit.data(&serde_json::json!({"running": false}));
+            Ok(())
+        }
+        Cmd::Dashboard {
+            port,
+            no_open,
+            auto_port,
+        } => {
+            hycli::dashboard::serve_with_options(
+                runtime(&deps, true, deps.allow_local)?,
+                port,
+                !no_open,
+                auto_port,
+            )
+            .await
         }
         Cmd::Mcp {
             sites_only,

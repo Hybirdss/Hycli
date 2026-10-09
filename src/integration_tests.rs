@@ -1535,3 +1535,64 @@ async fn graphql_errors_are_not_success_and_mutations_never_run_as_reads() {
     assert_eq!(calls.load(Ordering::SeqCst), 2);
     server.abort();
 }
+
+#[tokio::test]
+async fn desktop_shutdown_preserves_active_work_and_rejects_later_requests() {
+    let core = runtime();
+    let job = crate::state::Job::new("prepare", "en");
+    core.state.add_job(job.clone()).unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let web = crate::dashboard::Web::new(core.clone(), port);
+    let shutdown = web.shutdown.clone();
+    let server = tokio::spawn(async move {
+        axum::serve(listener, crate::dashboard::router(web))
+            .await
+            .unwrap();
+    });
+    let client = reqwest::Client::builder().no_proxy().build().unwrap();
+    let base = format!("http://127.0.0.1:{port}");
+    let session = client
+        .get(format!("{base}/api/session"))
+        .send()
+        .await
+        .unwrap();
+    let cookie = session.headers()["set-cookie"]
+        .to_str()
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .to_owned();
+    let csrf = session.json::<Value>().await.unwrap()["csrf"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let request = || {
+        client
+            .post(format!("{base}/api/shutdown"))
+            .header("cookie", &cookie)
+            .header("x-hycli-csrf", &csrf)
+    };
+    assert_eq!(request().send().await.unwrap().status(), 409);
+    assert!(!*shutdown.borrow());
+    assert_eq!(core.state.job(&job.id).unwrap().status, "queued");
+    core.state
+        .update_job(&job.id, |job| job.status = "completed".into())
+        .unwrap();
+    assert_eq!(request().send().await.unwrap().status(), 200);
+    assert!(*shutdown.borrow());
+    assert_eq!(
+        client
+            .patch(format!("{base}/api/settings"))
+            .header("cookie", &cookie)
+            .header("x-hycli-csrf", &csrf)
+            .json(&json!({"locale":"ko"}))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        503
+    );
+    server.abort();
+}

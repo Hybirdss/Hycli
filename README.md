@@ -43,9 +43,21 @@ Give Hycli a website and a task. It learns the available interface, prepares typ
 <a id="get-started"></a>
 ## Get started
 
-Hycli is one native executable with an embedded local dashboard. Rust and Node.js are needed to build it; neither is needed to run a packaged release.
+Hycli includes its website engine and local dashboard. The desktop launcher starts the engine for you and opens your default browser. Rust and Node.js are build tools; neither is needed to use a package.
 
 ### Download and run
+
+The next desktop packages are built for **Windows, macOS and Linux**, on both **x64 and ARM64**:
+
+| Platform | Package | Open |
+| --- | --- | --- |
+| Windows | `*-setup.exe` | Install for your account, then click Hycli in Start or on the desktop. |
+| macOS 13+ | `.dmg` with `Hycli.app` | Drag Hycli to Applications, then open it. |
+| Linux | `.deb` and `.tar.gz` | Install the DEB, or extract the archive and run `./install.sh`, then open Hycli from the app menu. |
+
+Click the icon again to reopen the running dashboard. Closing a browser tab leaves Hycli running; **Settings → Quit Hycli** stops it. The next launch starts it again. No terminal, manually managed server, administrator service, or startup-at-login setup is required. CLI users can use `hycli open`, `hycli status` and `hycli stop`; `hycli` alone also opens the app.
+
+Desktop installers are produced by [native CI](https://github.com/Hybirdss/Hycli/actions/workflows/verify.yml) and are separate from the older v0.1.0 release below. Check the exact run before using an artifact. Unsigned Windows installers and macOS builds without Developer ID notarization are development artifacts; see [distribution signing](docs/RELEASING.md#desktop-installers-and-signing).
 
 Download the **[Linux x64 package from v0.1.0](https://github.com/Hybirdss/Hycli/releases/tag/v0.1.0)** and its `.sha256` file into the same directory. It requires glibc 2.39 or newer, such as Ubuntu 24.04.
 
@@ -65,16 +77,16 @@ From a source checkout, install the [build prerequisites](docs/BUILD.md) and run
 
 ```sh
 node scripts/build.mjs
-./dist/hycli dashboard
+./dist/hycli open
 ```
 
-The build produces `dist/hycli` (`dist/hycli.exe` on Windows) and a SHA-256 checksum. Add `--install-dir <directory>` to install it on your PATH. Native archives can be unpacked into any directory; check their `SHA256SUMS` and run the included executable. See [building and packaging](docs/BUILD.md) for platform prerequisites and the [release checklist](docs/RELEASING.md) for reproducible archive checks.
+The build produces `dist/hycli` and `dist/hycli-desktop` (`.exe` on Windows), with SHA-256 checksums. `node scripts/package-desktop.mjs` creates the native installer on the current OS. Add `--install-dir <directory>` to install it on your PATH. Native archives can be unpacked into any directory; check their `SHA256SUMS` and run the included executable. See [building and packaging](docs/BUILD.md) for platform prerequisites and the [release checklist](docs/RELEASING.md) for reproducible archive checks.
 
 </details>
 
 ### Connect your first website
 
-The dashboard opens at `http://127.0.0.1:4318`. Use `hycli dashboard --no-open` to print the address without opening a browser, or `--port 4320` to choose another port. The website engine and dashboard are included in the same executable.
+The current app prefers `http://127.0.0.1:4318` and selects a free loopback port if needed. `hycli open --no-open` starts it without opening a browser and prints its address; `--port 4320` selects a preferred port. `hycli dashboard` is still available for foreground development. The website engine and dashboard are included in the same executable.
 
 1. Open **AI connections** and connect a provider.
 2. Add a website address, choose the AI and optionally describe your task.

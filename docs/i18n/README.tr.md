@@ -27,13 +27,15 @@ Bir web sitesi ekleyin. Hycli, AI'ınızın kullanabileceği işlemleri hazırla
 <a id="get-started"></a>
 ## Başlangıç
 
+Yeni masaüstü paketleri: Windows (`*-setup.exe`), macOS (`.dmg`) ve Linux (`.deb` veya arşivi açtıktan sonra `./install.sh`). Hycli’yi simgesinden açın: motor arka planda başlar ve tarayıcıyı açar. Terminali açık tutmanız gerekmez. Ayarlardan çıkın veya `hycli open`, `hycli status` ve `hycli stop` kullanın. Bu geliştirme paketleri v0.1.0’dan ayrıdır; platform doğrulama ve imza durumunu [kılavuzda](../BUILD.md) ve [CI](https://github.com/Hybirdss/Hycli/actions/workflows/verify.yml) sayfasında kontrol edin.
+
 **[İndir v0.1.0 · Linux x64](https://github.com/Hybirdss/Hycli/releases/tag/v0.1.0)** · glibc ≥ 2.39 · [SHA-256](https://github.com/Hybirdss/Hycli/releases/download/v0.1.0/hycli-0.1.0-linux-x64.tar.gz.sha256)
 
 Hycli, yerel bir web paneli olan Rust uygulamasıdır. Bu depo kopyasında paneli ve çalıştırılabilir dosyayı derleyin:
 
 ```sh
 node scripts/build.mjs
-./dist/hycli dashboard
+./dist/hycli open
 ```
 
 Panel `http://127.0.0.1:4318` adresinde açılır. Tarayıcıyı açmadan adresi yazdırmak için `hycli dashboard --no-open`, başka bir port seçmek için `--port 4320` kullanın. Web sitesi motoru ve panel aynı çalıştırılabilir dosyanın içindedir.

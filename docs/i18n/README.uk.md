@@ -27,13 +27,15 @@
 <a id="get-started"></a>
 ## Початок роботи
 
+Нові пакети застосунку: Windows (`*-setup.exe`), macOS (`.dmg`) і Linux (`.deb` або `./install.sh` після розпакування). Відкрийте Hycli через піктограму: рушій запуститься у фоні й відкриє браузер. Термінал можна закрити. Завершуйте роботу в налаштуваннях або використовуйте `hycli open`, `hycli status` і `hycli stop`. Ці пакети в розробці відрізняються від v0.1.0; перевірки платформ і підписи наведено в [посібнику](../BUILD.md) та [CI](https://github.com/Hybirdss/Hycli/actions/workflows/verify.yml).
+
 **[Завантажити v0.1.0 · Linux x64](https://github.com/Hybirdss/Hycli/releases/tag/v0.1.0)** · glibc ≥ 2.39 · [SHA-256](https://github.com/Hybirdss/Hycli/releases/download/v0.1.0/hycli-0.1.0-linux-x64.tar.gz.sha256)
 
 Hycli — застосунок на Rust із локальною вебпанеллю. У цій копії репозиторію зберіть панель і виконуваний файл:
 
 ```sh
 node scripts/build.mjs
-./dist/hycli dashboard
+./dist/hycli open
 ```
 
 Панель відкривається за адресою `http://127.0.0.1:4318`. Команда `hycli dashboard --no-open` виводить адресу без відкриття браузера. Параметр `--port 4320` дає змогу вибрати інший порт. Рушій сайтів і панель входять до одного виконуваного файлу.

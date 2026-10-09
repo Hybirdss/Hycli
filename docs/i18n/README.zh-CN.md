@@ -34,13 +34,15 @@
 <a id="get-started"></a>
 ## 开始使用
 
+新的桌面安装包支持 Windows（`*-setup.exe`）、macOS（`.dmg`）和 Linux（`.deb`，或解压后运行 `./install.sh`）。安装后点击 Hycli 图标即可自动启动引擎并打开浏览器，无需保持终端运行。再次点击会打开现有实例；在设置中退出 Hycli。也可使用 `hycli open`、`hycli status`、`hycli stop`。这些开发中的安装包与下方 v0.1.0 下载不同；请查看[构建说明](../BUILD.md)和 [CI](https://github.com/Hybirdss/Hycli/actions/workflows/verify.yml)中的平台验证及签名状态。
+
 **[下载 v0.1.0 · Linux x64](https://github.com/Hybirdss/Hycli/releases/tag/v0.1.0)** · glibc ≥ 2.39 · [SHA-256](https://github.com/Hybirdss/Hycli/releases/download/v0.1.0/hycli-0.1.0-linux-x64.tar.gz.sha256)
 
 Hycli 是一个带有本地网页仪表盘的 Rust 应用。在当前检出的源码中构建仪表盘和可执行文件：
 
 ```sh
 node scripts/build.mjs
-./dist/hycli dashboard
+./dist/hycli open
 ```
 
 仪表盘会在 `http://127.0.0.1:4318` 打开。使用 `hycli dashboard --no-open` 可仅输出地址而不打开浏览器，使用 `--port 4320` 可指定其他端口。网站引擎与仪表盘包含在同一个可执行文件中。

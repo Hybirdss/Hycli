@@ -484,5 +484,12 @@
   "errors.response_mismatch": "Le site a renvoyé un résultat inattendu. Reconnectez votre compte ou préparez à nouveau le site.",
   "sites.intentLabel": "Que souhaitez-vous faire ?",
   "sites.intentPlaceholder": "Par exemple, retrouver des articles enregistrés et les organiser par thème",
-  "errors.query_failed": "Le site n’a pas pu terminer cette requête. Vérifiez les données saisies ou préparez à nouveau le site."
+  "errors.query_failed": "Le site n’a pas pu terminer cette requête. Vérifiez les données saisies ou préparez à nouveau le site.",
+  "settings.quit": "Quitter Hycli",
+  "settings.quitHint": "Hycli continue de fonctionner après la fermeture du navigateur. Quittez ici pour l’arrêter.",
+  "settings.quitConfirm": "Quitter Hycli ? Terminez ou annulez d’abord les tâches en cours. Vos sites et comptes enregistrés resteront sur cet appareil.",
+  "settings.stopped": "Hycli est fermé",
+  "settings.stoppedHint": "Vous pouvez fermer cet onglet. Ouvrez Hycli depuis le menu des applications pour revenir.",
+  "errors.work_in_progress": "Terminez ou annulez les tâches en cours dans Activité, puis quittez à nouveau.",
+  "errors.shutting_down": "Hycli est en cours de fermeture."
 }

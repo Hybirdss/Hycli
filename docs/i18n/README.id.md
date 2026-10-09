@@ -34,13 +34,15 @@ Tambahkan situs web. Hycli menyiapkan tindakan yang dapat digunakan AI Anda dan 
 <a id="get-started"></a>
 ## Mulai
 
+Paket desktop baru: Windows (`*-setup.exe`), macOS (`.dmg`), dan Linux (`.deb` atau `./install.sh` setelah diekstrak). Buka Hycli dari ikonnya: mesin berjalan di latar belakang dan membuka browser. Terminal tidak perlu tetap terbuka. Keluar melalui Pengaturan atau gunakan `hycli open`, `hycli status`, dan `hycli stop`. Paket pengembangan ini terpisah dari v0.1.0; lihat verifikasi dan penandatanganan platform di [panduan](../BUILD.md) dan [CI](https://github.com/Hybirdss/Hycli/actions/workflows/verify.yml).
+
 **[Unduh v0.1.0 · Linux x64](https://github.com/Hybirdss/Hycli/releases/tag/v0.1.0)** · glibc ≥ 2.39 · [SHA-256](https://github.com/Hybirdss/Hycli/releases/download/v0.1.0/hycli-0.1.0-linux-x64.tar.gz.sha256)
 
 Hycli adalah aplikasi Rust dengan dasbor web lokal. Dari salinan kode sumber ini, bangun dasbor dan berkas eksekusinya:
 
 ```sh
 node scripts/build.mjs
-./dist/hycli dashboard
+./dist/hycli open
 ```
 
 Dasbor terbuka di `http://127.0.0.1:4318`. Gunakan `hycli dashboard --no-open` untuk menampilkan alamat tanpa membuka peramban, atau `--port 4320` untuk memilih port lain. Mesin situs web dan dasbor disertakan dalam berkas eksekusi yang sama.

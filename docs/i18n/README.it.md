@@ -34,13 +34,15 @@ Aggiungi un sito web. Hycli prepara azioni che la tua IA può usare e spiega cos
 <a id="get-started"></a>
 ## Primi passi
 
+Nuovi pacchetti desktop: Windows (`*-setup.exe`), macOS (`.dmg`) e Linux (`.deb` oppure `./install.sh` dopo l’estrazione). Apri Hycli dall’icona: il motore parte in background e apre il browser. Non serve tenere aperto il terminale. Esci dalle impostazioni oppure usa `hycli open`, `hycli status` e `hycli stop`. Questi pacchetti in sviluppo sono separati dalla v0.1.0; verifica controlli e firme nella [guida](../BUILD.md) e in [CI](https://github.com/Hybirdss/Hycli/actions/workflows/verify.yml).
+
 **[Scarica v0.1.0 · Linux x64](https://github.com/Hybirdss/Hycli/releases/tag/v0.1.0)** · glibc ≥ 2.39 · [SHA-256](https://github.com/Hybirdss/Hycli/releases/download/v0.1.0/hycli-0.1.0-linux-x64.tar.gz.sha256)
 
 Hycli è un'applicazione Rust con una dashboard web locale. Da questa copia del repository, compila la dashboard e l'eseguibile:
 
 ```sh
 node scripts/build.mjs
-./dist/hycli dashboard
+./dist/hycli open
 ```
 
 La dashboard si apre su `http://127.0.0.1:4318`. Usa `hycli dashboard --no-open` per stampare l'indirizzo senza aprire il browser, oppure `--port 4320` per scegliere un'altra porta. Il motore per i siti web e la dashboard sono inclusi nello stesso eseguibile.

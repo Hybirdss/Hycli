@@ -34,6 +34,8 @@
 <a id="get-started"></a>
 ## 시작하기
 
+새 데스크톱 패키지: Windows 설치 파일(`*-setup.exe`), macOS 앱(`.dmg`), Linux(`.deb` 또는 압축 해제 후 `./install.sh`). 설치 후 Hycli 아이콘을 누르면 백그라운드 엔진과 브라우저가 자동으로 열립니다. 터미널을 계속 켜 둘 필요가 없습니다. 다시 누르면 실행 중인 화면을 열고, 설정의 **Hycli 종료**에서 종료합니다. `hycli open`, `hycli status`, `hycli stop`도 사용할 수 있습니다. 아래 v0.1.0 다운로드와는 별도인 개발 중 패키지이며, OS별 검증·서명 상태는 [빌드 안내](../BUILD.md)와 [CI](https://github.com/Hybirdss/Hycli/actions/workflows/verify.yml)에서 확인하세요.
+
 **[다운로드 v0.1.0 · Linux x64](https://github.com/Hybirdss/Hycli/releases/tag/v0.1.0)** · glibc ≥ 2.39 · [SHA-256](https://github.com/Hybirdss/Hycli/releases/download/v0.1.0/hycli-0.1.0-linux-x64.tar.gz.sha256)
 
 Hycli는 대시보드를 내장한 실행 파일 하나로 동작합니다. 위 링크에서 Linux x64 패키지와 `.sha256` 파일을 같은 폴더에 받은 뒤 실행하세요. 패키지를 사용하는 데 Rust나 Node.js는 필요하지 않습니다.
@@ -52,10 +54,10 @@ Linux x64·glibc 2.39 이상 환경에서 실행을 검증했습니다. 다른 L
 
 ```sh
 node scripts/build.mjs
-./dist/hycli dashboard
+./dist/hycli open
 ```
 
-Windows에서는 `./dist/hycli.exe dashboard`로 실행합니다.
+Windows에서는 `./dist/hycli.exe open`로 실행합니다.
 
 </details>
 

@@ -27,13 +27,15 @@ Dodaj stronę. Hycli przygotuje działania, z których może korzystać Twoje AI
 <a id="get-started"></a>
 ## Pierwsze kroki
 
+Nowe pakiety aplikacji: Windows (`*-setup.exe`), macOS (`.dmg`) i Linux (`.deb` lub `./install.sh` po rozpakowaniu). Otwórz Hycli za pomocą ikony: silnik uruchomi się w tle i otworzy przeglądarkę. Terminal nie musi pozostać otwarty. Zamknij aplikację w ustawieniach lub użyj `hycli open`, `hycli status` i `hycli stop`. Te pakiety rozwojowe są oddzielne od v0.1.0; sprawdź weryfikację platform i podpisy w [instrukcji](../BUILD.md) oraz [CI](https://github.com/Hybirdss/Hycli/actions/workflows/verify.yml).
+
 **[Pobierz v0.1.0 · Linux x64](https://github.com/Hybirdss/Hycli/releases/tag/v0.1.0)** · glibc ≥ 2.39 · [SHA-256](https://github.com/Hybirdss/Hycli/releases/download/v0.1.0/hycli-0.1.0-linux-x64.tar.gz.sha256)
 
 Hycli to aplikacja napisana w Rust z lokalnym panelem w przeglądarce. W tej kopii repozytorium zbuduj panel i plik wykonywalny:
 
 ```sh
 node scripts/build.mjs
-./dist/hycli dashboard
+./dist/hycli open
 ```
 
 Panel otworzy się pod adresem `http://127.0.0.1:4318`. Polecenie `hycli dashboard --no-open` wyświetla adres bez otwierania przeglądarki. Opcja `--port 4320` pozwala wybrać inny port. Mechanizm obsługi stron i panel są zawarte w jednym pliku wykonywalnym.

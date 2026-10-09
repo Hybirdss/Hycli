@@ -44,7 +44,7 @@ async function copy(relative,destination=relative){
 try{
  if(values.source){
   for(const file of ['Cargo.toml','Cargo.lock','LICENSE','README.md','CONTRIBUTING.md','CHANGELOG.md','AGENTS.md','CLAUDE.md','.gitignore'])await copy(file);
-  for(const directory of ['src','tests','examples','agent','skills','browser-companion','scripts','dashboard','.github'])await copy(directory);
+  for(const directory of ['src','tests','examples','agent','skills','browser-companion','scripts','packaging','dashboard','.github'])await copy(directory);
   for(const file of ['docs/BUILD.md','docs/ARCHITECTURE.md','docs/SITESPEC.md','docs/RELEASING.md','docs/brand/concepts/hycli-shima-banner-v4.png'])await copy(file);
   for(const directory of ['docs/i18n','docs/images','docs/brand/badges'])await copy(directory);
   for(const file of ['docs/design/brand-research/claude-official-32.provenance.txt','docs/design/motion/PROVENANCE.md'])await copy(file);
@@ -52,7 +52,12 @@ try{
   const executable=build.platform==='win32'?'hycli.exe':'hycli';
   if(createHash('sha256').update(await fs.readFile(path.join(root,'dist',executable))).digest('hex')!==build.sha256)throw Error('Native executable does not match build.json');
   await copy('dist/build.json','build.json');
-  await copy('dist/'+executable,executable);await fs.chmod(path.join(content,executable),0o755);
+  for(const base of ['hycli','hycli-desktop']){
+   const filename=base+(build.platform==='win32'?'.exe':'');
+   if(createHash('sha256').update(await fs.readFile(path.join(root,'dist',filename))).digest('hex')!==build.binaries?.[filename])throw Error('Binary checksum mismatch: '+filename);
+   await copy('dist/'+filename,filename);await fs.chmod(path.join(content,filename),0o755);
+  }
+  if(build.platform==='linux'){await copy('packaging/install-linux.sh','install.sh');await fs.chmod(path.join(content,'install.sh'),0o755);await copy('packaging/icons/hycli.png','hycli.png');}
   for(const file of ['LICENSE','agent/AGENTS.md','agent/CLAUDE.md','docs/SITESPEC.md','docs/BUILD.md','docs/RELEASING.md'])await copy(file);
   await copy('skills');await copy('dist/README.md','README.md');
  }
