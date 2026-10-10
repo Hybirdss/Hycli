@@ -484,5 +484,15 @@
   "errors.response_mismatch": "O site retornou um resultado diferente do esperado. Reconecte sua conta ou prepare o site novamente.",
   "sites.intentLabel": "O que você gostaria de fazer?",
   "sites.intentPlaceholder": "Por exemplo, encontrar artigos salvos e organizá-los por assunto",
-  "errors.query_failed": "O site não conseguiu concluir esta consulta. Confira os dados ou prepare o site novamente."
+  "errors.query_failed": "O site não conseguiu concluir esta consulta. Confira os dados ou prepare o site novamente.",
+  "activity.phase.understand": "Entender o site",
+  "activity.stage.understand": "Entender o site",
+  "activity.role.understand": "Entender o site",
+  "activity.phase.review": "Revisar os fluxos",
+  "activity.role.review": "Revisar os fluxos",
+  "activity.note.understanding": "Analisando o site para escolher fluxos completos e úteis.",
+  "activity.note.workflow_planned": "Os resultados desejados e as etapas necessárias foram definidos.",
+  "activity.note.workflow_review": "Verificando cada etapa, os dados necessários e o resultado final.",
+  "activity.note.workflow_incomplete": "Algumas etapas estão faltando. Explorando outras alternativas.",
+  "activity.phase.needs_review": "Precisa de verificação"
 }

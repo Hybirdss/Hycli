@@ -25,6 +25,8 @@ Bir web sitesi ekleyin. Hycli, AI'ınızın kullanabileceği işlemleri hazırla
 <p align="center"><sub>Örnek araçlar ve hesaplar içeren örnek çalışma alanı.</sub></p>
 
 <a id="get-started"></a>
+Bir alan adı ve isterseniz yanındaki alana bir amaç girin. Yapay zekâ önce siteyi anlayıp yararlı iş akışları seçer, ardından ön koşulları, girdileri ve sonuçları kontrol eder. Eksik adımlar varsa site inceleme gerektiriyor olarak kalır.
+
 ## Başlangıç
 
 **[İndir v0.1.0 · Linux x64](https://github.com/Hybirdss/Hycli/releases/tag/v0.1.0)** · glibc ≥ 2.39 · [SHA-256](https://github.com/Hybirdss/Hycli/releases/download/v0.1.0/hycli-0.1.0-linux-x64.tar.gz.sha256)

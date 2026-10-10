@@ -484,5 +484,15 @@
   "errors.response_mismatch": "El sitio devolvió un resultado diferente del esperado. Vuelve a conectar tu cuenta o prepara el sitio de nuevo.",
   "sites.intentLabel": "¿Qué te gustaría hacer?",
   "sites.intentPlaceholder": "Por ejemplo, encontrar artículos guardados y organizarlos por tema",
-  "errors.query_failed": "El sitio no pudo completar esta consulta. Revisa los datos o vuelve a preparar el sitio."
+  "errors.query_failed": "El sitio no pudo completar esta consulta. Revisa los datos o vuelve a preparar el sitio.",
+  "activity.phase.understand": "Entender el sitio",
+  "activity.stage.understand": "Entender el sitio",
+  "activity.role.understand": "Entender el sitio",
+  "activity.phase.review": "Revisar los procesos",
+  "activity.role.review": "Revisar los procesos",
+  "activity.note.understanding": "Analizando el sitio para elegir procesos completos y útiles.",
+  "activity.note.workflow_planned": "Se han definido los resultados deseados y los pasos necesarios.",
+  "activity.note.workflow_review": "Revisando cada paso, los datos necesarios y el resultado final.",
+  "activity.note.workflow_incomplete": "Faltan algunos pasos. Se están explorando otras alternativas.",
+  "activity.phase.needs_review": "Requiere revisión"
 }

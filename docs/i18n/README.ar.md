@@ -25,6 +25,8 @@
 <p align="center"><sub>مساحة عمل نموذجية تضم أدوات وحسابات تجريبية.</sub></p>
 
 <a id="get-started"></a>
+أدخل النطاق، ويمكنك كتابة الهدف في الحقل المجاور. يفهم الذكاء الاصطناعي الموقع أولًا ويختار مسارات عمل مفيدة، ثم يتحقق من المتطلبات والمدخلات والنتائج النهائية. إذا كانت هناك خطوات ناقصة، يبقى الموقع بحاجة إلى مراجعة.
+
 ## البدء
 
 **[تنزيل v0.1.0 · Linux x64](https://github.com/Hybirdss/Hycli/releases/tag/v0.1.0)** · glibc ≥ 2.39 · [SHA-256](https://github.com/Hybirdss/Hycli/releases/download/v0.1.0/hycli-0.1.0-linux-x64.tar.gz.sha256)

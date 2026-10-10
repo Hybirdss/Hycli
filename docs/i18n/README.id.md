@@ -32,6 +32,8 @@ Tambahkan situs web. Hycli menyiapkan tindakan yang dapat digunakan AI Anda dan 
 <p align="center"><sub>Contoh ruang kerja dengan alat dan akun sampel.</sub></p>
 
 <a id="get-started"></a>
+Masukkan domain dan, bila perlu, tujuan di kolom sebelahnya. AI terlebih dahulu memahami situs dan memilih alur kerja yang berguna, lalu memeriksa prasyarat, masukan, dan hasil akhirnya. Jika ada langkah yang kurang, situs tetap ditandai untuk ditinjau.
+
 ## Mulai
 
 **[Unduh v0.1.0 · Linux x64](https://github.com/Hybirdss/Hycli/releases/tag/v0.1.0)** · glibc ≥ 2.39 · [SHA-256](https://github.com/Hybirdss/Hycli/releases/download/v0.1.0/hycli-0.1.0-linux-x64.tar.gz.sha256)

@@ -25,6 +25,8 @@ Dodaj stronę. Hycli przygotuje działania, z których może korzystać Twoje AI
 <p align="center"><sub>Przykładowa przestrzeń robocza z przykładowymi narzędziami i kontami.</sub></p>
 
 <a id="get-started"></a>
+Wpisz domenę, a obok opcjonalnie cel. AI najpierw poznaje witrynę i wybiera przydatne zadania, a następnie sprawdza warunki wstępne, dane i wyniki. Jeśli brakuje kroków, witryna pozostaje oznaczona jako wymagająca sprawdzenia.
+
 ## Pierwsze kroki
 
 **[Pobierz v0.1.0 · Linux x64](https://github.com/Hybirdss/Hycli/releases/tag/v0.1.0)** · glibc ≥ 2.39 · [SHA-256](https://github.com/Hybirdss/Hycli/releases/download/v0.1.0/hycli-0.1.0-linux-x64.tar.gz.sha256)

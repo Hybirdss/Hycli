@@ -484,5 +484,15 @@
   "errors.response_mismatch": "वेबसाइट ने अपेक्षा से अलग परिणाम लौटाया। अपना खाता फिर से जोड़ें या वेबसाइट को फिर से तैयार करें।",
   "sites.intentLabel": "आप क्या करना चाहेंगे?",
   "sites.intentPlaceholder": "उदाहरण के लिए, सहेजे गए लेख ढूँढना और उन्हें विषय के अनुसार व्यवस्थित करना",
-  "errors.query_failed": "वेबसाइट यह क्वेरी पूरी नहीं कर सकी। इनपुट जाँचें या वेबसाइट फिर से तैयार करें।"
+  "errors.query_failed": "वेबसाइट यह क्वेरी पूरी नहीं कर सकी। इनपुट जाँचें या वेबसाइट फिर से तैयार करें।",
+  "activity.phase.understand": "वेबसाइट समझें",
+  "activity.stage.understand": "वेबसाइट समझें",
+  "activity.role.understand": "वेबसाइट समझें",
+  "activity.phase.review": "पूरे कार्य की समीक्षा",
+  "activity.role.review": "पूरे कार्य की समीक्षा",
+  "activity.note.understanding": "वेबसाइट को समझकर उपयोगी और पूर्ण कार्य चुने जा रहे हैं।",
+  "activity.note.workflow_planned": "वांछित परिणाम और उन्हें पूरा करने के चरण तय कर लिए गए हैं।",
+  "activity.note.workflow_review": "हर चरण, आवश्यक इनपुट और अंतिम परिणाम की जाँच हो रही है।",
+  "activity.note.workflow_incomplete": "कुछ चरण अभी अधूरे हैं। अन्य तरीके खोजे जा रहे हैं।",
+  "activity.phase.needs_review": "जाँच ज़रूरी है"
 }

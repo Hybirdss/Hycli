@@ -22,6 +22,9 @@ for line in sys.stdin:
   assert params['ephemeral'] and params['sandbox']=='read-only'
   assert params['config']['mcp_servers']['untrusted_fixture']['enabled']==False
   assert params['config']['features']['shell_tool']==False
+  assert params['config']['features']['multi_agent']==True
+  assert params['config']['agents']['enabled']==True
+  assert not any(sys.argv[i:i+2]==['--disable','multi_agent'] for i in range(len(sys.argv)))
   thread_id=str(uuid.uuid4());value={'thread':{'id':thread_id}}
  elif method=='mcpServerStatus/list':value={'data':[],'nextCursor':None}
  elif method=='turn/start':
@@ -38,6 +41,13 @@ for line in sys.stdin:
   text=params['input'][0]['text']
   for kind in ['contextCompaction','subAgentActivity']:
    send({'method':'item/started','params':{'threadId':thread_id,'turnId':turn_id,'item':{'id':str(uuid.uuid4()),'type':kind,'kind':'completed','agentPath':'/fixture','agentThreadId':'fixture-child'}}})
+  for tool in ['spawnAgent','sendInput','wait','closeAgent']:
+   item={'id':str(uuid.uuid4()),'type':'collabAgentToolCall','tool':tool,'status':'inProgress','senderThreadId':thread_id,'receiverThreadIds':['fixture-child'],'agentsStates':{}}
+   send({'method':'item/started','params':{'threadId':thread_id,'turnId':turn_id,'item':item}})
+   item['status']='completed'
+   send({'method':'item/completed','params':{'threadId':thread_id,'turnId':turn_id,'item':item}})
+  send({'method':'item/completed','params':{'threadId':'fixture-child','turnId':'child-turn','item':{'type':'agentMessage','phase':'final_answer','text':'child result, not parent final'}}})
+  send({'method':'turn/completed','params':{'threadId':'fixture-child','turn':{'id':'child-turn','status':'completed'}}})
   if text=='NATIVE_TOOL_ATTEMPT':
    send({'method':'item/started','params':{'threadId':thread_id,'turnId':turn_id,'item':{'id':str(uuid.uuid4()),'type':'commandExecution'}}})
   send({'method':'item/completed','params':{'threadId':thread_id,'turnId':turn_id,'item':{'type':'agentMessage','phase':'final_answer','text':text}}})

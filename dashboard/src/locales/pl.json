@@ -484,5 +484,15 @@
   "errors.response_mismatch": "Witryna zwróciła inny wynik niż oczekiwany. Połącz konto ponownie lub ponownie przygotuj witrynę.",
   "sites.intentLabel": "Co chcesz zrobić?",
   "sites.intentPlaceholder": "Na przykład znaleźć zapisane artykuły i uporządkować je według tematu",
-  "errors.query_failed": "Witryna nie mogła wykonać tego zapytania. Sprawdź dane lub przygotuj witrynę ponownie."
+  "errors.query_failed": "Witryna nie mogła wykonać tego zapytania. Sprawdź dane lub przygotuj witrynę ponownie.",
+  "activity.phase.understand": "Poznaj witrynę",
+  "activity.stage.understand": "Poznaj witrynę",
+  "activity.role.understand": "Poznaj witrynę",
+  "activity.phase.review": "Sprawdź przebieg pracy",
+  "activity.role.review": "Sprawdź przebieg pracy",
+  "activity.note.understanding": "Analizowanie witryny i wybieranie przydatnych, kompletnych zadań.",
+  "activity.note.workflow_planned": "Określono oczekiwane wyniki i kroki potrzebne do ich osiągnięcia.",
+  "activity.note.workflow_review": "Sprawdzanie każdego kroku, wymaganych danych i wyniku końcowego.",
+  "activity.note.workflow_incomplete": "Brakuje niektórych kroków. Badane są inne podejścia.",
+  "activity.phase.needs_review": "Wymaga sprawdzenia"
 }

@@ -484,5 +484,15 @@
   "errors.response_mismatch": "Сайт повернув неочікуваний результат. Підключіть обліковий запис знову або повторно підготуйте сайт.",
   "sites.intentLabel": "Що ви хочете зробити?",
   "sites.intentPlaceholder": "Наприклад, знайти збережені статті та впорядкувати їх за темами",
-  "errors.query_failed": "Сайт не зміг виконати цей запит. Перевірте введені дані або підготуйте сайт знову."
+  "errors.query_failed": "Сайт не зміг виконати цей запит. Перевірте введені дані або підготуйте сайт знову.",
+  "activity.phase.understand": "Вивчити сайт",
+  "activity.stage.understand": "Вивчити сайт",
+  "activity.role.understand": "Вивчити сайт",
+  "activity.phase.review": "Перевірити весь процес",
+  "activity.role.review": "Перевірити весь процес",
+  "activity.note.understanding": "Вивчаємо сайт і вибираємо корисні завдання для повного виконання.",
+  "activity.note.workflow_planned": "Визначено потрібні результати та кроки для їх досягнення.",
+  "activity.note.workflow_review": "Перевіряємо кожен крок, необхідні дані та кінцевий результат.",
+  "activity.note.workflow_incomplete": "Деяких кроків бракує. Досліджуємо інші способи.",
+  "activity.phase.needs_review": "Потрібна перевірка"
 }

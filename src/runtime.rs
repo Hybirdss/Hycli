@@ -378,11 +378,11 @@ impl Runtime {
                         .is_some_and(|account| account.status == "expired")
                 {
                     "needs_signin"
-                } else if m
-                    .preparation
-                    .as_ref()
-                    .is_some_and(|report| report.verified_reads == 0)
-                    && !has_verified_read
+                } else if m.workflows_complete == Some(false)
+                    || m.preparation
+                        .as_ref()
+                        .is_some_and(|report| report.verified_reads == 0)
+                        && !has_verified_read
                 {
                     "needs_review"
                 } else {
@@ -542,12 +542,22 @@ impl Runtime {
         action: &str,
         account: &str,
     ) -> AppResult<(OpResult, i64)> {
+        self.verify_candidate_with_inputs(sp, action, account, BTreeMap::new())
+            .await
+    }
+    pub(crate) async fn verify_candidate_with_inputs(
+        &self,
+        sp: &Spec,
+        action: &str,
+        account: &str,
+        inputs: BTreeMap<String, String>,
+    ) -> AppResult<(OpResult, i64)> {
         policy::validate_spec(sp)?;
         let op = sp.op(action)?;
-        if policy::operation_effect(op, &BTreeMap::new()) != Effect::Read {
+        if policy::operation_effect(op, &inputs) != Effect::Read {
             return Err(AppError::api("approval_required", 409));
         }
-        let request = self.request(sp, action, BTreeMap::new(), Some(account))?;
+        let request = self.request(sp, action, inputs, Some(account))?;
         self.execute_definition(sp, request, None, false).await
     }
     async fn execute_definition(

@@ -1444,6 +1444,31 @@ async fn form_requests_and_structured_html_reads_use_the_shared_executor() {
             .await
             .is_err()
     );
+    let checked_form = core
+        .verify_candidate_with_inputs(
+            &definition,
+            "search",
+            "",
+            BTreeMap::from([("q".into(), "space & 한글=ok".into())]),
+        )
+        .await
+        .unwrap()
+        .0;
+    assert_eq!(checked_form.status, 200);
+    assert_eq!(
+        Runtime::spec_hash(&core.spec("fixture").unwrap()).unwrap(),
+        before
+    );
+    assert!(
+        core.verify_candidate_with_inputs(
+            &old,
+            "create-item",
+            "",
+            BTreeMap::from([("title".into(), "Never create during preparation".into())])
+        )
+        .await
+        .is_err()
+    );
     core.install(&definition).unwrap();
     let form = core
         .run_op(

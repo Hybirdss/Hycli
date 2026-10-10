@@ -32,6 +32,8 @@ Thêm một trang web. Hycli chuẩn bị các thao tác mà AI có thể sử d
 <p align="center"><sub>Không gian làm việc mẫu với các công cụ và tài khoản mẫu.</sub></p>
 
 <a id="get-started"></a>
+Nhập tên miền và có thể ghi mục đích ở ô bên cạnh. AI trước tiên tìm hiểu trang web và chọn quy trình hữu ích, sau đó kiểm tra điều kiện tiên quyết, dữ liệu và kết quả cuối cùng. Nếu còn thiếu bước, trang web vẫn được đánh dấu cần kiểm tra.
+
 ## Bắt đầu
 
 **[Tải xuống v0.1.0 · Linux x64](https://github.com/Hybirdss/Hycli/releases/tag/v0.1.0)** · glibc ≥ 2.39 · [SHA-256](https://github.com/Hybirdss/Hycli/releases/download/v0.1.0/hycli-0.1.0-linux-x64.tar.gz.sha256)

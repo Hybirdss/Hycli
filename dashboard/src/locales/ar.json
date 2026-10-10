@@ -484,5 +484,15 @@
   "errors.response_mismatch": "أعاد الموقع نتيجة مختلفة عن المتوقع. أعد ربط حسابك أو إعداد الموقع.",
   "sites.intentLabel": "ماذا تود أن تفعل؟",
   "sites.intentPlaceholder": "على سبيل المثال، العثور على المقالات المحفوظة وتنظيمها حسب الموضوع",
-  "errors.query_failed": "تعذّر على الموقع إكمال هذا الاستعلام. تحقّق من المدخلات أو أعِد تجهيز الموقع."
+  "errors.query_failed": "تعذّر على الموقع إكمال هذا الاستعلام. تحقّق من المدخلات أو أعِد تجهيز الموقع.",
+  "activity.phase.understand": "فهم الموقع",
+  "activity.stage.understand": "فهم الموقع",
+  "activity.role.understand": "فهم الموقع",
+  "activity.phase.review": "مراجعة سير العمل",
+  "activity.role.review": "مراجعة سير العمل",
+  "activity.note.understanding": "نفهم الموقع ونختار مسارات عمل مفيدة ومتكاملة.",
+  "activity.note.workflow_planned": "تم تحديد النتائج المطلوبة والخطوات اللازمة لتحقيقها.",
+  "activity.note.workflow_review": "نتحقق من كل خطوة والمدخلات المطلوبة والنتيجة النهائية.",
+  "activity.note.workflow_incomplete": "بعض الخطوات لا تزال ناقصة. نستكشف طرقًا أخرى.",
+  "activity.phase.needs_review": "يلزم التحقق"
 }

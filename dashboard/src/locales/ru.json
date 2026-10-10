@@ -484,5 +484,15 @@
   "errors.response_mismatch": "Сайт вернул неожиданный результат. Подключите аккаунт заново или повторно подготовьте сайт.",
   "sites.intentLabel": "Что вы хотите сделать?",
   "sites.intentPlaceholder": "Например, найти сохранённые статьи и упорядочить их по темам",
-  "errors.query_failed": "Сайт не смог выполнить этот запрос. Проверьте введённые данные или подготовьте сайт заново."
+  "errors.query_failed": "Сайт не смог выполнить этот запрос. Проверьте введённые данные или подготовьте сайт заново.",
+  "activity.phase.understand": "Изучить сайт",
+  "activity.stage.understand": "Изучить сайт",
+  "activity.role.understand": "Изучить сайт",
+  "activity.phase.review": "Проверить весь процесс",
+  "activity.role.review": "Проверить весь процесс",
+  "activity.note.understanding": "Изучаем сайт и выбираем полезные задачи для полного выполнения.",
+  "activity.note.workflow_planned": "Определены нужные результаты и шаги для их достижения.",
+  "activity.note.workflow_review": "Проверяем каждый шаг, необходимые данные и конечный результат.",
+  "activity.note.workflow_incomplete": "Некоторых шагов не хватает. Исследуем другие способы.",
+  "activity.phase.needs_review": "Нужна проверка"
 }

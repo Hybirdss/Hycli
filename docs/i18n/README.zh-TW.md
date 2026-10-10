@@ -32,6 +32,8 @@
 <p align="center"><sub>包含範例工具和帳號的工作區範例。</sub></p>
 
 <a id="get-started"></a>
+輸入網域，並可在旁邊選填使用目的。AI 會先了解網站並選擇實用的完整流程，再檢查前置步驟、輸入和最終結果。如果仍有步驟缺漏，網站會保持待檢查狀態。
+
 ## 開始使用
 
 **[下載 v0.1.0 · Linux x64](https://github.com/Hybirdss/Hycli/releases/tag/v0.1.0)** · glibc ≥ 2.39 · [SHA-256](https://github.com/Hybirdss/Hycli/releases/download/v0.1.0/hycli-0.1.0-linux-x64.tar.gz.sha256)

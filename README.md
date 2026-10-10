@@ -29,7 +29,7 @@
 
 </details>
 
-Give Hycli a website and a task. It learns the available interface, prepares typed CLI and MCP actions, and checks useful reads. Your AI can then use those actions with the same accounts, approvals and results you see in the local dashboard.
+Give Hycli a website. Add a purpose if you have one. It learns the available interface, prepares typed CLI and MCP actions, and checks useful reads. Your AI can then use those actions with the same accounts, approvals and results you see in the local dashboard.
 
 | Connect | Prepare | Use |
 | --- | --- | --- |
@@ -41,6 +41,8 @@ Give Hycli a website and a task. It learns the available interface, prepares typ
 <p align="center"><sub>Example workspace with sample tools and accounts.</sub></p>
 
 <a id="get-started"></a>
+Enter a domain and, optionally, a purpose beside it. The AI first understands the website and selects useful workflows, then checks their prerequisites, inputs and final results. Missing steps keep the website marked for review.
+
 ## Get started
 
 Hycli is one native executable with an embedded local dashboard. Rust and Node.js are needed to build it; neither is needed to run a packaged release.

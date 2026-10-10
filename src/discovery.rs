@@ -415,6 +415,12 @@ impl Runtime {
             next = crate::net::validate_url(&response.url)?
                 .join(&location)
                 .map_err(|_| AppError::api("bad_url", 400))?;
+            // Some sites still publish an HTTP location on their secure entry
+            // point. Try its secure equivalent; never send a downgraded request.
+            if original.scheme() == "https" && next.scheme() == "http" {
+                next.set_scheme("https")
+                    .map_err(|_| AppError::api("bad_url", 400))?;
+            }
         }
         Err(AppError::api("request_failed", 502))
     }

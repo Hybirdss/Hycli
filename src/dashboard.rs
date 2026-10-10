@@ -678,7 +678,7 @@ async fn summarize(
 }
 
 async fn pair(State(web): State<Web>, Json(body): Json<Prepare>) -> AppResult<Json<Value>> {
-    let url = crate::net::validate_url(&body.url)?;
+    let url = crate::net::website_url(&body.url)?;
     if !body.site_id.is_empty()
         && crate::runtime::origin(web.core.spec(&body.site_id)?.site.source_url())?
             != url.origin().ascii_serialization()
@@ -872,7 +872,9 @@ async fn browser_find(
 }
 async fn browser_select(State(web): State<Web>, Json(body): Json<Value>) -> AppResult<Json<Value>> {
     let id = body.get("account_id").and_then(Value::as_str).unwrap_or("");
-    let target = crate::runtime::origin(body.get("url").and_then(Value::as_str).unwrap_or(""))?;
+    let target = crate::net::website_url(body.get("url").and_then(Value::as_str).unwrap_or(""))?
+        .origin()
+        .ascii_serialization();
     web.core.state.update(|state| {
         let account = state
             .accounts
@@ -896,7 +898,7 @@ async fn browser_login(
     State(web): State<Web>,
     Json(body): Json<BrowserFind>,
 ) -> AppResult<Json<Value>> {
-    let target = crate::net::validate_url(&body.url)?;
+    let target = crate::net::website_url(&body.url)?;
     if !policy::safe_read_url(&target) {
         return Err(AppError::api("bad_url", 400));
     }

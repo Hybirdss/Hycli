@@ -484,5 +484,15 @@
   "errors.response_mismatch": "網站傳回了與預期不同的結果。請重新連接帳戶或重新準備網站。",
   "sites.intentLabel": "您想做什麼？",
   "sites.intentPlaceholder": "例如，找出已儲存的文章，並依主題整理",
-  "errors.query_failed": "網站無法完成此查詢。請檢查輸入內容或重新準備網站。"
+  "errors.query_failed": "網站無法完成此查詢。請檢查輸入內容或重新準備網站。",
+  "activity.phase.understand": "了解網站",
+  "activity.stage.understand": "了解網站",
+  "activity.role.understand": "了解網站",
+  "activity.phase.review": "檢查完整流程",
+  "activity.role.review": "檢查完整流程",
+  "activity.note.understanding": "正在了解網站並選擇實用的完整工作流程。",
+  "activity.note.workflow_planned": "已確定使用者需要的結果及完成這些結果所需的步驟。",
+  "activity.note.workflow_review": "正在檢查每個步驟、必填輸入和最終結果。",
+  "activity.note.workflow_incomplete": "仍有步驟缺漏，正在探索其他方法。",
+  "activity.phase.needs_review": "需要檢查"
 }

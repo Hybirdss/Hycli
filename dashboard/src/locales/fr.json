@@ -484,5 +484,15 @@
   "errors.response_mismatch": "Le site a renvoyé un résultat inattendu. Reconnectez votre compte ou préparez à nouveau le site.",
   "sites.intentLabel": "Que souhaitez-vous faire ?",
   "sites.intentPlaceholder": "Par exemple, retrouver des articles enregistrés et les organiser par thème",
-  "errors.query_failed": "Le site n’a pas pu terminer cette requête. Vérifiez les données saisies ou préparez à nouveau le site."
+  "errors.query_failed": "Le site n’a pas pu terminer cette requête. Vérifiez les données saisies ou préparez à nouveau le site.",
+  "activity.phase.understand": "Comprendre le site",
+  "activity.stage.understand": "Comprendre le site",
+  "activity.role.understand": "Comprendre le site",
+  "activity.phase.review": "Vérifier les parcours",
+  "activity.role.review": "Vérifier les parcours",
+  "activity.note.understanding": "Analyse du site pour choisir des parcours utiles et complets.",
+  "activity.note.workflow_planned": "Les résultats attendus et les étapes nécessaires ont été définis.",
+  "activity.note.workflow_review": "Vérification de chaque étape, des données requises et du résultat final.",
+  "activity.note.workflow_incomplete": "Certaines étapes manquent. Recherche d’autres approches.",
+  "activity.phase.needs_review": "À vérifier"
 }

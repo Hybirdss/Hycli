@@ -32,6 +32,8 @@ Adicione um site. O Hycli prepara ações que sua IA pode usar e explica o que c
 <p align="center"><sub>Espaço de trabalho de exemplo com ferramentas e contas de demonstração.</sub></p>
 
 <a id="get-started"></a>
+Insira um domínio e, se quiser, um objetivo no campo ao lado. A IA primeiro entende o site e escolhe fluxos úteis, depois verifica os pré-requisitos, os dados e os resultados. Etapas ausentes mantêm o site marcado para revisão.
+
 ## Primeiros passos
 
 **[Baixar v0.1.0 · Linux x64](https://github.com/Hybirdss/Hycli/releases/tag/v0.1.0)** · glibc ≥ 2.39 · [SHA-256](https://github.com/Hybirdss/Hycli/releases/download/v0.1.0/hycli-0.1.0-linux-x64.tar.gz.sha256)

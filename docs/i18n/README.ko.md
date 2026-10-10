@@ -32,6 +32,8 @@
 <p align="center"><sub>샘플 도구와 계정으로 구성한 예시 화면입니다.</sub></p>
 
 <a id="get-started"></a>
+도메인을 입력하고 옆에 사용 목적을 선택적으로 적으세요. AI가 먼저 사이트를 이해하고 유용한 전체 작업을 정한 뒤, 선행 단계와 입력, 최종 결과까지 확인합니다. 빠진 단계가 있으면 검토 필요 상태로 표시합니다.
+
 ## 시작하기
 
 **[다운로드 v0.1.0 · Linux x64](https://github.com/Hybirdss/Hycli/releases/tag/v0.1.0)** · glibc ≥ 2.39 · [SHA-256](https://github.com/Hybirdss/Hycli/releases/download/v0.1.0/hycli-0.1.0-linux-x64.tar.gz.sha256)

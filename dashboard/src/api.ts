@@ -2,6 +2,16 @@ let csrf = '';
 let locale = 'en';
 let renewing: Promise<void> | null = null;
 export class ApiError extends Error { constructor(public code: string, public status: number) { super(code); } }
+export function websiteURL(value: string): string {
+  const raw = value.trim();
+  if (!raw || raw.length > 8192 || /[\u0000-\u001f\u007f]/.test(raw)) throw new ApiError('bad_url', 400);
+  try {
+    const url = new URL(raw.startsWith('//') ? `https:${raw}` : raw.includes('://') ? raw : `https://${raw}`);
+    if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password) throw new Error('Invalid website');
+    url.hash = '';
+    return url.href;
+  } catch { throw new ApiError('bad_url', 400); }
+}
 export function setApiLocale(value: string) { locale = value; }
 export function session(): Promise<void> {
   if (renewing) return renewing;

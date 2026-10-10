@@ -484,5 +484,15 @@
   "errors.response_mismatch": "De website gaf een ander resultaat dan verwacht. Verbind je account opnieuw of bereid de website opnieuw voor.",
   "sites.intentLabel": "Wat wil je doen?",
   "sites.intentPlaceholder": "Bijvoorbeeld opgeslagen artikelen zoeken en ordenen op onderwerp",
-  "errors.query_failed": "De website kon deze zoekopdracht niet voltooien. Controleer de invoer of bereid de website opnieuw voor."
+  "errors.query_failed": "De website kon deze zoekopdracht niet voltooien. Controleer de invoer of bereid de website opnieuw voor.",
+  "activity.phase.understand": "Website begrijpen",
+  "activity.stage.understand": "Website begrijpen",
+  "activity.role.understand": "Website begrijpen",
+  "activity.phase.review": "Werkprocessen controleren",
+  "activity.role.review": "Werkprocessen controleren",
+  "activity.note.understanding": "De website wordt onderzocht om nuttige, volledige werkprocessen te kiezen.",
+  "activity.note.workflow_planned": "De gewenste resultaten en benodigde stappen zijn bepaald.",
+  "activity.note.workflow_review": "Elke stap, vereiste invoer en het eindresultaat worden gecontroleerd.",
+  "activity.note.workflow_incomplete": "Er ontbreken nog stappen. Andere aanpakken worden onderzocht.",
+  "activity.phase.needs_review": "Controle nodig"
 }

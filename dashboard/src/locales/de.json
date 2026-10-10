@@ -484,5 +484,15 @@
   "errors.response_mismatch": "Die Website hat ein unerwartetes Ergebnis zurückgegeben. Verbinde dein Konto erneut oder bereite die Website erneut vor.",
   "sites.intentLabel": "Was möchtest du tun?",
   "sites.intentPlaceholder": "Zum Beispiel gespeicherte Artikel finden und nach Themen sortieren",
-  "errors.query_failed": "Die Website konnte diese Abfrage nicht abschließen. Prüfe die Eingaben oder bereite die Website erneut vor."
+  "errors.query_failed": "Die Website konnte diese Abfrage nicht abschließen. Prüfe die Eingaben oder bereite die Website erneut vor.",
+  "activity.phase.understand": "Website verstehen",
+  "activity.stage.understand": "Website verstehen",
+  "activity.role.understand": "Website verstehen",
+  "activity.phase.review": "Abläufe prüfen",
+  "activity.role.review": "Abläufe prüfen",
+  "activity.note.understanding": "Die Website wird untersucht, um nützliche vollständige Abläufe auszuwählen.",
+  "activity.note.workflow_planned": "Die gewünschten Ergebnisse und die nötigen Schritte wurden festgelegt.",
+  "activity.note.workflow_review": "Alle Schritte, erforderlichen Eingaben und Endergebnisse werden geprüft.",
+  "activity.note.workflow_incomplete": "Einige Schritte fehlen noch. Weitere Ansätze werden untersucht.",
+  "activity.phase.needs_review": "Prüfung erforderlich"
 }

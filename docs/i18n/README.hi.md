@@ -25,6 +25,8 @@
 <p align="center"><sub>नमूना टूल और खातों वाला एक उदाहरण वर्कस्पेस।</sub></p>
 
 <a id="get-started"></a>
+डोमेन दर्ज करें और चाहें तो बगल में उद्देश्य लिखें। AI पहले वेबसाइट को समझकर उपयोगी कार्य चुनता है, फिर पूर्वापेक्षाओं, इनपुट और अंतिम परिणामों की जाँच करता है। कोई चरण अधूरा होने पर वेबसाइट समीक्षा के लिए चिह्नित रहती है।
+
 ## शुरुआत करें
 
 **[डाउनलोड v0.1.0 · Linux x64](https://github.com/Hybirdss/Hycli/releases/tag/v0.1.0)** · glibc ≥ 2.39 · [SHA-256](https://github.com/Hybirdss/Hycli/releases/download/v0.1.0/hycli-0.1.0-linux-x64.tar.gz.sha256)

@@ -32,6 +32,8 @@
 <p align="center"><sub>サンプルのツールとアカウントを備えたワークスペースの例。</sub></p>
 
 <a id="get-started"></a>
+ドメインを入力し、必要に応じて隣の欄に利用目的を記入します。AIがまずサイトを理解して有用な作業全体を選び、前提条件、入力、最終結果まで確認します。不足する手順があれば要確認と表示します。
+
 ## はじめに
 
 **[ダウンロード v0.1.0 · Linux x64](https://github.com/Hybirdss/Hycli/releases/tag/v0.1.0)** · glibc ≥ 2.39 · [SHA-256](https://github.com/Hybirdss/Hycli/releases/download/v0.1.0/hycli-0.1.0-linux-x64.tar.gz.sha256)

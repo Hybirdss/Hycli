@@ -484,5 +484,15 @@
   "errors.response_mismatch": "Trang web trả về kết quả khác dự kiến. Hãy kết nối lại tài khoản hoặc chuẩn bị lại trang web.",
   "sites.intentLabel": "Bạn muốn làm gì?",
   "sites.intentPlaceholder": "Ví dụ: tìm các bài viết đã lưu và sắp xếp theo chủ đề",
-  "errors.query_failed": "Trang web không thể hoàn tất truy vấn này. Hãy kiểm tra dữ liệu nhập hoặc chuẩn bị lại trang web."
+  "errors.query_failed": "Trang web không thể hoàn tất truy vấn này. Hãy kiểm tra dữ liệu nhập hoặc chuẩn bị lại trang web.",
+  "activity.phase.understand": "Tìm hiểu trang web",
+  "activity.stage.understand": "Tìm hiểu trang web",
+  "activity.role.understand": "Tìm hiểu trang web",
+  "activity.phase.review": "Kiểm tra quy trình",
+  "activity.role.review": "Kiểm tra quy trình",
+  "activity.note.understanding": "Đang tìm hiểu trang web và chọn các quy trình đầy đủ, hữu ích.",
+  "activity.note.workflow_planned": "Đã xác định kết quả cần đạt và các bước cần thiết.",
+  "activity.note.workflow_review": "Đang kiểm tra từng bước, dữ liệu bắt buộc và kết quả cuối cùng.",
+  "activity.note.workflow_incomplete": "Vẫn còn thiếu một số bước. Đang tìm các cách tiếp cận khác.",
+  "activity.phase.needs_review": "Cần kiểm tra"
 }

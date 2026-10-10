@@ -484,5 +484,15 @@
   "errors.response_mismatch": "The website returned a different result than expected. Reconnect your account or prepare the website again.",
   "sites.intentLabel": "What would you like to do?",
   "sites.intentPlaceholder": "For example, find saved articles and organize them by topic",
-  "errors.query_failed": "The website could not complete this query. Check the inputs or prepare the website again."
+  "errors.query_failed": "The website could not complete this query. Check the inputs or prepare the website again.",
+  "activity.phase.understand": "Understand the website",
+  "activity.stage.understand": "Understand the website",
+  "activity.role.understand": "Understand the website",
+  "activity.phase.review": "Review workflows",
+  "activity.role.review": "Review workflows",
+  "activity.note.understanding": "Understanding the website and selecting useful complete workflows.",
+  "activity.note.workflow_planned": "Selected the user outcomes and the steps needed to complete them.",
+  "activity.note.workflow_review": "Checking every workflow step, required input and final result.",
+  "activity.note.workflow_incomplete": "Some workflow steps are missing. Exploring further approaches.",
+  "activity.phase.needs_review": "Needs a check"
 }

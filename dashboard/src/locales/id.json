@@ -484,5 +484,15 @@
   "errors.response_mismatch": "Situs mengembalikan hasil yang berbeda dari perkiraan. Hubungkan kembali akun Anda atau siapkan ulang situs.",
   "sites.intentLabel": "Apa yang ingin Anda lakukan?",
   "sites.intentPlaceholder": "Misalnya, mencari artikel yang disimpan dan mengelompokkannya berdasarkan topik",
-  "errors.query_failed": "Situs tidak dapat menyelesaikan kueri ini. Periksa masukan atau siapkan ulang situs."
+  "errors.query_failed": "Situs tidak dapat menyelesaikan kueri ini. Periksa masukan atau siapkan ulang situs.",
+  "activity.phase.understand": "Pahami situs",
+  "activity.stage.understand": "Pahami situs",
+  "activity.role.understand": "Pahami situs",
+  "activity.phase.review": "Tinjau alur kerja",
+  "activity.role.review": "Tinjau alur kerja",
+  "activity.note.understanding": "Memahami situs dan memilih alur kerja lengkap yang bermanfaat.",
+  "activity.note.workflow_planned": "Hasil yang diinginkan dan langkah untuk mencapainya telah ditentukan.",
+  "activity.note.workflow_review": "Memeriksa setiap langkah, masukan wajib, dan hasil akhir.",
+  "activity.note.workflow_incomplete": "Beberapa langkah masih kurang. Menjelajahi pendekatan lain.",
+  "activity.phase.needs_review": "Perlu diperiksa"
 }

@@ -32,6 +32,8 @@ Füge eine Website hinzu. Hycli bereitet Aktionen vor, die deine KI nutzen kann,
 <p align="center"><sub>Beispiel-Workspace mit Beispiel-Tools und -Konten.</sub></p>
 
 <a id="get-started"></a>
+Geben Sie eine Domain und daneben optional einen Zweck ein. Die KI versteht zuerst die Website und wählt nützliche Abläufe aus. Anschließend prüft sie Voraussetzungen, Eingaben und Endergebnisse. Fehlende Schritte bleiben als prüfbedürftig markiert.
+
 ## Erste Schritte
 
 **[Herunterladen v0.1.0 · Linux x64](https://github.com/Hybirdss/Hycli/releases/tag/v0.1.0)** · glibc ≥ 2.39 · [SHA-256](https://github.com/Hybirdss/Hycli/releases/download/v0.1.0/hycli-0.1.0-linux-x64.tar.gz.sha256)

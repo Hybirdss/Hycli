@@ -32,6 +32,8 @@ Voeg een website toe. Hycli bereidt acties voor die je AI kan gebruiken en legt 
 <p align="center"><sub>Voorbeeldwerkruimte met voorbeeldtools en -accounts.</sub></p>
 
 <a id="get-started"></a>
+Voer een domein in en eventueel een doel in het veld ernaast. De AI begrijpt eerst de website en kiest nuttige werkprocessen. Daarna controleert ze de voorwaarden, invoer en eindresultaten. Bij ontbrekende stappen blijft de website gemarkeerd voor controle.
+
 ## Aan de slag
 
 **[Downloaden v0.1.0 · Linux x64](https://github.com/Hybirdss/Hycli/releases/tag/v0.1.0)** · glibc ≥ 2.39 · [SHA-256](https://github.com/Hybirdss/Hycli/releases/download/v0.1.0/hycli-0.1.0-linux-x64.tar.gz.sha256)
