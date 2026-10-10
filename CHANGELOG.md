@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+Automate any website, with changes only where you allow them.
+
+### Safety
+
+- Every website starts read-only. Its change actions are hidden from MCP and refused by the CLI with `writes_disabled` until you turn on **Allow changes** for that website in the dashboard. Turning it off cancels pending approvals.
+- The dashboard grants its session only to the address `hycli dashboard` opens. A plain local request can no longer obtain the session that approves changes. The session persists in the private data directory, so an open dashboard still reconnects after a restart.
+
+### Checks without AI
+
+- `hycli check [SITE]` and MCP `hycli_check` replay the reads that passed during preparation, including chained reads, after confirming the saved account. Verdicts separate `signed_out` from `site_changed`, `blocked` and `unreachable`, and the exit status follows the verdict. It replaces `hycli health`, which remains an alias.
+
+### Complete website CLIs
+
+- Preparation plans complete user workflows, reviews every step, and verifies chained reads before installing.
+- After the workflows, workers continue through documented API operations that have no action yet. The job reports `coverage` with any remaining operations.
+
 ## 0.1.0
 
 The first packaged Hycli release: websites, ready for AI.

@@ -1,5 +1,5 @@
 {
-  "app.tagline": "Des sites web prêts pour l’IA.",
+  "app.tagline": "Automatisez n’importe quel site web.",
   "nav.websites": "Sites web",
   "nav.activity": "Activité",
   "nav.connections": "Connexions IA",
@@ -494,5 +494,11 @@
   "activity.note.workflow_planned": "Les résultats attendus et les étapes nécessaires ont été définis.",
   "activity.note.workflow_review": "Vérification de chaque étape, des données requises et du résultat final.",
   "activity.note.workflow_incomplete": "Certaines étapes manquent. Recherche d’autres approches.",
-  "activity.phase.needs_review": "À vérifier"
+  "activity.phase.needs_review": "À vérifier",
+  "sites.allowChanges": "Autoriser les modifications",
+  "sites.allowChangesHint": "Désactivé : votre IA et la CLI peuvent seulement lire ce site. Activé : chaque modification attend toujours votre approbation ici.",
+  "sites.changesOff": "modifications désactivées",
+  "errors.writes_disabled": "Les modifications sont désactivées pour ce site. Activez Autoriser les modifications dans ses détails pour utiliser cette action.",
+  "errors.launch_required": "Ouvrez Hycli avec la commande hycli dashboard pour utiliser cette fenêtre.",
+  "activity.note.coverage_incomplete": "{count} opérations documentées n'ont pas encore d'action. Ajout en cours."
 }

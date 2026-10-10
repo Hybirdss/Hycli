@@ -1,5 +1,5 @@
 {
-  "app.tagline": "वेबसाइटें, AI के लिए तैयार।",
+  "app.tagline": "किसी भी वेबसाइट को ऑटोमेट करें।",
   "nav.websites": "वेबसाइटें",
   "nav.activity": "गतिविधि",
   "nav.connections": "AI कनेक्शन",
@@ -494,5 +494,11 @@
   "activity.note.workflow_planned": "वांछित परिणाम और उन्हें पूरा करने के चरण तय कर लिए गए हैं।",
   "activity.note.workflow_review": "हर चरण, आवश्यक इनपुट और अंतिम परिणाम की जाँच हो रही है।",
   "activity.note.workflow_incomplete": "कुछ चरण अभी अधूरे हैं। अन्य तरीके खोजे जा रहे हैं।",
-  "activity.phase.needs_review": "जाँच ज़रूरी है"
+  "activity.phase.needs_review": "जाँच ज़रूरी है",
+  "sites.allowChanges": "बदलावों की अनुमति दें",
+  "sites.allowChangesHint": "बंद: आपका AI और CLI इस वेबसाइट को सिर्फ़ पढ़ सकते हैं। चालू: हर बदलाव फिर भी यहाँ आपकी मंज़ूरी का इंतज़ार करता है।",
+  "sites.changesOff": "बदलाव बंद हैं",
+  "errors.writes_disabled": "इस वेबसाइट के लिए बदलाव बंद हैं। यह कार्रवाई इस्तेमाल करने के लिए विवरण में बदलावों की अनुमति दें चालू करें।",
+  "errors.launch_required": "इस विंडो का उपयोग करने के लिए hycli dashboard कमांड से Hycli खोलें।",
+  "activity.note.coverage_incomplete": "{count} दस्तावेज़ित ऑपरेशन के लिए अभी कोई ऐक्शन नहीं है। जोड़ रहे हैं।"
 }

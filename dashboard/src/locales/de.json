@@ -1,5 +1,5 @@
 {
-  "app.tagline": "Websites, bereit für KI.",
+  "app.tagline": "Automatisiere jede Website.",
   "nav.websites": "Websites",
   "nav.activity": "Aktivität",
   "nav.connections": "KI-Verbindungen",
@@ -494,5 +494,11 @@
   "activity.note.workflow_planned": "Die gewünschten Ergebnisse und die nötigen Schritte wurden festgelegt.",
   "activity.note.workflow_review": "Alle Schritte, erforderlichen Eingaben und Endergebnisse werden geprüft.",
   "activity.note.workflow_incomplete": "Einige Schritte fehlen noch. Weitere Ansätze werden untersucht.",
-  "activity.phase.needs_review": "Prüfung erforderlich"
+  "activity.phase.needs_review": "Prüfung erforderlich",
+  "sites.allowChanges": "Änderungen erlauben",
+  "sites.allowChangesHint": "Aus: Ihre KI und die CLI können diese Website nur lesen. An: Jede Änderung wartet weiterhin hier auf Ihre Freigabe.",
+  "sites.changesOff": "Änderungen aus",
+  "errors.writes_disabled": "Änderungen sind für diese Website ausgeschaltet. Schalten Sie in den Details Änderungen erlauben ein, um diese Aktion zu nutzen.",
+  "errors.launch_required": "Öffnen Sie Hycli mit dem Befehl hycli dashboard, um dieses Fenster zu verwenden.",
+  "activity.note.coverage_incomplete": "{count} dokumentierte Vorgänge haben noch keine Aktion. Sie werden hinzugefügt."
 }

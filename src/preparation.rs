@@ -4,6 +4,7 @@ use crate::{
     apperr::{AppError, AppResult},
     policy::{self, Effect},
     runtime::{self, Runtime},
+    smoke::{self, ReadCheck},
     spec::Spec,
     state::{Job, SiteDescription, WebsiteUnderstanding},
     util,
@@ -41,61 +42,6 @@ struct WorkflowReview {
     next_steps: Vec<String>,
     read_checks: Vec<ReadCheck>,
 }
-#[derive(Clone, Default, Deserialize, Serialize)]
-#[serde(default)]
-struct ReadCheck {
-    action: String,
-    #[serde(default, deserialize_with = "read_check_values")]
-    inputs: BTreeMap<String, String>,
-}
-
-fn read_check_values<'de, D: serde::Deserializer<'de>>(
-    deserializer: D,
-) -> Result<BTreeMap<String, String>, D::Error> {
-    let values = Option::<BTreeMap<String, Value>>::deserialize(deserializer)?.unwrap_or_default();
-    Ok(values
-        .into_iter()
-        .map(|(key, value)| {
-            (
-                key,
-                match value {
-                    Value::String(text) => text,
-                    value => value.to_string(),
-                },
-            )
-        })
-        .collect())
-}
-
-// References keep private identifiers in the broker. Models see response shapes,
-// choose an exact JSON pointer, and never need the private leaf value itself.
-fn read_check_inputs(
-    check: &ReadCheck,
-    results: &BTreeMap<String, Value>,
-) -> Option<BTreeMap<String, String>> {
-    check
-        .inputs
-        .iter()
-        .map(|(key, value)| {
-            let value = if let Some(reference) = value.strip_prefix("$result:") {
-                let (action, pointer) = reference.split_once(':')?;
-                if !pointer.is_empty() && !pointer.starts_with('/') {
-                    return None;
-                }
-                let value = results.get(action)?.pointer(pointer)?;
-                match value {
-                    Value::Null | Value::Array(_) | Value::Object(_) => return None,
-                    Value::String(text) => text.clone(),
-                    value => value.to_string(),
-                }
-            } else {
-                value.clone()
-            };
-            Some((key.clone(), value))
-        })
-        .collect()
-}
-
 #[derive(Clone, Default, Deserialize, Serialize)]
 #[serde(default)]
 struct WorkflowCoverage {
@@ -482,6 +428,9 @@ impl Runtime {
         let mut seen = BTreeSet::new();
         let mut evidence = BTreeSet::new();
         let mut routes = BTreeSet::<(String, String)>::new();
+        // API operations published by schemas or reference text: the coverage target.
+        let mut api_routes = BTreeSet::<(String, String)>::new();
+        let mut coverage_rounds = 0usize;
         let mut browser_reads = BTreeSet::<String>::new();
         let mut api_prefixes = BTreeSet::<String>::new();
         let mut api_bases = BTreeSet::from([initial.origin().ascii_serialization()]);
@@ -500,6 +449,8 @@ impl Runtime {
         let mut verification = BTreeMap::<String, bool>::new();
         let mut read_attempts = BTreeSet::new();
         let mut read_results = BTreeMap::<String, Value>::new();
+        // Passing checks in execution order become the website's token-free smoke test.
+        let mut smoke_checks = Vec::<ReadCheck>::new();
         let mut attempted = 0usize;
         let mut repair_rounds = 0usize;
         let mut auth_requirements = BTreeMap::new();
@@ -561,9 +512,9 @@ impl Runtime {
                     &response.header("link"),
                 ));
                 links.extend(crate::discovery::published_links(&base, &text));
-                routes.extend(crate::discovery::documented_routes(&runtime::visible_text(
-                    &text,
-                )));
+                let documented = crate::discovery::documented_routes(&runtime::visible_text(&text));
+                api_routes.extend(documented.iter().cloned());
+                routes.extend(documented);
                 api_prefixes.extend(crate::discovery::api_prefixes(&initial, &text));
                 let mut cached = json!(runtime::visible_text(&text));
                 let secrets = if account_id.is_empty() {
@@ -597,6 +548,7 @@ impl Runtime {
                                             .contains(&m.as_str())
                                     }) {
                                         routes.insert((method.to_uppercase(), path.clone()));
+                                        api_routes.insert((method.to_uppercase(), path.clone()));
                                     }
                                 }
                             }
@@ -692,8 +644,11 @@ impl Runtime {
                 "For a same-origin HTTP change actually recorded in the user's browser observations, you may use auth.kind=browser after session.verify has confirmed the account. Keep the observed method, path and body shape, and use transport=http (not browser). This supports cookie-authenticated editor saves and publication requests without testing a write. A documented route alone does not prove it accepts the browser session. Missing dynamic CSRF headers or unsupported body formats must be reported as capability gaps.",
                 "Provide default values only for optional inputs. Params/query/body.json/body.form is a map of input names to type/required/default. Use body.form for documented application/x-www-form-urlencoded requests, or body.json for JSON; never both.",
                 "Set response.format to the documented json, html, text, xml or empty response type and response.required_pointers to important JSON fields supported by evidence. For JavaScript-rendered HTML pages proven by browser.render, use transport: browser with method: GET and response.format: html; omit transport for normal HTTP. Browser transport restores a verified selected local account when auth.kind is browser, requires a discovered Chromium engine, and performs no clicks or forms. Do not use it for API key authentication. For HTML reads, use response.html to return structured results: {items: observed repeated-record CSS selector or empty for the document, fields: {title: {selector: relative CSS selector, attribute: empty for text, required: true}, url: {selector: relative CSS selector, attribute: href, absolute_url: true}}, page: {next_url: {selector: observed next-page link, attribute: href, absolute_url: true}}, limit: 100}. Choose exact selectors from html_structure and only fields actually present. Include relevant page/path/query inputs for navigation. Also include response.required_html_fields as observed {selector, attribute} entries that must have a unique nonempty value. This prevents a login page from passing as the expected content. A login HTML page is not a verified API response.",
-                "Descriptions are user-facing: no HTTP methods, endpoint paths, reconnaissance jargon or implementation details."
+                "Descriptions are user-facing: no HTTP methods, endpoint paths, reconnaissance jargon or implementation details.",
+                "coverage.uncovered lists documented API operations that no prepared action implements yet. The goal is a complete CLI for the website: beyond the workflows, implement every uncovered operation a user could use, reads and changes alike, with complete typed inputs and the documented payload. Group nothing away and invent nothing. Name each operation you leave out in capability_gaps with its concrete reason, such as administrator-only, deprecated, binary upload or missing access."
             ]);
+            let uncovered = uncovered_routes(&api_routes, candidate.as_ref(), &api_prefixes);
+            prompt["coverage"] = json!({"documented_operations":api_routes.len(),"uncovered":uncovered.iter().take(200).collect::<Vec<_>>()});
             prompt["installed_actions"] = json!(installed);
             prompt["prepared_actions"] = json!(candidate);
             prompt["website_understanding"] = json!(understanding);
@@ -1065,7 +1020,9 @@ impl Runtime {
                                 routes.insert(("GET".into(), base.path().into()));
                                 api_bases.extend(crate::discovery::api_bases(&base, &text));
                             }
-                            routes.extend(crate::discovery::documented_routes(&text));
+                            let documented = crate::discovery::documented_routes(&text);
+                            api_routes.extend(documented.iter().cloned());
+                            routes.extend(documented);
                             api_prefixes.extend(crate::discovery::api_prefixes(&initial, &text));
                             documents.insert(url, text);
                         }
@@ -1173,6 +1130,15 @@ impl Runtime {
                         continue;
                     }
                 }
+                let uncovered = uncovered_routes(&api_routes, candidate.as_ref(), &api_prefixes);
+                if !uncovered.is_empty() && coverage_rounds < 2 {
+                    coverage_rounds += 1;
+                    for role in ["explore", "organize"] {
+                        feedback.insert(role.into(), format!("The planned workflows are covered, but {} documented operations have no action yet: {}. Implement each one a user could use, or report it in capability_gaps with its concrete reason.", uncovered.len(), uncovered.iter().take(120).cloned().collect::<Vec<_>>().join(", ")));
+                    }
+                    self.job_note(&job.id, "coverage_incomplete", "", uncovered.len(), "")?;
+                    continue;
+                }
                 if let Some(proposed) = candidate.as_mut() {
                     self.job_progress(&job.id, "verify", 3)?;
                     self.job_note(&job.id, "checking", "", 0, "")?;
@@ -1209,7 +1175,7 @@ impl Runtime {
                         let Ok(operation) = proposed.op(&check.action) else {
                             continue;
                         };
-                        let Some(inputs) = read_check_inputs(&check, &read_results) else {
+                        let Some(inputs) = smoke::resolve(&check, &read_results) else {
                             continue;
                         };
                         if policy::operation_effect(operation, &inputs) != Effect::Read
@@ -1258,6 +1224,8 @@ impl Runtime {
                         sources.push(Source { url: format!("read-check:{attempted}"), kind: "Actual workflow read check".into(),
                             content: json!({"action":operation.name,"passed":passed,"status":result.as_ref().ok().map(|(response,_)|response.status),"error":result.as_ref().err().map(|error|&error.public_code),"response_shape":body.as_ref().map(|value|crate::session_recipe::shape(value,0)),"values_exposed":false}) });
                         if passed {
+                            smoke_checks.retain(|item| item.action != check.action);
+                            smoke_checks.push(check.clone());
                             if let Some(body) = body {
                                 read_results.insert(operation.name.clone(), body);
                             }
@@ -1413,6 +1381,11 @@ impl Runtime {
             // A failed replacement must not take away an already working integration.
             return Err(AppError::api("response_mismatch", 502));
         }
+        let mut renamed: BTreeMap<String, String> = sp
+            .operations
+            .iter()
+            .map(|op| (op.name.clone(), op.name.clone()))
+            .collect();
         let mut added_actions = sp
             .operations
             .iter()
@@ -1432,6 +1405,7 @@ impl Runtime {
                 .cloned()
                 .unwrap_or_default();
             let accepted = merge_worker_spec(&mut previous, sp, "request")?;
+            renamed = accepted.clone();
             verified_names = verified_names
                 .into_iter()
                 .filter_map(|name| accepted.get(&name).cloned())
@@ -1488,6 +1462,20 @@ impl Runtime {
         self.state.update(|d| {
             let meta = d.sites.entry(job.site_id.clone()).or_default();
             meta.workflows_complete = Some(all_workflows_complete);
+            let checks: Vec<_> = smoke_checks
+                .iter()
+                .filter_map(|check| {
+                    let action = renamed.get(&check.action)?;
+                    verified_names.contains(action).then(|| ReadCheck {
+                        action: action.clone(),
+                        inputs: check.inputs.clone(),
+                    })
+                })
+                .collect();
+            meta.smoke.retain(|old| {
+                sp.op(&old.action).is_ok() && !checks.iter().any(|new| new.action == old.action)
+            });
+            meta.smoke.extend(checks);
             meta.descriptions
                 .insert(job.locale.clone(), description.clone());
             let identity_paths: Vec<_> = sp
@@ -1561,7 +1549,7 @@ impl Runtime {
                 .preparation = Some(report.clone());
             Ok(())
         })?;
-        self.state.update_job(&job.id, |work| work.result = Some(json!({"understanding":understanding,"workflow_review":workflow_review,"verification":report,"status":if !all_workflows_complete {"needs_review"} else if installed.is_some() && added_actions.is_empty() {"unchanged"} else if verified > 0 {"verified"} else {"needs_review"},"added_actions":added_actions,"available_actions":sp.operations.iter().map(|op| &op.name).collect::<Vec<_>>(),"capability_gaps":capability_gaps.values().flatten().collect::<BTreeSet<_>>()})))?;
+        self.state.update_job(&job.id, |work| work.result = Some(json!({"understanding":understanding,"workflow_review":workflow_review,"verification":report,"status":if !all_workflows_complete {"needs_review"} else if installed.is_some() && added_actions.is_empty() {"unchanged"} else if verified > 0 {"verified"} else {"needs_review"},"coverage":{"documented_operations":api_routes.len(),"uncovered":uncovered_routes(&api_routes, Some(&sp), &api_prefixes)},"added_actions":added_actions,"available_actions":sp.operations.iter().map(|op| &op.name).collect::<Vec<_>>(),"capability_gaps":capability_gaps.values().flatten().collect::<BTreeSet<_>>()})))?;
         self.job_progress(&job.id, "verify", 4)?;
         let icon_found = self
             .fetch_site_image(&job.site_id, &initial, icon_candidates)
@@ -1703,6 +1691,29 @@ impl Runtime {
             Ok(result.mapped.or(result.body))
         })
     }
+}
+/// Documented API operations that no prepared action implements, as "METHOD /path".
+fn uncovered_routes(
+    documented: &BTreeSet<(String, String)>,
+    spec: Option<&Spec>,
+    prefixes: &BTreeSet<String>,
+) -> Vec<String> {
+    documented
+        .iter()
+        .filter(|(method, path)| {
+            !spec.is_some_and(|spec| {
+                spec.operations.iter().any(|op| {
+                    let full = url::Url::parse(spec.operation_base(op))
+                        .map(|base| format!("{}{}", base.path().trim_end_matches('/'), op.path))
+                        .unwrap_or_default();
+                    op.method.eq_ignore_ascii_case(method)
+                        && (crate::discovery::route_matches(&op.path, path, prefixes)
+                            || crate::discovery::route_matches(&full, path, prefixes))
+                })
+            })
+        })
+        .map(|(method, path)| format!("{method} {path}"))
+        .collect()
 }
 fn verification_key(spec: &Spec, operation: &crate::spec::Operation) -> AppResult<String> {
     Ok(util::hash(&serde_json::to_vec(&(
@@ -2104,19 +2115,19 @@ mod merge_tests {
                 ("format".into(), "full".into()),
             ]),
         };
-        let inputs = read_check_inputs(&check, &results).unwrap();
+        let inputs = smoke::resolve(&check, &results).unwrap();
         assert_eq!(inputs["id"], "private-record-id");
         assert_eq!(inputs["format"], "full");
-        assert!(read_check_inputs(&check, &BTreeMap::new()).is_none());
+        assert!(smoke::resolve(&check, &BTreeMap::new()).is_none());
         let mut malformed = check.clone();
         malformed
             .inputs
             .insert("id".into(), "$result:find:/items/99/id".into());
-        assert!(read_check_inputs(&malformed, &results).is_none());
+        assert!(smoke::resolve(&malformed, &results).is_none());
         malformed
             .inputs
             .insert("id".into(), "$result:find:/items".into());
-        assert!(read_check_inputs(&malformed, &results).is_none());
+        assert!(smoke::resolve(&malformed, &results).is_none());
     }
     #[test]
     fn workflow_coverage_rejects_missing_prerequisites_inputs_and_duplicate_steps() {

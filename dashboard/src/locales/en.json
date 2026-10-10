@@ -1,5 +1,5 @@
 {
-  "app.tagline": "Websites, ready for AI.",
+  "app.tagline": "Automate any website.",
   "nav.websites": "Websites",
   "nav.activity": "Activity",
   "nav.connections": "AI connections",
@@ -494,5 +494,11 @@
   "activity.note.workflow_planned": "Selected the user outcomes and the steps needed to complete them.",
   "activity.note.workflow_review": "Checking every workflow step, required input and final result.",
   "activity.note.workflow_incomplete": "Some workflow steps are missing. Exploring further approaches.",
-  "activity.phase.needs_review": "Needs a check"
+  "activity.phase.needs_review": "Needs a check",
+  "sites.allowChanges": "Allow changes",
+  "sites.allowChangesHint": "Off: your AI and the CLI can only read this website. On: each change still waits for your approval here.",
+  "sites.changesOff": "changes are off",
+  "errors.writes_disabled": "Changes are off for this website. Turn on Allow changes in its details to use this action.",
+  "errors.launch_required": "Open Hycli with the hycli dashboard command to use this window.",
+  "activity.note.coverage_incomplete": "{count} documented operations have no action yet. Adding them."
 }

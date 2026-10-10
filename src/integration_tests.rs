@@ -36,6 +36,14 @@ async fn host(router: Router) -> (String, tokio::task::JoinHandle<()>) {
     });
     (address, task)
 }
+fn allow_changes(core: &Runtime, site: &str) {
+    core.state
+        .update(|d| {
+            d.sites.entry(site.into()).or_default().writes = true;
+            Ok(())
+        })
+        .unwrap();
+}
 fn spec_for(origin: &str) -> spec::Spec {
     spec::parse(json!({"spec_version":1,"site":{"name":"fixture","title":"Fixture website","base_url":origin},"operations":[{"name":"read-items","method":"GET","path":"/items","effect":"read","evidence":"Synthetic fixture documentation"},{"name":"create-item","method":"POST","path":"/items","effect":"write","evidence":"Synthetic fixture documentation","body":{"json":{"title":{"type":"string","required":true}}}}]}).to_string().as_bytes()).unwrap()
 }
@@ -354,6 +362,7 @@ async fn a_change_needs_exact_single_use_approval_and_is_never_tested() {
     let core = runtime();
     let sp = spec_for(&url);
     core.install(&sp).unwrap();
+    allow_changes(&core, &sp.site.name);
     let args = BTreeMap::from([("title".into(), "A concrete task".into())]);
     assert!(core.run_op(&sp, "create-item", &args).await.is_err());
     assert_eq!(count.load(Ordering::SeqCst), 0);
@@ -383,6 +392,7 @@ async fn approval_is_invalidated_when_the_spec_changes() {
     let core = runtime();
     let mut sp = spec_for("http://127.0.0.1:1");
     core.install(&sp).unwrap();
+    allow_changes(&core, &sp.site.name);
     let request = core
         .request(
             &sp,
@@ -394,6 +404,7 @@ async fn approval_is_invalidated_when_the_spec_changes() {
     let review = core.approval(request.clone(), "en").unwrap();
     sp.operations[1].path = "/different-items".into();
     core.install(&sp).unwrap();
+    allow_changes(&core, &sp.site.name);
     let error = core.execute(request, Some(&review.id)).await.err().unwrap();
     assert_eq!(error.public_code, "approval_expired");
 }
@@ -441,6 +452,7 @@ async fn rate_limit_pauses_further_calls_and_write_failures_are_not_retried() {
     let core = runtime();
     let sp = spec_for(&url);
     core.install(&sp).unwrap();
+    allow_changes(&core, &sp.site.name);
     assert_eq!(
         core.run_op(&sp, "read-items", &BTreeMap::new())
             .await
@@ -472,6 +484,7 @@ async fn rate_limit_pauses_further_calls_and_write_failures_are_not_retried() {
     let core = runtime();
     let sp = spec_for(&url);
     core.install(&sp).unwrap();
+    allow_changes(&core, &sp.site.name);
     let request = core
         .request(
             &sp,
@@ -531,7 +544,8 @@ async fn loopback_api_requires_session_origin_and_csrf() {
     let core = runtime();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
-    let web = crate::dashboard::Web::new(core, port);
+    let web = crate::dashboard::Web::new(core, port).unwrap();
+    let launch = web.launch.clone();
     let router = crate::dashboard::router(web);
     let server = tokio::spawn(async move {
         axum::serve(listener, router).await.unwrap();
@@ -547,8 +561,15 @@ async fn loopback_api_requires_session_origin_and_csrf() {
             .status(),
         401
     );
+    // A plain local request cannot mint the session that approves changes.
+    for address in [
+        format!("{base}/api/session"),
+        format!("{base}/api/session?launch=guess"),
+    ] {
+        assert_eq!(client.get(address).send().await.unwrap().status(), 401);
+    }
     let session = client
-        .get(format!("{base}/api/session"))
+        .get(format!("{base}/api/session?launch={launch}"))
         .send()
         .await
         .unwrap();
@@ -681,14 +702,16 @@ async fn browser_pairing_is_single_use_origin_bound_and_verifies_actual_identity
     core.install(&spec_for(&website)).unwrap();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
-    let router = crate::dashboard::router(crate::dashboard::Web::new(core.clone(), port));
+    let web = crate::dashboard::Web::new(core.clone(), port).unwrap();
+    let launch = web.launch.clone();
+    let router = crate::dashboard::router(web);
     let server = tokio::spawn(async move {
         axum::serve(listener, router).await.unwrap();
     });
     let base = format!("http://127.0.0.1:{port}");
     let client = reqwest::Client::new();
     let session = client
-        .get(format!("{base}/api/session"))
+        .get(format!("{base}/api/session?launch={launch}"))
         .send()
         .await
         .unwrap();
@@ -926,6 +949,7 @@ fn removing_sites_and_accounts_invalidates_pending_approvals() {
     let core = runtime();
     let sp = spec_for("https://example.test");
     core.install(&sp).unwrap();
+    allow_changes(&core, &sp.site.name);
     let req = core
         .request(
             &sp,
@@ -975,6 +999,7 @@ async fn approval_is_bound_to_the_credential_that_was_reviewed() {
     let url = "http://127.0.0.1:1";
     let sp = spec_for(url);
     core.install(&sp).unwrap();
+    allow_changes(&core, &sp.site.name);
     let cookies = crate::accounts::parse_cookies(
         r#"[{"name":"sid","value":"synthetic-account-one","domain":"127.0.0.1","path":"/"}]"#,
         url,
@@ -1047,6 +1072,7 @@ fn automatic_browser_account_selection_preserves_the_selected_person() {
     let core = runtime();
     let url = "https://example.com";
     core.install(&spec_for(url)).unwrap();
+    allow_changes(&core, &spec_for(url).site.name);
     let cookies = || {
         crate::accounts::parse_cookies(
             r#"[{"name":"sid","value":"synthetic-session","domain":"example.com","path":"/"}]"#,
@@ -1290,6 +1316,7 @@ async fn website_keys_are_scoped_private_and_invalidate_pending_approvals() {
         operation.auth = "website-key".into();
     }
     core.install(&sp).unwrap();
+    allow_changes(&core, &sp.site.name);
     assert_eq!(core.sites("en").unwrap()[0].status, "needs_signin");
     assert_eq!(
         core.request(&sp, "read-items", BTreeMap::new(), Some(""))
@@ -1425,7 +1452,7 @@ async fn form_requests_and_structured_html_reads_use_the_shared_executor() {
     core.install(&old).unwrap();
     let before = Runtime::spec_hash(&core.spec("fixture").unwrap()).unwrap();
     let candidate = core
-        .verify_candidate(&definition, "catalog", "")
+        .verify_candidate_with_inputs(&definition, "catalog", "", BTreeMap::new())
         .await
         .unwrap()
         .0;
@@ -1440,7 +1467,7 @@ async fn form_requests_and_structured_html_reads_use_the_shared_executor() {
             .contains_key("catalog")
     );
     assert!(
-        core.verify_candidate(&old, "create-item", "")
+        core.verify_candidate_with_inputs(&old, "create-item", "", BTreeMap::new())
             .await
             .is_err()
     );
@@ -1558,5 +1585,132 @@ async fn graphql_errors_are_not_success_and_mutations_never_run_as_reads() {
         .is_err()
     );
     assert_eq!(calls.load(Ordering::SeqCst), 2);
+    server.abort();
+}
+#[tokio::test]
+async fn websites_stay_read_only_until_the_user_allows_changes() {
+    let count = Arc::new(AtomicUsize::new(0));
+    let c = count.clone();
+    let (url, server) = host(Router::new().route(
+        "/items",
+        post(move || {
+            let c = c.clone();
+            async move {
+                c.fetch_add(1, Ordering::SeqCst);
+                Json(json!({"created":true}))
+            }
+        }),
+    ))
+    .await;
+    let core = runtime();
+    let sp = spec_for(&url);
+    core.install(&sp).unwrap();
+    let args = BTreeMap::from([("title".into(), "A concrete task".into())]);
+    let Err(error) = core.run_op(&sp, "create-item", &args).await else {
+        panic!("change ran while read-only")
+    };
+    assert_eq!(error.public_code, "writes_disabled");
+    assert!(core.policy.pending().unwrap().is_empty());
+    let mcp = crate::guarded_mcp::Server {
+        core: core.clone(),
+        sites_only: false,
+        only_site: None,
+    };
+    let names = |server: &crate::guarded_mcp::Server| -> Vec<String> {
+        server
+            .tools()
+            .unwrap()
+            .into_iter()
+            .map(|tool| tool.name.to_string())
+            .collect()
+    };
+    assert!(names(&mcp).contains(&"fixture_read-items".to_string()));
+    assert!(!names(&mcp).contains(&"fixture_create-item".to_string()));
+    allow_changes(&core, &sp.site.name);
+    assert!(names(&mcp).contains(&"fixture_create-item".to_string()));
+    assert!(core.run_op(&sp, "create-item", &args).await.is_err());
+    let review = core.policy.pending().unwrap().remove(0);
+    let request = core.policy.review(&review.id).unwrap().request.unwrap();
+    // Turning changes off again also stops an approval issued while they were on.
+    core.state
+        .update(|d| {
+            d.sites.get_mut(&sp.site.name).unwrap().writes = false;
+            Ok(())
+        })
+        .unwrap();
+    let Err(error) = core.execute(request, Some(&review.id)).await else {
+        panic!("change ran after being turned off")
+    };
+    assert_eq!(error.public_code, "writes_disabled");
+    assert_eq!(count.load(Ordering::SeqCst), 0);
+    server.abort();
+}
+#[tokio::test]
+async fn check_replays_recorded_reads_and_tells_sign_in_from_site_changes() {
+    // 0 = healthy, 1 = signed out, 2 = changed response shape.
+    let mode = Arc::new(AtomicUsize::new(0));
+    let m = mode.clone();
+    let (url, server) = host(
+        Router::new()
+            .route(
+                "/items",
+                get(move || {
+                    let m = m.clone();
+                    async move {
+                        match m.load(Ordering::SeqCst) {
+                            0 => (StatusCode::OK, Json(json!({"items":[{"id":"private-7"}]}))),
+                            1 => (StatusCode::UNAUTHORIZED, Json(json!({}))),
+                            _ => (StatusCode::OK, Json(json!({"results":[]}))),
+                        }
+                    }
+                }),
+            )
+            .route(
+                "/items/{id}",
+                get(
+                    |axum::extract::Path(id): axum::extract::Path<String>| async move {
+                        Json(json!({"id":id}))
+                    },
+                ),
+            ),
+    )
+    .await;
+    let core = runtime();
+    let sp = spec::parse(json!({"spec_version":1,"site":{"name":"fixture","base_url":url},"operations":[
+        {"name":"list-items","method":"GET","path":"/items","effect":"read","evidence":"Synthetic fixture documentation","response":{"format":"json","required_pointers":["/items"]}},
+        {"name":"read-item","method":"GET","path":"/items/{id}","effect":"read","evidence":"Synthetic fixture documentation","params":{"id":{"type":"string","required":true}},"response":{"format":"json","required_pointers":["/id"]}}
+    ]}).to_string().as_bytes()).unwrap();
+    core.install(&sp).unwrap();
+    core.state
+        .update(|d| {
+            d.sites.entry("fixture".into()).or_default().smoke = vec![
+                crate::smoke::ReadCheck {
+                    action: "list-items".into(),
+                    inputs: BTreeMap::new(),
+                },
+                crate::smoke::ReadCheck {
+                    action: "read-item".into(),
+                    inputs: BTreeMap::from([(
+                        "id".into(),
+                        "$result:list-items:/items/0/id".into(),
+                    )]),
+                },
+            ];
+            Ok(())
+        })
+        .unwrap();
+    let report = core.check_site("fixture").await.unwrap();
+    assert_eq!(report.verdict, "ok");
+    assert_eq!(report.checks.len(), 2);
+    assert!(report.checks.iter().all(|check| check.outcome == "ok"));
+    mode.store(1, Ordering::SeqCst);
+    assert_eq!(
+        core.check_site("fixture").await.unwrap().verdict,
+        "signed_out"
+    );
+    mode.store(2, Ordering::SeqCst);
+    let report = core.check_site("fixture").await.unwrap();
+    assert_eq!(report.verdict, "site_changed");
+    assert_eq!(report.checks[1].outcome, "skipped");
     server.abort();
 }

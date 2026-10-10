@@ -31,6 +31,9 @@ pub struct Web {
     pub port: u16,
     pub session: String,
     pub csrf: String,
+    /// Shown only in the address `hycli dashboard` opens; a plain local request cannot
+    /// mint a dashboard session, so a tool-calling agent cannot approve its own change.
+    pub launch: String,
     pub pairs: Arc<Mutex<BTreeMap<String, Pair>>>,
 }
 #[derive(Clone)]
@@ -93,16 +96,53 @@ fn ok() -> Json<Value> {
 fn token() -> String {
     format!("{}{}", util::id(), util::id()).replace('-', "")
 }
+#[derive(serde::Serialize, Deserialize)]
+struct Secrets {
+    session: String,
+    csrf: String,
+    launch: String,
+}
 impl Web {
-    pub fn new(core: Arc<Runtime>, port: u16) -> Self {
-        Self {
+    /// Secrets persist in the private data directory, so an open dashboard
+    /// reconnects after a restart without a new launch address.
+    pub fn new(core: Arc<Runtime>, port: u16) -> AppResult<Self> {
+        let path = core.root.join("dashboard-session.json");
+        let secrets = match util::read_bounded(&path, 4096)
+            .ok()
+            .and_then(|data| serde_json::from_slice::<Secrets>(&data).ok())
+        {
+            Some(secrets) => secrets,
+            None => {
+                let secrets = Secrets {
+                    session: token(),
+                    csrf: token(),
+                    launch: token(),
+                };
+                util::atomic_file(&path, &serde_json::to_vec(&secrets)?)?;
+                secrets
+            }
+        };
+        Ok(Self {
             core,
             port,
-            session: token(),
-            csrf: token(),
+            session: secrets.session,
+            csrf: secrets.csrf,
+            launch: secrets.launch,
             pairs: Arc::new(Mutex::new(BTreeMap::new())),
-        }
+        })
     }
+    pub fn launch_url(&self) -> String {
+        format!("http://127.0.0.1:{}/?launch={}", self.port, self.launch)
+    }
+}
+fn session_cookie(headers: &HeaderMap) -> &str {
+    headers
+        .get(header::COOKIE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .split(';')
+        .find_map(|p| p.trim().strip_prefix("hycli_session="))
+        .unwrap_or("")
 }
 pub async fn serve(core: Arc<Runtime>, port: u16, open_browser: bool) -> AppResult<()> {
     let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port)).await?;
@@ -111,8 +151,8 @@ pub async fn serve(core: Arc<Runtime>, port: u16, open_browser: bool) -> AppResu
     tokio::spawn(async move {
         images.fill_missing_site_images().await;
     });
-    let web = Web::new(core, port);
-    let url = format!("http://127.0.0.1:{port}");
+    let web = Web::new(core, port)?;
+    let url = web.launch_url();
     eprintln!("Hycli dashboard: {url}");
     if open_browser {
         let _ = open_url(&url);
@@ -222,16 +262,7 @@ async fn guard(State(web): State<Web>, request: Request, next: Next) -> Response
             return fail();
         }
         if path.starts_with("/api/") && path != "/api/session" {
-            let cookie = request
-                .headers()
-                .get(header::COOKIE)
-                .and_then(|v| v.to_str().ok())
-                .unwrap_or("");
-            let received = cookie
-                .split(';')
-                .find_map(|p| p.trim().strip_prefix("hycli_session="))
-                .unwrap_or("");
-            if !util::constant_eq(received, &web.session) {
+            if !util::constant_eq(session_cookie(request.headers()), &web.session) {
                 return AppError::api("session_expired", 401).into_response();
             }
             if request.method() != axum::http::Method::GET
@@ -258,7 +289,17 @@ async fn guard(State(web): State<Web>, request: Request, next: Next) -> Response
     }
     response
 }
-async fn session(State(web): State<Web>) -> Response {
+async fn session(
+    State(web): State<Web>,
+    headers: HeaderMap,
+    Query(query): Query<BTreeMap<String, String>>,
+) -> Response {
+    let launched = query
+        .get("launch")
+        .is_some_and(|value| util::constant_eq(value, &web.launch));
+    if !launched && !util::constant_eq(session_cookie(&headers), &web.session) {
+        return AppError::api("launch_required", 401).into_response();
+    }
     (
         [(
             header::SET_COOKIE,
@@ -513,12 +554,15 @@ async fn edit_site(
                 return Err(AppError::api("bad_request", 400));
             }
         }
-        let m = d.sites.entry(id).or_default();
+        let m = d.sites.entry(id.clone()).or_default();
         if let Some(title) = body.get("title").and_then(Value::as_str) {
             m.title = title.trim().chars().take(100).collect();
         }
         if let Some(pinned) = body.get("pinned").and_then(Value::as_bool) {
             m.pinned = pinned;
+        }
+        if let Some(writes) = body.get("writes").and_then(Value::as_bool) {
+            m.writes = writes;
         }
         if let Some(account) = body.get("account_id").and_then(Value::as_str) {
             m.account_id = account.into();
@@ -526,6 +570,9 @@ async fn edit_site(
         m.updated_at = util::now();
         Ok(())
     })?;
+    if body.get("writes") == Some(&Value::Bool(false)) {
+        web.core.policy.invalidate(Some(&id), None)?;
+    }
     web.core.changed();
     Ok(ok())
 }

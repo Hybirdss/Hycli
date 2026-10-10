@@ -1,5 +1,5 @@
 {
-  "app.tagline": "เปลี่ยนเว็บไซต์ให้เป็นเครื่องมือสำหรับ AI",
+  "app.tagline": "ทำให้ทุกเว็บไซต์เป็นอัตโนมัติ",
   "nav.websites": "เว็บไซต์",
   "nav.activity": "ประวัติการทำงาน",
   "nav.connections": "การเชื่อมต่อ AI",
@@ -494,5 +494,11 @@
   "activity.note.workflow_planned": "กำหนดผลลัพธ์ที่ต้องการและขั้นตอนที่จำเป็นแล้ว",
   "activity.note.workflow_review": "กำลังตรวจสอบทุกขั้นตอน ข้อมูลที่จำเป็น และผลลัพธ์สุดท้าย",
   "activity.note.workflow_incomplete": "ยังมีบางขั้นตอนที่ขาดอยู่ กำลังสำรวจวิธีอื่นเพิ่มเติม",
-  "activity.phase.needs_review": "ต้องตรวจสอบ"
+  "activity.phase.needs_review": "ต้องตรวจสอบ",
+  "sites.allowChanges": "อนุญาตให้เปลี่ยนแปลง",
+  "sites.allowChangesHint": "ปิด: AI และ CLI ของคุณอ่านเว็บไซต์นี้ได้เท่านั้น เปิด: ทุกการเปลี่ยนแปลงยังต้องรอการอนุมัติจากคุณที่นี่",
+  "sites.changesOff": "ปิดการเปลี่ยนแปลงอยู่",
+  "errors.writes_disabled": "เว็บไซต์นี้ปิดการเปลี่ยนแปลงอยู่ เปิด อนุญาตให้เปลี่ยนแปลง ในรายละเอียดเพื่อใช้การดำเนินการนี้",
+  "errors.launch_required": "เปิด Hycli ด้วยคำสั่ง hycli dashboard เพื่อใช้หน้าต่างนี้",
+  "activity.note.coverage_incomplete": "ยังมีการดำเนินการที่มีเอกสาร {count} รายการที่ยังไม่มีแอ็กชัน กำลังเพิ่ม"
 }

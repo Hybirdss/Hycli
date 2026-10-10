@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <strong>Transformez les sites web en outils utilisables par votre IA.</strong>
+  <strong>Automatisez n’importe quel site web.</strong>
 </p>
 
 <p align="center">
@@ -65,14 +65,16 @@ Trois agents IA indépendants prennent en charge les lectures et recherches, les
 </p>
 <p align="center"><sub>Trois agents. Un petit oiseau très occupé.</sub></p>
 
-La préparation s'appuie sur les informations réellement disponibles sur le site : documentation liée, schémas d'API, JavaScript publié et structures de requêtes observées par l'extension du navigateur. Elle peut effectuer des lectures limitées pour vérifier une opération. Elle ne crée pas de données de test, ne modifie pas de contenu, ne supprime pas d'objets, ne devine pas de longues listes de points de terminaison et ne réalise pas de fuzzing sur un serveur en production.
+La préparation s'appuie sur les informations réellement disponibles sur le site : documentation liée, schémas d'API, JavaScript publié et structures de requêtes observées par l'extension du navigateur. Après les workflows prévus, les agents poursuivent avec chaque opération d'API documentée qui n'a pas encore d'action, jusqu'à ce que chacune soit implémentée ou signalée avec sa raison ; le `coverage` de la tâche indique ce qui reste. Elle peut effectuer des lectures limitées pour vérifier une opération. Elle ne crée pas de données de test, ne modifie pas de contenu, ne supprime pas d'objets, ne devine pas de longues listes de points de terminaison et ne réalise pas de fuzzing sur un serveur en production.
 
 | Action | Comportement |
 | --- | --- |
 | Lire ou rechercher | S'exécute de manière autonome lorsque l'opération est étayée par des éléments concrets et classée comme lecture. |
-| Créer, envoyer, modifier ou supprimer | Affiche le site web, le compte, l'action et les valeurs d'entrée résolues pour approbation par l'utilisateur. |
+| Créer, envoyer, modifier ou supprimer | Désactivé tant que vous n'autorisez pas les modifications pour ce site web. Affiche ensuite le site web, le compte, l'action et les valeurs d'entrée résolues pour que vous les approuviez. |
 | Effet incertain | Nécessite une vérification avant l'envoi de la requête. |
 | Authentification, défi ou limite de requêtes | Suspend les requêtes concernées et vous permet de vous reconnecter ou d'attendre. |
+
+Chaque site web démarre en lecture seule. Ses actions de modification sont masquées dans MCP et refusées par la CLI tant que vous n'avez pas activé **Autoriser les modifications** dans les détails de ce site web ; la désactiver annule les approbations en attente. Le commutateur et le bouton d'approbation n'existent que dans le tableau de bord, et celui-ci n'accorde sa session qu'à l'adresse ouverte par `hycli dashboard` : un agent qui appelle Hycli ne peut donc ni activer les modifications ni approuver sa propre requête. Un agent capable d'exécuter n'importe quelle commande sous votre utilisateur peut aussi lire vos fichiers ; laissez ces agents sous leurs propres demandes d'autorisation.
 
 L'approbation porte sur une requête précise, expire après cinq minutes et ne peut être utilisée qu'une seule fois. Toute modification des entrées, du compte, des informations de connexion enregistrées ou de la définition de l'outil installé l'invalide. Les exécutions via la CLI, MCP et le tableau de bord respectent les mêmes règles. Les écritures ne sont jamais relancées automatiquement.
 
@@ -146,7 +148,16 @@ hycli run SITE ACTION --arg query="design systems"
 hycli jobs show JOB_ID --watch
 ```
 
-En MCP, transmettez l’URL et `intent` à `hycli_prepare`, puis suivez le travail avec `hycli_job` ou `hycli_result`. `hycli_run` peut exécuter de nouvelles actions avant même que le client actualise sa liste d’outils. Recherchez les identifiants internes avec les actions de liste ou de recherche associées.
+Avant de relancer une action en échec, vérifiez le site web sans IA :
+
+```sh
+hycli check          # tous les sites web installés
+hycli check SITE
+```
+
+La préparation enregistre dans l'ordre les lectures réussies, y compris celles qui transmettent l'identifiant d'un résultat précédent à la suivante. `hycli check` les rejoue, en confirmant d'abord l'identité du compte enregistré. Le verdict distingue `signed_out` (reconnectez le compte) de `site_changed` (le compte fonctionne, mais les réponses ne correspondent plus ; demandez une réparation), en plus de `blocked` et `unreachable`. Il n'exécute jamais de modification, et le code de sortie suit le verdict. Les clients MCP disposent de la même vérification sous le nom `hycli_check`.
+
+En MCP, transmettez l’URL et `intent` à `hycli_prepare`, puis suivez le travail avec `hycli_job` ou `hycli_result`. `hycli_run` peut exécuter de nouvelles actions avant même que le client actualise sa liste d’outils. Recherchez les identifiants internes avec les actions de liste ou de recherche associées. Les outils `hycli_result`, `hycli_check` et `hycli_activity` restent disponibles dans les deux modes, afin que votre IA puisse suivre les notes de travail, la progression et les résultats approuvés, et distinguer une connexion expirée d'un site web modifié.
 
 Les modifications renvoient une demande à examiner dans le tableau de bord. Suivez son résultat sans répéter la demande. Une lecture échouée ou une réponse inattendue produit également un échec dans la CLI.
 

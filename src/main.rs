@@ -4,7 +4,7 @@ use hycli::apperr::{self, AppError};
 use hycli::output::Emitter;
 
 #[derive(Parser)]
-#[command(name = "hycli", version, about = "Websites, ready for AI.")]
+#[command(name = "hycli", version, about = "Automate any website.")]
 struct Cli {
     #[arg(long, global = true)]
     kb: Option<String>,
@@ -69,8 +69,12 @@ enum Cmd {
         #[arg(long = "arg")]
         args: Vec<String>,
     },
-    /// Check a website using an available read that requires no inputs.
-    Health { site: String },
+    /// Replay recorded reads without AI: tells an expired sign-in from a changed website.
+    #[command(visible_alias = "health")]
+    Check {
+        /// Installed website ID; omit to check every website.
+        site: Option<String>,
+    },
     /// Describe websites, actions, typed inputs and expected results as JSON.
     Describe {
         site: Option<String>,
@@ -569,7 +573,7 @@ async fn dispatch(deps: Deps, cmd: Cmd, emit: &Emitter) -> Result<(), AppError> 
             limit,
         } => capture_run(deps, from, site, base, out, limit, emit).await,
         Cmd::Try { site, op, args } => try_run(deps, site, op, args, emit).await,
-        Cmd::Health { site } => health_run(deps, site, emit).await,
+        Cmd::Check { site } => check_run(deps, site, emit).await,
         Cmd::Site(rest) => site_run(deps, rest, emit).await,
     }
 }
@@ -877,36 +881,51 @@ async fn try_run(
     Ok(())
 }
 
-async fn health_run(deps: Deps, site: String, emit: &Emitter) -> Result<(), AppError> {
-    let sp = find_spec(&site)?;
-    let usable = |op: &&hycli::spec::Operation| {
-        hycli::policy::operation_effect(op, &Default::default()) == hycli::policy::Effect::Read
-            && hycli::runtime::params(op).iter().all(|(_, p)| !p.required)
+async fn check_run(deps: Deps, site: Option<String>, emit: &Emitter) -> Result<(), AppError> {
+    let core = runner(&deps)?;
+    let sites = match site {
+        Some(site) => vec![find_spec(&site)?.site.name],
+        None => core.specs()?.into_iter().map(|sp| sp.site.name).collect(),
     };
-    let op = if let Some(health) = &sp.health {
-        Some(sp.op(&health.op)?)
-    } else {
-        sp.operations.iter().find(usable)
+    let mut reports = vec![];
+    for site in sites {
+        reports.push(core.check_site(&site).await?);
     }
-    .filter(usable)
-    .ok_or_else(|| {
-        apperr::usage(
-            "No read-only health action is available without inputs",
-            format!("Use `hycli {site} --help` and run a read with its required inputs."),
-        )
-    })?
-    .name
-    .clone();
-    let runner = runner(&deps)?;
-    let (res, _) = runner.run_op(&sp, &op, &Default::default()).await?;
-    emit.data(
-        &serde_json::json!({"site": sp.site.name, "op": op, "status": res.status,
-        "defense": res.defense, "latency_ms": res.latency_ms}),
-    );
-    if res.defense != "none" && !res.defense.is_empty() {
-        return Err(blocked_err(&res.defense, &res.signal));
+    emit.data(&reports);
+    // Exit status follows the most actionable verdict, so scripts can branch without parsing.
+    let worst = [
+        "signed_out",
+        "unknown",
+        "site_changed",
+        "blocked",
+        "unreachable",
+        "no_checks",
+    ]
+    .into_iter()
+    .find(|verdict| reports.iter().any(|report| report.verdict == *verdict));
+    match worst {
+        None => Ok(()),
+        Some("signed_out" | "unknown") => Err(apperr::auth_err(
+            "A website session has expired or could not be confirmed",
+            "Reconnect the account in `hycli dashboard`, then run `hycli check` again.",
+        )),
+        Some("site_changed") => Err(apperr::spec(
+            "A website no longer returns what its actions expect",
+            "Run `hycli request SITE \"Repair the failing reads\"` or prepare the website again.",
+        )),
+        Some("blocked") => Err(apperr::blocked(
+            "A website is limiting or challenging requests",
+            "Wait, or resolve the challenge in your browser.",
+        )),
+        Some("no_checks") => Err(apperr::usage(
+            "No recorded read is available to check",
+            "Prepare the website again to record its checks.",
+        )),
+        Some(_) => Err(apperr::runtime_msg(
+            "A website could not be reached",
+            "Check the connection and retry later.",
+        )),
     }
-    Ok(())
 }
 
 /// Installed website commands share parsing and execution with explicit `run`.

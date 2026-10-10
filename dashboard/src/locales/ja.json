@@ -1,5 +1,5 @@
 {
-  "app.tagline": "ウェブサイトをAIで使えるツールに。",
+  "app.tagline": "あらゆるウェブサイトを自動化。",
   "nav.websites": "ウェブサイト",
   "nav.activity": "履歴",
   "nav.connections": "AI接続",
@@ -494,5 +494,11 @@
   "activity.note.workflow_planned": "ユーザーに必要な成果と、完了までの手順を決めました。",
   "activity.note.workflow_review": "各手順、必要な入力、最終結果を確認しています。",
   "activity.note.workflow_incomplete": "不足している手順があるため、別の方法を調べています。",
-  "activity.phase.needs_review": "確認が必要"
+  "activity.phase.needs_review": "確認が必要",
+  "sites.allowChanges": "変更を許可",
+  "sites.allowChangesHint": "オフ: AIとCLIはこのウェブサイトを読み取るだけです。オン: どの変更もここでの承認を待ちます。",
+  "sites.changesOff": "変更はオフ",
+  "errors.writes_disabled": "このウェブサイトでは変更がオフです。この操作を使うには詳細で「変更を許可」をオンにしてください。",
+  "errors.launch_required": "このウィンドウを使うには hycli dashboard コマンドで Hycli を開いてください。",
+  "activity.note.coverage_incomplete": "ドキュメント化された操作のうち {count} 件にまだアクションがありません。追加しています。"
 }

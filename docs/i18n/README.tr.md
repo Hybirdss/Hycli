@@ -2,7 +2,7 @@
 <img src="../../docs/brand/concepts/hycli-shima-banner-v4.png" alt="Hycli — Web siteleri, AI için hazır." width="100%" />
 </p>
 
-<p align="center"><strong>Web sitelerini AI'ınızın kullanabileceği araçlara dönüştürün.</strong></p>
+<p align="center"><strong>Her web sitesini otomatikleştirin.</strong></p>
 
 <p align="center">
 <a href="#get-started">Başlangıç</a> · <a href="#what-your-ai-can-do">AI'ınız neler yapabilir?</a> · <a href="#ai-connections">AI bağlantıları</a> · <a href="#use-hycli-with-your-ai">AI ile kullanın</a>
@@ -58,14 +58,16 @@ Hycli, desteklenen web sitesi işlemlerini adı ve veri türleri tanımlanmış 
 </p>
 <p align="center"><sub>Üç çalışan. Çok meşgul küçük bir kuş.</sub></p>
 
-Hazırlık, web sitesinde gerçekten bulunan bilgilere dayanır: bağlantı verilen belgeler, API şemaları, yayımlanmış JavaScript ve tarayıcı eklentisinin gözlemlediği istek yapıları. Bir işlemi kontrol etmek için sınırlı okuma işlemleri yapabilir. Test kayıtları oluşturmaz, içerik düzenlemez, nesne silmez, uzun uç nokta listeleri tahmin etmez veya çalışan bir sunucuya rastgele test girdileri göndermez.
+Hazırlık, web sitesinde gerçekten bulunan bilgilere dayanır: bağlantı verilen belgeler, API şemaları, yayımlanmış JavaScript ve tarayıcı eklentisinin gözlemlediği istek yapıları. Planlanan iş akışlarından sonra çalışanlar, henüz eylemi olmayan her belgelenmiş API işlemi üzerinde, her biri uygulanana ya da nedeniyle birlikte bildirilene kadar devam eder; işin `coverage` alanı geriye kalanları listeler. Bir işlemi kontrol etmek için sınırlı okuma işlemleri yapabilir. Test kayıtları oluşturmaz, içerik düzenlemez, nesne silmez, uzun uç nokta listeleri tahmin etmez veya çalışan bir sunucuya rastgele test girdileri göndermez.
 
 | İşlem | Davranış |
 | --- | --- |
 | Okuma veya arama | İşlem eldeki bulgularla destekleniyor ve okuma olarak sınıflandırılmışsa kendi başına çalışır. |
-| Oluşturma, gönderme, düzenleme veya silme | Kullanıcının onayı için web sitesini, hesabı, işlemi ve kesinleşmiş girdileri gösterir. |
+| Oluşturma, gönderme, düzenleme veya silme | O web sitesi için değişikliklere izin verene kadar kapalıdır. Sonrasında onayınız için web sitesini, hesabı, işlemi ve kesinleşmiş girdileri gösterir. |
 | Etkisi belirsiz işlem | İstek gönderilmeden önce inceleme gerektirir. |
 | Kimlik doğrulama, ek doğrulama veya istek sınırı | Etkilenen istekleri duraklatır; yeniden bağlanmanızı veya beklemenizi sağlar. |
+
+Her web sitesi salt okunur başlar. Değişiklik yapan işlemleri MCP'den gizlenir ve siz o web sitesinin ayrıntılarında **Değişikliklere izin ver** seçeneğini açana kadar CLI tarafından reddedilir; yeniden kapatmak bekleyen onayları iptal eder. Anahtar ve onay düğmesi yalnızca panelde bulunur ve panel oturumunu yalnızca `hycli dashboard` komutunun açtığı adrese verir; bu yüzden Hycli'yi çağıran bir ajan değişiklikleri açamaz ya da kendi isteğini onaylayamaz. Kullanıcınız olarak herhangi bir komutu çalıştırabilen bir ajan dosyalarınızı da okuyabilir; bu tür ajanları kendi izin istemlerinin altında tutun.
 
 Onay, tek bir belirli istek için geçerlidir; beş dakika sonra sona erer ve yalnızca bir kez kullanılabilir. Girdilerin, hesabın, kayıtlı giriş bilgilerinin veya kurulu araç tanımının değişmesi onayı geçersiz kılar. CLI, MCP ve panel aynı sınırı uygular. Değişiklik yapan istekler hiçbir zaman otomatik olarak yeniden denenmez.
 
@@ -139,7 +141,16 @@ hycli run SITE ACTION --arg query="design systems"
 hycli jobs show JOB_ID --watch
 ```
 
-MCP üzerinden URL ve `intent` değerini `hycli_prepare` aracına verin, ardından `hycli_job` veya `hycli_result` ile işi izleyin. `hycli_run`, istemci araç listesini yenilemeden önce bile yeni eylemleri çalıştırabilir. Dahili kimlikleri önce ilgili listeleme veya arama eylemleriyle bulun.
+Başarısız bir işlemi yeniden denemeden önce web sitesini yapay zekâ kullanmadan kontrol edin:
+
+```sh
+hycli check          # kurulu her web sitesi
+hycli check SITE
+```
+
+Hazırlık, geçen okumaları sırayla kaydeder; önceki bir sonucun tanımlayıcısını bir sonrakine aktaran okumalar da buna dahildir. `hycli check` bunları yeniden oynatır ve önce kayıtlı hesabın kimliğini doğrular. Karar, `signed_out` (hesabı yeniden bağlayın) ile `site_changed` (hesap çalışıyor ama yanıtlar artık uyuşmuyor; onarım isteyin) arasında ayrım yapar; ayrıca `blocked` ve `unreachable` vardır. Hiçbir zaman bir değişiklik çalıştırmaz ve çıkış durumu karara göre belirlenir. MCP istemcileri aynı kontrolü `hycli_check` olarak alır.
+
+MCP üzerinden URL ve `intent` değerini `hycli_prepare` aracına verin, ardından `hycli_job` veya `hycli_result` ile işi izleyin. `hycli_run`, istemci araç listesini yenilemeden önce bile yeni eylemleri çalıştırabilir. Dahili kimlikleri önce ilgili listeleme veya arama eylemleriyle bulun. `hycli_result`, `hycli_check` ve `hycli_activity` araçları iki modda da kullanılabilir; böylece yapay zekânız çalışma notlarını, ilerlemeyi ve onaylanmış sonuçları izleyebilir, süresi dolmuş bir girişi değişmiş bir web sitesinden ayırt edebilir.
 
 Değişiklikler, panoda incelenecek bir onay kaydı döndürür. İsteği tekrarlamadan bu kaydın sonucunu izleyin. Başarısız okumalar veya beklenmeyen yanıtlar CLI üzerinde de hata durumuyla sonuçlanır.
 

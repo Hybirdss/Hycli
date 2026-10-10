@@ -1,5 +1,5 @@
 {
-  "app.tagline": "Web siteleri, AI için hazır.",
+  "app.tagline": "Her web sitesini otomatikleştirin.",
   "nav.websites": "Web siteleri",
   "nav.activity": "Etkinlik",
   "nav.connections": "AI bağlantıları",
@@ -494,5 +494,11 @@
   "activity.note.workflow_planned": "İstenen sonuçlar ve bunlara ulaşmak için gereken adımlar belirlendi.",
   "activity.note.workflow_review": "Her adım, gerekli girdiler ve nihai sonuç kontrol ediliyor.",
   "activity.note.workflow_incomplete": "Bazı adımlar eksik. Başka yaklaşımlar araştırılıyor.",
-  "activity.phase.needs_review": "Kontrol gerekli"
+  "activity.phase.needs_review": "Kontrol gerekli",
+  "sites.allowChanges": "Değişikliklere izin ver",
+  "sites.allowChangesHint": "Kapalı: Yapay zekânız ve CLI bu web sitesini yalnızca okuyabilir. Açık: her değişiklik yine burada onayınızı bekler.",
+  "sites.changesOff": "değişiklikler kapalı",
+  "errors.writes_disabled": "Bu web sitesi için değişiklikler kapalı. Bu işlemi kullanmak için ayrıntılarda Değişikliklere izin ver seçeneğini açın.",
+  "errors.launch_required": "Bu pencereyi kullanmak için Hycli'yi hycli dashboard komutuyla açın.",
+  "activity.note.coverage_incomplete": "Belgelenmiş {count} işlemin henüz eylemi yok. Ekleniyor."
 }

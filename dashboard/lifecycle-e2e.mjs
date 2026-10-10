@@ -22,7 +22,7 @@ const done=async(id,timeout=180000)=>{let job;await poll(async()=>{job=(await ap
 const findJob=async(kind,excluded=[])=>{let job;await poll(async()=>{job=(await state()).jobs.find(j=>j.kind===kind&&!excluded.includes(j.id));return !!job;});return job;};
 const openSite=async title=>{await button(page,'nav.websites').click();await page.locator('.site-card').filter({hasText:title}).getByRole('button',{name:en['sites.openActions'],exact:true}).click();};
 try {
- await page.goto(ports.dashboard,{waitUntil:'domcontentloaded'});await page.getByRole('heading',{name:en['sites.title'],exact:true}).waitFor();
+ await page.goto(ports.dashboard+'/?launch='+ports.launch,{waitUntil:'domcontentloaded'});await page.getByRole('heading',{name:en['sites.title'],exact:true}).waitFor();
  console.log('Account selection resumes preparation through the real route.');
  assert.equal((await api('/api/sites/library','PATCH',{title:'Lifecycle research library'})).status,200);
  await poll(async()=>await page.getByRole('button',{name:'Lifecycle research library',exact:true}).count()===1);
@@ -63,7 +63,9 @@ try {
  const downloadPromise=page.waitForEvent('download');await button(dialog(),'sites.export').click();const download=await downloadPromise;const stream=await download.createReadStream();const chunks=[];for await(const chunk of stream)chunks.push(chunk);const exported=Buffer.concat(chunks).toString();assert.ok(exported.includes('store:key-fixture/api-key'));assert.ok(!exported.includes('synthetic-website-key'));await button(dialog(),'common.close').click();
  console.log('Server session restart reconnects without reloading the page.');
  const oldCookies=await context.cookies(ports.dashboard);await control({restart_dashboard:true});
- await poll(async()=>{const cookies=await context.cookies(ports.dashboard);return cookies.find(c=>c.name==='hycli_session')?.value!==oldCookies.find(c=>c.name==='hycli_session')?.value;},45000);
+ // The session survives a restart, so the open page keeps working without a new launch address.
+ await poll(async()=>{try{return Array.isArray((await state()).sites);}catch{return false;}},45000);
+ assert.equal((await context.cookies(ports.dashboard)).find(c=>c.name==='hycli_session')?.value,oldCookies.find(c=>c.name==='hycli_session')?.value);
  await openSite('Secure workspace');await dialog().getByLabel(en['sites.titleLabel'],{exact:true}).fill('Secure workspace after restart');await button(dialog().locator('.website-detail-settings'),'common.save').click();await poll(async()=>(await state()).sites.find(site=>site.id==='key-fixture')?.title==='Secure workspace after restart');await button(dialog(),'common.close').click();
  console.log('Account import/removal, agent handoff and site removal.');
  const imported=await api('/api/accounts/import','POST',{site_id:'key-fixture',url:ports.website,content:JSON.stringify([{name:'session',value:'synthetic-browser-secret',domain:'127.0.0.1',path:'/'}])});assert.equal(imported.status,200);assert.equal((await api('/api/accounts/'+imported.body.account.id,'DELETE')).status,200);assert.ok(!(await state()).accounts.some(account=>account.id===imported.body.account.id));assert.equal((await state()).sites.find(site=>site.id==='key-fixture').account_id,'');

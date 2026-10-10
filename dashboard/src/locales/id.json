@@ -1,5 +1,5 @@
 {
-  "app.tagline": "Jadikan situs web alat untuk AI.",
+  "app.tagline": "Otomatiskan situs web apa pun.",
   "nav.websites": "Situs web",
   "nav.activity": "Aktivitas",
   "nav.connections": "Koneksi AI",
@@ -494,5 +494,11 @@
   "activity.note.workflow_planned": "Hasil yang diinginkan dan langkah untuk mencapainya telah ditentukan.",
   "activity.note.workflow_review": "Memeriksa setiap langkah, masukan wajib, dan hasil akhir.",
   "activity.note.workflow_incomplete": "Beberapa langkah masih kurang. Menjelajahi pendekatan lain.",
-  "activity.phase.needs_review": "Perlu diperiksa"
+  "activity.phase.needs_review": "Perlu diperiksa",
+  "sites.allowChanges": "Izinkan perubahan",
+  "sites.allowChangesHint": "Mati: AI dan CLI Anda hanya dapat membaca situs ini. Hidup: setiap perubahan tetap menunggu persetujuan Anda di sini.",
+  "sites.changesOff": "perubahan nonaktif",
+  "errors.writes_disabled": "Perubahan dinonaktifkan untuk situs ini. Aktifkan Izinkan perubahan di detailnya untuk memakai tindakan ini.",
+  "errors.launch_required": "Buka Hycli dengan perintah hycli dashboard untuk memakai jendela ini.",
+  "activity.note.coverage_incomplete": "{count} operasi terdokumentasi belum memiliki tindakan. Sedang ditambahkan."
 }

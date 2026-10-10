@@ -1,5 +1,5 @@
 {
-  "app.tagline": "Biến trang web thành công cụ cho AI.",
+  "app.tagline": "Tự động hóa mọi trang web.",
   "nav.websites": "Trang web",
   "nav.activity": "Hoạt động",
   "nav.connections": "Kết nối AI",
@@ -494,5 +494,11 @@
   "activity.note.workflow_planned": "Đã xác định kết quả cần đạt và các bước cần thiết.",
   "activity.note.workflow_review": "Đang kiểm tra từng bước, dữ liệu bắt buộc và kết quả cuối cùng.",
   "activity.note.workflow_incomplete": "Vẫn còn thiếu một số bước. Đang tìm các cách tiếp cận khác.",
-  "activity.phase.needs_review": "Cần kiểm tra"
+  "activity.phase.needs_review": "Cần kiểm tra",
+  "sites.allowChanges": "Cho phép thay đổi",
+  "sites.allowChangesHint": "Tắt: AI và CLI chỉ có thể đọc trang web này. Bật: mọi thay đổi vẫn chờ bạn phê duyệt tại đây.",
+  "sites.changesOff": "đã tắt thay đổi",
+  "errors.writes_disabled": "Thay đổi đang tắt cho trang web này. Bật Cho phép thay đổi trong phần chi tiết để dùng thao tác này.",
+  "errors.launch_required": "Mở Hycli bằng lệnh hycli dashboard để dùng cửa sổ này.",
+  "activity.note.coverage_incomplete": "{count} thao tác có tài liệu chưa có hành động. Đang thêm."
 }

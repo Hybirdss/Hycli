@@ -1,5 +1,5 @@
 {
-  "app.tagline": "Сайти, готові до роботи з ШІ.",
+  "app.tagline": "Автоматизуйте будь-який сайт.",
   "nav.websites": "Сайти",
   "nav.activity": "Історія",
   "nav.connections": "Підключення ШІ",
@@ -494,5 +494,11 @@
   "activity.note.workflow_planned": "Визначено потрібні результати та кроки для їх досягнення.",
   "activity.note.workflow_review": "Перевіряємо кожен крок, необхідні дані та кінцевий результат.",
   "activity.note.workflow_incomplete": "Деяких кроків бракує. Досліджуємо інші способи.",
-  "activity.phase.needs_review": "Потрібна перевірка"
+  "activity.phase.needs_review": "Потрібна перевірка",
+  "sites.allowChanges": "Дозволити зміни",
+  "sites.allowChangesHint": "Вимк.: ваш ШІ та CLI можуть лише читати цей сайт. Увімк.: кожна зміна все одно чекає вашого схвалення тут.",
+  "sites.changesOff": "зміни вимкнено",
+  "errors.writes_disabled": "Зміни для цього сайту вимкнено. Увімкніть «Дозволити зміни» в деталях, щоб використати цю дію.",
+  "errors.launch_required": "Відкрийте Hycli командою hycli dashboard, щоб використовувати це вікно.",
+  "activity.note.coverage_incomplete": "У {count} задокументованих операцій ще немає дій. Додаємо."
 }

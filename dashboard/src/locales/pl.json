@@ -1,5 +1,5 @@
 {
-  "app.tagline": "Strony gotowe do pracy z AI.",
+  "app.tagline": "Automatyzuj dowolną stronę.",
   "nav.websites": "Strony",
   "nav.activity": "Aktywność",
   "nav.connections": "Połączenia z AI",
@@ -494,5 +494,11 @@
   "activity.note.workflow_planned": "Określono oczekiwane wyniki i kroki potrzebne do ich osiągnięcia.",
   "activity.note.workflow_review": "Sprawdzanie każdego kroku, wymaganych danych i wyniku końcowego.",
   "activity.note.workflow_incomplete": "Brakuje niektórych kroków. Badane są inne podejścia.",
-  "activity.phase.needs_review": "Wymaga sprawdzenia"
+  "activity.phase.needs_review": "Wymaga sprawdzenia",
+  "sites.allowChanges": "Zezwalaj na zmiany",
+  "sites.allowChangesHint": "Wyłączone: Twoja AI i CLI mogą tylko czytać tę witrynę. Włączone: każda zmiana nadal czeka tutaj na Twoją zgodę.",
+  "sites.changesOff": "zmiany wyłączone",
+  "errors.writes_disabled": "Zmiany są wyłączone dla tej witryny. Włącz Zezwalaj na zmiany w szczegółach, aby użyć tej akcji.",
+  "errors.launch_required": "Otwórz Hycli poleceniem hycli dashboard, aby używać tego okna.",
+  "activity.note.coverage_incomplete": "{count} udokumentowanych operacji nie ma jeszcze akcji. Dodawanie."
 }

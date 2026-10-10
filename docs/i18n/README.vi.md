@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <strong>Biến trang web thành công cụ mà AI có thể sử dụng.</strong>
+  <strong>Tự động hóa mọi trang web.</strong>
 </p>
 
 <p align="center">
@@ -65,14 +65,16 @@ Ba tác nhân AI độc lập lần lượt xử lý việc đọc và tìm ki�
 </p>
 <p align="center"><sub>Ba tác nhân. Một chú chim bé xíu bận rộn hết sức.</sub></p>
 
-Quá trình chuẩn bị dựa trên thông tin thực sự có trên trang web: tài liệu được liên kết, lược đồ API, JavaScript công khai và cấu trúc yêu cầu mà tiện ích trình duyệt quan sát được. Hycli có thể đọc trong phạm vi giới hạn để kiểm tra một thao tác. Nó không tạo bản ghi thử nghiệm, sửa nội dung, xóa đối tượng, phỏng đoán hàng loạt điểm cuối hay kiểm thử fuzz trên máy chủ đang hoạt động.
+Quá trình chuẩn bị dựa trên thông tin thực sự có trên trang web: tài liệu được liên kết, lược đồ API, JavaScript công khai và cấu trúc yêu cầu mà tiện ích trình duyệt quan sát được. Sau các quy trình đã lên kế hoạch, các tác nhân tiếp tục xử lý mọi thao tác API đã có tài liệu mà chưa có hành động, cho đến khi từng thao tác được triển khai hoặc được báo cáo kèm lý do; `coverage` của tác vụ liệt kê những gì còn lại. Hycli có thể đọc trong phạm vi giới hạn để kiểm tra một thao tác. Nó không tạo bản ghi thử nghiệm, sửa nội dung, xóa đối tượng, phỏng đoán hàng loạt điểm cuối hay kiểm thử fuzz trên máy chủ đang hoạt động.
 
 | Thao tác | Hành vi |
 | --- | --- |
 | Đọc hoặc tìm kiếm | Tự thực hiện khi có bằng chứng hỗ trợ và được phân loại là thao tác đọc. |
-| Tạo, gửi, sửa hoặc xóa | Hiển thị trang web, tài khoản, thao tác và các giá trị đầu vào đã xác định để người dùng phê duyệt. |
+| Tạo, gửi, sửa hoặc xóa | Tắt cho đến khi bạn cho phép thay đổi đối với trang web đó. Sau đó hiển thị trang web, tài khoản, thao tác và các giá trị đầu vào đã xác định để bạn phê duyệt. |
 | Tác động chưa rõ | Cần xem xét trước khi gửi yêu cầu. |
 | Xác thực, thử thách xác minh hoặc giới hạn yêu cầu | Tạm dừng các yêu cầu bị ảnh hưởng để bạn kết nối lại hoặc chờ. |
+
+Mọi trang web đều bắt đầu ở chế độ chỉ đọc. Các thao tác thay đổi dữ liệu bị ẩn khỏi MCP và bị CLI từ chối cho đến khi bạn bật **Cho phép thay đổi** trong phần chi tiết của trang web đó; tắt lại sẽ hủy các phê duyệt đang chờ. Công tắc và nút phê duyệt chỉ có trong bảng điều khiển, và bảng điều khiển chỉ cấp phiên cho địa chỉ mà `hycli dashboard` mở, nên một tác nhân gọi Hycli không thể bật thay đổi hay tự phê duyệt yêu cầu của mình. Tác nhân có thể chạy bất kỳ lệnh nào dưới quyền người dùng của bạn cũng có thể đọc tệp của bạn; hãy giữ các tác nhân đó dưới các yêu cầu cấp quyền riêng của chúng.
 
 Mỗi lần phê duyệt chỉ áp dụng cho đúng một yêu cầu, hết hạn sau năm phút và chỉ dùng được một lần. Thay đổi đầu vào, tài khoản, thông tin đăng nhập đã lưu hoặc định nghĩa công cụ đã cài sẽ làm mất hiệu lực phê duyệt. Việc thực thi qua CLI, MCP và bảng điều khiển tuân theo cùng một ranh giới. Thao tác ghi không bao giờ được tự động thử lại.
 
@@ -146,7 +148,16 @@ hycli run SITE ACTION --arg query="design systems"
 hycli jobs show JOB_ID --watch
 ```
 
-Với MCP, gửi URL và `intent` cho `hycli_prepare`, rồi theo dõi bằng `hycli_job` hoặc `hycli_result`. `hycli_run` có thể chạy thao tác mới trước khi máy khách làm mới danh sách công cụ. Hãy tìm ID nội bộ bằng các thao tác liệt kê hoặc tìm kiếm liên quan trước.
+Trước khi thử lại một thao tác thất bại, hãy kiểm tra trang web mà không dùng AI:
+
+```sh
+hycli check          # mọi trang web đã cài đặt
+hycli check SITE
+```
+
+Quá trình chuẩn bị ghi lại theo thứ tự các lần đọc đã thành công, kể cả những lần chuyển mã định danh của kết quả trước cho lần đọc sau. `hycli check` chạy lại chúng, trước tiên xác nhận danh tính của tài khoản đã lưu. Kết quả phân biệt `signed_out` (kết nối lại tài khoản) với `site_changed` (tài khoản dùng được nhưng phản hồi không còn khớp; hãy yêu cầu sửa chữa), cùng với `blocked` và `unreachable`. Lệnh này không bao giờ chạy thay đổi, và mã thoát theo kết quả. Máy khách MCP nhận được cùng phép kiểm tra này dưới tên `hycli_check`.
+
+Với MCP, gửi URL và `intent` cho `hycli_prepare`, rồi theo dõi bằng `hycli_job` hoặc `hycli_result`. `hycli_run` có thể chạy thao tác mới trước khi máy khách làm mới danh sách công cụ. Hãy tìm ID nội bộ bằng các thao tác liệt kê hoặc tìm kiếm liên quan trước. Các công cụ `hycli_result`, `hycli_check` và `hycli_activity` vẫn khả dụng ở cả hai chế độ, để AI của bạn theo dõi ghi chú công việc, tiến độ và kết quả đã phê duyệt, đồng thời phân biệt phiên đăng nhập hết hạn với trang web đã thay đổi.
 
 Thao tác thay đổi trả về một phiếu để duyệt trên bảng điều khiển. Theo dõi kết quả của phiếu đó thay vì gửi lại yêu cầu. Lần đọc thất bại hoặc phản hồi không như dự kiến cũng tạo trạng thái lỗi trong CLI.
 

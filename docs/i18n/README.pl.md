@@ -2,7 +2,7 @@
 <img src="../../docs/brand/concepts/hycli-shima-banner-v4.png" alt="Hycli — Strony gotowe do pracy z AI." width="100%" />
 </p>
 
-<p align="center"><strong>Zamień strony internetowe w narzędzia dla swojego AI.</strong></p>
+<p align="center"><strong>Automatyzuj dowolną stronę.</strong></p>
 
 <p align="center">
 <a href="#get-started">Pierwsze kroki</a> · <a href="#what-your-ai-can-do">Co może robić Twoje AI</a> · <a href="#ai-connections">Połączenia z AI</a> · <a href="#use-hycli-with-your-ai">Używaj z AI</a>
@@ -58,14 +58,16 @@ Trzej niezależni agenci AI zajmują się odczytem i wyszukiwaniem, przydatnymi 
 </p>
 <p align="center"><sub>Trzech workerów. Jeden bardzo zapracowany ptaszek.</sub></p>
 
-Przygotowanie opiera się na informacjach faktycznie dostępnych na stronie: dokumentacji, do której prowadzą odnośniki, schematach API, opublikowanym kodzie JavaScript i strukturach żądań zaobserwowanych przez dodatek do przeglądarki. Aby sprawdzić operację, Hycli może wykonywać odczyty w ograniczonym zakresie. Nie tworzy rekordów testowych, nie edytuje treści, nie usuwa obiektów, nie zgaduje długich list adresów API i nie wysyła losowych danych testowych do działającego serwera.
+Przygotowanie opiera się na informacjach faktycznie dostępnych na stronie: dokumentacji, do której prowadzą odnośniki, schematach API, opublikowanym kodzie JavaScript i strukturach żądań zaobserwowanych przez dodatek do przeglądarki. Po zaplanowanych przepływach pracy agenci przechodzą przez każdą udokumentowaną operację API, która nie ma jeszcze działania, aż każda zostanie zaimplementowana albo zgłoszona z uzasadnieniem; pole `coverage` zadania wymienia to, co zostało. Aby sprawdzić operację, Hycli może wykonywać odczyty w ograniczonym zakresie. Nie tworzy rekordów testowych, nie edytuje treści, nie usuwa obiektów, nie zgaduje długich list adresów API i nie wysyła losowych danych testowych do działającego serwera.
 
 | Działanie | Zachowanie |
 | --- | --- |
 | Odczyt lub wyszukiwanie | Wykonywane samodzielnie, jeśli operacja ma potwierdzenie w dostępnych danych i została zaklasyfikowana jako odczyt. |
-| Tworzenie, wysyłanie, edycja lub usuwanie | Wyświetla stronę, konto, działanie i ustalone dane wejściowe do zatwierdzenia przez użytkownika. |
+| Tworzenie, wysyłanie, edycja lub usuwanie | Wyłączone, dopóki nie zezwolisz na zmiany dla danej strony. Potem wyświetla stronę, konto, działanie i ustalone dane wejściowe do twojego zatwierdzenia. |
 | Niejasny skutek | Wymaga sprawdzenia przed wysłaniem żądania. |
 | Uwierzytelnianie, dodatkowa weryfikacja lub limit żądań | Wstrzymuje odpowiednie żądania i pozwala ponownie się połączyć lub poczekać. |
+
+Każda strona zaczyna w trybie tylko do odczytu. Jej działania zmieniające dane są ukryte przed MCP i odrzucane przez CLI, dopóki nie włączysz **Zezwalaj na zmiany** w szczegółach tej strony; ponowne wyłączenie anuluje oczekujące zatwierdzenia. Przełącznik i przycisk zatwierdzenia istnieją tylko w panelu, a panel przyznaje swoją sesję wyłącznie adresowi otwieranemu przez `hycli dashboard`, więc agent wywołujący Hycli nie może włączyć zmian ani zatwierdzić własnego żądania. Agent, który może uruchamiać dowolne polecenia jako twój użytkownik, może też czytać twoje pliki; pozostaw takich agentów pod ich własnymi monitami o uprawnienia.
 
 Zgoda dotyczy jednego konkretnego żądania, wygasa po pięciu minutach i może zostać wykorzystana tylko raz. Zmiana danych wejściowych, konta, zapisanych danych logowania lub zainstalowanej definicji narzędzia ją unieważnia. Ta sama zasada obowiązuje w CLI, MCP i panelu. Operacje zapisu nigdy nie są automatycznie ponawiane.
 
@@ -139,7 +141,16 @@ hycli run SITE ACTION --arg query="design systems"
 hycli jobs show JOB_ID --watch
 ```
 
-W MCP przekaż adres i `intent` do `hycli_prepare`, a następnie śledź zadanie przez `hycli_job` lub `hycli_result`. `hycli_run` wykonuje nowe działania jeszcze przed odświeżeniem listy narzędzi przez klienta. Wewnętrzne identyfikatory wyszukuj najpierw przez powiązane działania listowania lub wyszukiwania.
+Zanim ponowisz nieudane działanie, sprawdź stronę bez AI:
+
+```sh
+hycli check          # każda zainstalowana strona
+hycli check SITE
+```
+
+Przygotowanie zapisuje po kolei odczyty, które się powiodły, także te, które przekazują identyfikator wcześniejszego wyniku do następnego. `hycli check` odtwarza je, najpierw potwierdzając tożsamość zapisanego konta. Werdykt odróżnia `signed_out` (połącz konto ponownie) od `site_changed` (konto działa, ale odpowiedzi już się nie zgadzają; poproś o naprawę), a poza tym są `blocked` i `unreachable`. Nigdy nie wykonuje zmiany, a kod wyjścia odpowiada werdyktowi. Klienci MCP dostają to samo sprawdzenie jako `hycli_check`.
+
+W MCP przekaż adres i `intent` do `hycli_prepare`, a następnie śledź zadanie przez `hycli_job` lub `hycli_result`. `hycli_run` wykonuje nowe działania jeszcze przed odświeżeniem listy narzędzi przez klienta. Wewnętrzne identyfikatory wyszukuj najpierw przez powiązane działania listowania lub wyszukiwania. Narzędzia `hycli_result`, `hycli_check` i `hycli_activity` pozostają dostępne w obu trybach, dzięki czemu twoje AI może śledzić notatki z pracy, postęp i zatwierdzone wyniki oraz odróżnić wygasłe logowanie od zmienionej strony.
 
 Zmiany zwracają potwierdzenie do sprawdzenia w panelu. Śledź wynik bez ponawiania żądania. Nieudany odczyt lub nieoczekiwana odpowiedź oznacza również błąd CLI.
 

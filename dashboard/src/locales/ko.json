@@ -1,5 +1,5 @@
 {
-  "app.tagline": "AI가 사용할 웹사이트 도구.",
+  "app.tagline": "어떤 웹사이트든 자동화하세요.",
   "nav.websites": "웹사이트",
   "nav.activity": "활동",
   "nav.connections": "AI 연결",
@@ -494,5 +494,11 @@
   "activity.note.workflow_planned": "사용자에게 필요한 결과와 이를 완수할 단계를 정했습니다.",
   "activity.note.workflow_review": "모든 작업 단계와 필수 입력, 최종 결과를 확인하고 있습니다.",
   "activity.note.workflow_incomplete": "아직 부족한 단계가 있어 다른 방법을 더 탐색합니다.",
-  "activity.phase.needs_review": "확인 필요"
+  "activity.phase.needs_review": "확인 필요",
+  "sites.allowChanges": "변경 허용",
+  "sites.allowChangesHint": "끄면 AI와 CLI는 이 웹사이트를 읽기만 할 수 있습니다. 켜도 모든 변경은 여기서 승인해야 실행됩니다.",
+  "sites.changesOff": "변경 꺼짐",
+  "errors.writes_disabled": "이 웹사이트는 변경이 꺼져 있습니다. 이 작업을 쓰려면 상세 화면에서 변경 허용을 켜세요.",
+  "errors.launch_required": "이 창을 사용하려면 hycli dashboard 명령으로 Hycli를 여세요.",
+  "activity.note.coverage_incomplete": "문서화된 기능 {count}개에 아직 액션이 없습니다. 추가하는 중입니다."
 }

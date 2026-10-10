@@ -1,5 +1,5 @@
 {
-  "app.tagline": "Websites, klaar voor AI.",
+  "app.tagline": "Automatiseer elke website.",
   "nav.websites": "Websites",
   "nav.activity": "Activiteit",
   "nav.connections": "AI-verbindingen",
@@ -494,5 +494,11 @@
   "activity.note.workflow_planned": "De gewenste resultaten en benodigde stappen zijn bepaald.",
   "activity.note.workflow_review": "Elke stap, vereiste invoer en het eindresultaat worden gecontroleerd.",
   "activity.note.workflow_incomplete": "Er ontbreken nog stappen. Andere aanpakken worden onderzocht.",
-  "activity.phase.needs_review": "Controle nodig"
+  "activity.phase.needs_review": "Controle nodig",
+  "sites.allowChanges": "Wijzigingen toestaan",
+  "sites.allowChangesHint": "Uit: je AI en de CLI kunnen deze website alleen lezen. Aan: elke wijziging wacht nog steeds hier op je goedkeuring.",
+  "sites.changesOff": "wijzigingen uit",
+  "errors.writes_disabled": "Wijzigingen staan uit voor deze website. Zet Wijzigingen toestaan aan in de details om deze actie te gebruiken.",
+  "errors.launch_required": "Open Hycli met het commando hycli dashboard om dit venster te gebruiken.",
+  "activity.note.coverage_incomplete": "{count} gedocumenteerde bewerkingen hebben nog geen actie. Ze worden toegevoegd."
 }

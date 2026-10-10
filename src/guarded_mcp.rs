@@ -25,14 +25,19 @@ impl Server {
         }
         Ok(())
     }
-    fn tools(&self) -> AppResult<Vec<Tool>> {
+    pub(crate) fn tools(&self) -> AppResult<Vec<Tool>> {
         let language = self.core.state.read()?.settings.locale;
         let mut out = vec![];
         for site in self.core.sites(&language)? {
             if self.allowed(&site.id).is_err() {
                 continue;
             }
-            for action in site.actions {
+            // A read-only website offers its change actions to no agent.
+            for action in site
+                .actions
+                .into_iter()
+                .filter(|action| site.writes || action.effect == Effect::Read)
+            {
                 let mut properties = serde_json::Map::new();
                 let mut required = vec![];
                 for input in &action.inputs {
@@ -84,6 +89,10 @@ impl Server {
             json!({"type":"object","properties":{"id":{"type":"string","description":"Job ID or approval ID returned by a website action"}},"required":["id"],"additionalProperties":false}),
         )?;
         out.push(Tool::new("hycli_result","Read a website action's status and sanitized result, including after the user approves it in the dashboard.",Arc::new(result_schema)).with_annotations(ToolAnnotations::new().read_only(true).destructive(false).idempotent(true).open_world(false)));
+        let check_schema: JsonObject = serde_json::from_value(
+            json!({"type":"object","properties":{"site":{"type":"string","description":"Installed website ID; omit to check every website"}},"additionalProperties":false}),
+        )?;
+        out.push(Tool::new("hycli_check","Replay each website's recorded reads without AI. Tells an expired sign-in (verdict signed_out: ask the user to reconnect) apart from a changed website (site_changed: request a repair) before you retry anything. Never runs a change.",Arc::new(check_schema)).with_annotations(ToolAnnotations::new().read_only(true).destructive(false).idempotent(true).open_world(true)));
         out.push(Tool::new("hycli_activity", "Read current work, completed stages, agent status and plain-language work notes. No credential values or raw request details.", Arc::new(serde_json::from_value(json!({"type":"object","properties":{},"additionalProperties":false}))?)).with_annotations(ToolAnnotations::new().read_only(true).destructive(false).idempotent(true).open_world(false)));
         if !self.sites_only {
             out.push(Tool::new("hycli_run", "Run an installed website action by ID, including actions prepared during this connection. Inspect hycli_sites for typed inputs. Reads run immediately; changes return a receipt for the user to review in the dashboard.", Arc::new(serde_json::from_value(json!({"type":"object","properties":{"site":{"type":"string"},"action":{"type":"string"},"inputs":{"type":"object","additionalProperties":true},"account":{"type":"string","description":"Optional saved website account ID; omit to use the selected account"}},"required":["site","action"],"additionalProperties":false}))?)).with_annotations(ToolAnnotations::new().read_only(false).destructive(true).idempotent(false).open_world(true)));
@@ -151,6 +160,25 @@ impl Server {
                 })
                 .collect();
             return Ok(json!(jobs));
+        }
+        if name == "hycli_check" {
+            let mut sites: Vec<_> = self
+                .core
+                .specs()?
+                .into_iter()
+                .map(|sp| sp.site.name)
+                .filter(|id| self.allowed(id).is_ok())
+                .collect();
+            if !get("site").is_empty() {
+                self.allowed(get("site"))?;
+                self.core.spec(get("site"))?;
+                sites = vec![get("site").to_string()];
+            }
+            let mut out = vec![];
+            for site in sites {
+                out.push(self.core.check_site(&site).await?);
+            }
+            return Ok(json!(out));
         }
         if name == "hycli_result" {
             let id = get("id");

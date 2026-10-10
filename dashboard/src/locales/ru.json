@@ -1,5 +1,5 @@
 {
-  "app.tagline": "Сайты, готовые к работе с ИИ.",
+  "app.tagline": "Автоматизируйте любой сайт.",
   "nav.websites": "Сайты",
   "nav.activity": "История",
   "nav.connections": "Подключения ИИ",
@@ -494,5 +494,11 @@
   "activity.note.workflow_planned": "Определены нужные результаты и шаги для их достижения.",
   "activity.note.workflow_review": "Проверяем каждый шаг, необходимые данные и конечный результат.",
   "activity.note.workflow_incomplete": "Некоторых шагов не хватает. Исследуем другие способы.",
-  "activity.phase.needs_review": "Нужна проверка"
+  "activity.phase.needs_review": "Нужна проверка",
+  "sites.allowChanges": "Разрешить изменения",
+  "sites.allowChangesHint": "Выкл.: ваш ИИ и CLI могут только читать этот сайт. Вкл.: каждое изменение всё равно ждёт вашего одобрения здесь.",
+  "sites.changesOff": "изменения выключены",
+  "errors.writes_disabled": "Изменения для этого сайта выключены. Включите «Разрешить изменения» в подробностях, чтобы использовать это действие.",
+  "errors.launch_required": "Откройте Hycli командой hycli dashboard, чтобы использовать это окно.",
+  "activity.note.coverage_incomplete": "У {count} документированных операций ещё нет действий. Добавляем."
 }

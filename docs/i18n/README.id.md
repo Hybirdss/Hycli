@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <strong>Ubah situs web menjadi alat yang dapat digunakan AI Anda.</strong>
+  <strong>Otomatiskan situs web apa pun.</strong>
 </p>
 
 <p align="center">
@@ -65,14 +65,16 @@ Tiga agen AI independen menangani pembacaan dan pencarian, alur kerja yang bergu
 </p>
 <p align="center"><sub>Tiga pekerja. Seekor burung kecil yang sangat sibuk.</sub></p>
 
-Persiapan mengikuti informasi yang benar-benar tersedia dari situs web: dokumentasi tertaut, skema API, JavaScript yang dipublikasikan, dan struktur permintaan yang diamati ekstensi pendamping peramban. Hycli dapat melakukan pembacaan terbatas untuk memeriksa operasi. Ia tidak membuat catatan uji, mengedit konten, menghapus objek, menebak daftar besar endpoint, atau melakukan fuzzing pada server aktif.
+Persiapan mengikuti informasi yang benar-benar tersedia dari situs web: dokumentasi tertaut, skema API, JavaScript yang dipublikasikan, dan struktur permintaan yang diamati ekstensi pendamping peramban. Setelah alur kerja yang direncanakan, para pekerja terus menelusuri setiap operasi API terdokumentasi yang belum memiliki tindakan, sampai masing-masing diimplementasikan atau dilaporkan beserta alasannya; `coverage` pada tugas mencantumkan apa yang tersisa. Hycli dapat melakukan pembacaan terbatas untuk memeriksa operasi. Ia tidak membuat catatan uji, mengedit konten, menghapus objek, menebak daftar besar endpoint, atau melakukan fuzzing pada server aktif.
 
 | Tindakan | Perilaku |
 | --- | --- |
 | Membaca atau mencari | Berjalan secara mandiri jika operasi didukung bukti dan diklasifikasikan sebagai pembacaan. |
-| Membuat, mengirim, mengedit, atau menghapus | Menampilkan situs web, akun, tindakan, dan nilai masukan yang telah ditentukan untuk disetujui pengguna. |
+| Membuat, mengirim, mengedit, atau menghapus | Nonaktif sampai Anda mengizinkan perubahan untuk situs web itu. Setelah itu menampilkan situs web, akun, tindakan, dan nilai masukan yang telah ditentukan untuk Anda setujui. |
 | Dampak tidak jelas | Memerlukan peninjauan sebelum permintaan dikirim. |
 | Autentikasi, tantangan verifikasi, atau batas permintaan | Menjeda permintaan yang terdampak agar Anda dapat menghubungkan ulang atau menunggu. |
+
+Setiap situs web dimulai dalam mode hanya-baca. Tindakan perubahannya disembunyikan dari MCP dan ditolak oleh CLI sampai Anda mengaktifkan **Izinkan perubahan** di detail situs web tersebut; menonaktifkannya kembali membatalkan persetujuan yang tertunda. Sakelar dan tombol persetujuan hanya ada di dasbor, dan dasbor hanya memberikan sesinya kepada alamat yang dibuka oleh `hycli dashboard`, sehingga agen yang memanggil Hycli tidak dapat mengaktifkan perubahan atau menyetujui permintaannya sendiri. Agen yang dapat menjalankan perintah apa pun sebagai pengguna Anda juga dapat membaca berkas Anda; biarkan agen semacam itu tetap berada di bawah permintaan izinnya sendiri.
 
 Persetujuan berlaku untuk tepat satu permintaan, kedaluwarsa setelah lima menit, dan hanya dapat digunakan sekali. Perubahan masukan, akun, informasi login tersimpan, atau definisi alat terpasang membatalkannya. Eksekusi melalui CLI, MCP, dan dasbor menggunakan batas yang sama. Operasi tulis tidak pernah dicoba ulang secara otomatis.
 
@@ -146,7 +148,16 @@ hycli run SITE ACTION --arg query="design systems"
 hycli jobs show JOB_ID --watch
 ```
 
-Di MCP, kirim URL dan `intent` ke `hycli_prepare`, lalu ikuti tugas dengan `hycli_job` atau `hycli_result`. `hycli_run` dapat menjalankan tindakan baru sebelum klien menyegarkan daftar alat. Cari ID internal melalui tindakan daftar atau pencarian terkait terlebih dahulu.
+Sebelum mencoba ulang tindakan yang gagal, periksa situs web tanpa AI:
+
+```sh
+hycli check          # setiap situs web terpasang
+hycli check SITE
+```
+
+Persiapan mencatat pembacaan yang berhasil secara berurutan, termasuk pembacaan yang meneruskan pengenal hasil sebelumnya ke pembacaan berikutnya. `hycli check` memutar ulang semuanya, dengan lebih dulu memastikan identitas akun yang tersimpan. Hasil pemeriksaan membedakan `signed_out` (hubungkan ulang akun) dari `site_changed` (akun berfungsi tetapi respons tidak lagi cocok; minta perbaikan), ditambah `blocked` dan `unreachable`. Pemeriksaan ini tidak pernah menjalankan perubahan, dan status keluar mengikuti hasilnya. Klien MCP mendapat pemeriksaan yang sama sebagai `hycli_check`.
+
+Di MCP, kirim URL dan `intent` ke `hycli_prepare`, lalu ikuti tugas dengan `hycli_job` atau `hycli_result`. `hycli_run` dapat menjalankan tindakan baru sebelum klien menyegarkan daftar alat. Cari ID internal melalui tindakan daftar atau pencarian terkait terlebih dahulu. Alat `hycli_result`, `hycli_check`, dan `hycli_activity` tetap tersedia di kedua mode, sehingga AI Anda dapat mengikuti catatan kerja, kemajuan, dan hasil yang disetujui, serta membedakan sesi masuk yang kedaluwarsa dari situs web yang berubah.
 
 Tindakan perubahan mengembalikan tanda terima untuk ditinjau di dasbor. Ikuti hasilnya tanpa mengulangi permintaan. Pembacaan gagal atau respons yang tidak sesuai juga menghasilkan kegagalan di CLI.
 

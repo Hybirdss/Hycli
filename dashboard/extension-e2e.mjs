@@ -15,7 +15,7 @@ browser.setDefaultTimeout(120000);
 try {
  console.log('Isolated browser started.');
  const worker=browser.serviceWorkers()[0]||await browser.waitForEvent('serviceworker',{timeout:60000});const id=new URL(worker.url()).host;
- const session=await fetch(ports.dashboard+'/api/session');const cookie=session.headers.get('set-cookie').split(';')[0];const csrf=(await session.json()).csrf;
+ const session=await fetch(ports.dashboard+'/api/session?launch='+ports.launch);const cookie=session.headers.get('set-cookie').split(';')[0];const csrf=(await session.json()).csrf;
  const request=async(route,body)=>{const r=await fetch(ports.dashboard+route,{method:body?'POST':'GET',headers:{cookie,'x-hycli-csrf':csrf,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});assert.equal(r.status,200);return r.json();};
  console.log('Companion service worker ready.');
  const pair=await request('/api/accounts/pair',{site_id:'library',url:ports.website});
