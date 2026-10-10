@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <strong>Maak van websites tools die je AI kan gebruiken.</strong>
+  <strong>Automatiseer elke website.</strong>
 </p>
 
 <p align="center">
@@ -32,6 +32,8 @@ Voeg een website toe. Hycli bereidt acties voor die je AI kan gebruiken en legt 
 <p align="center"><sub>Voorbeeldwerkruimte met voorbeeldtools en -accounts.</sub></p>
 
 <a id="get-started"></a>
+Voer een domein in en eventueel een doel in het veld ernaast. De AI begrijpt eerst de website en kiest nuttige werkprocessen. Daarna controleert ze de voorwaarden, invoer en eindresultaten. Bij ontbrekende stappen blijft de website gemarkeerd voor controle.
+
 ## Aan de slag
 
 **[Downloaden v0.1.0 · Linux x64](https://github.com/Hybirdss/Hycli/releases/tag/v0.1.0)** · glibc ≥ 2.39 · [SHA-256](https://github.com/Hybirdss/Hycli/releases/download/v0.1.0/hycli-0.1.0-linux-x64.tar.gz.sha256)
@@ -63,14 +65,16 @@ Drie onafhankelijke AI-agenten verzorgen leesacties en zoekopdrachten, nuttige w
 </p>
 <p align="center"><sub>Drie workers. Eén heel druk vogeltje.</sub></p>
 
-De voorbereiding gebruikt informatie die daadwerkelijk op de website beschikbaar is: gekoppelde documentatie, API-schema's, gepubliceerde JavaScript en verzoekstructuren die de browserextensie waarneemt. Er kunnen beperkte leesacties worden uitgevoerd om een bewerking te controleren. Er worden geen testrecords aangemaakt, inhoud bewerkt, objecten verwijderd, lange lijsten met endpoints geraden of fuzzingtests op een actieve server uitgevoerd.
+De voorbereiding gebruikt informatie die daadwerkelijk op de website beschikbaar is: gekoppelde documentatie, API-schema's, gepubliceerde JavaScript en verzoekstructuren die de browserextensie waarneemt. Na de geplande workflows blijven de workers elke gedocumenteerde API-bewerking doorlopen die nog geen actie heeft, tot elke bewerking is geïmplementeerd of met reden is gemeld; de `coverage` van de taak toont wat er nog openstaat. Er kunnen beperkte leesacties worden uitgevoerd om een bewerking te controleren. Er worden geen testrecords aangemaakt, inhoud bewerkt, objecten verwijderd, lange lijsten met endpoints geraden of fuzzingtests op een actieve server uitgevoerd.
 
 | Actie | Gedrag |
 | --- | --- |
 | Lezen of zoeken | Wordt zelfstandig uitgevoerd wanneer de bewerking door bewijs wordt ondersteund en als leesactie is geclassificeerd. |
-| Aanmaken, verzenden, bewerken of verwijderen | Toont de website, het account, de actie en de ingevulde invoerwaarden ter goedkeuring door de gebruiker. |
+| Aanmaken, verzenden, bewerken of verwijderen | Uit totdat je wijzigingen voor die website toestaat. Daarna toont het de website, het account, de actie en de ingevulde invoerwaarden ter goedkeuring door jou. |
 | Onduidelijk effect | Vereist controle voordat het verzoek wordt verzonden. |
 | Authenticatie, beveiligingscontrole of verzoeklimiet | Pauzeert de betreffende verzoeken en laat je opnieuw verbinden of wachten. |
+
+Elke website begint alleen-lezen. De wijzigende acties zijn verborgen voor MCP en worden door de CLI geweigerd totdat je **Wijzigingen toestaan** inschakelt in de details van die website; als je het weer uitschakelt, worden openstaande goedkeuringen geannuleerd. De schakelaar en de goedkeuringsknop bestaan alleen in het dashboard, en het dashboard geeft zijn sessie alleen aan het adres dat `hycli dashboard` opent. Een agent die Hycli aanroept kan dus geen wijzigingen inschakelen of zijn eigen verzoek goedkeuren. Een agent die elk commando als jouw gebruiker kan uitvoeren, kan ook je bestanden lezen; houd zulke agents onder hun eigen toestemmingsprompts.
 
 Goedkeuring geldt voor één exact verzoek, verloopt na vijf minuten en kan slechts eenmaal worden gebruikt. Een wijziging in de invoer, het account, de opgeslagen inloggegevens of de geïnstalleerde tooldefinitie maakt de goedkeuring ongeldig. Uitvoering via de CLI, MCP en het dashboard volgt dezelfde regels. Schrijfacties worden nooit automatisch opnieuw geprobeerd.
 
@@ -144,7 +148,16 @@ hycli run SITE ACTION --arg query="design systems"
 hycli jobs show JOB_ID --watch
 ```
 
-Geef in MCP de URL en `intent` door aan `hycli_prepare` en volg de taak met `hycli_job` of `hycli_result`. `hycli_run` kan nieuwe acties uitvoeren voordat de client zijn toollijst vernieuwt. Zoek interne ID’s eerst op via bijbehorende lijst- of zoekacties.
+Controleer de website zonder AI voordat je een mislukte actie opnieuw probeert:
+
+```sh
+hycli check          # elke geïnstalleerde website
+hycli check SITE
+```
+
+De voorbereiding legt de geslaagde leesacties in volgorde vast, ook die waarbij de identificatie van een eerder resultaat aan de volgende wordt doorgegeven. `hycli check` speelt ze opnieuw af en bevestigt eerst de identiteit van het opgeslagen account. De uitkomst onderscheidt `signed_out` (verbind het account opnieuw) van `site_changed` (het account werkt, maar de antwoorden komen niet meer overeen; vraag een reparatie aan), plus `blocked` en `unreachable`. Er wordt nooit een wijziging uitgevoerd, en de afsluitstatus volgt de uitkomst. MCP-clients krijgen dezelfde controle als `hycli_check`.
+
+Geef in MCP de URL en `intent` door aan `hycli_prepare` en volg de taak met `hycli_job` of `hycli_result`. `hycli_run` kan nieuwe acties uitvoeren voordat de client zijn toollijst vernieuwt. Zoek interne ID’s eerst op via bijbehorende lijst- of zoekacties. De hulpmiddelen `hycli_result`, `hycli_check` en `hycli_activity` blijven in beide modi beschikbaar, zodat je AI werknotities, voortgang en goedgekeurde resultaten kan volgen en een verlopen aanmelding kan onderscheiden van een gewijzigde website.
 
 Wijzigingen leveren een ontvangstbewijs op voor beoordeling in het dashboard. Volg het resultaat zonder het verzoek te herhalen. Een mislukte leesactie of onverwacht antwoord leidt ook in de CLI tot een foutstatus.
 

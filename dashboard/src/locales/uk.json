@@ -1,5 +1,5 @@
 {
-  "app.tagline": "Сайти, готові до роботи з ШІ.",
+  "app.tagline": "Автоматизуйте будь-який сайт.",
   "nav.websites": "Сайти",
   "nav.activity": "Історія",
   "nav.connections": "Підключення ШІ",
@@ -484,5 +484,21 @@
   "errors.response_mismatch": "Сайт повернув неочікуваний результат. Підключіть обліковий запис знову або повторно підготуйте сайт.",
   "sites.intentLabel": "Що ви хочете зробити?",
   "sites.intentPlaceholder": "Наприклад, знайти збережені статті та впорядкувати їх за темами",
-  "errors.query_failed": "Сайт не зміг виконати цей запит. Перевірте введені дані або підготуйте сайт знову."
+  "errors.query_failed": "Сайт не зміг виконати цей запит. Перевірте введені дані або підготуйте сайт знову.",
+  "activity.phase.understand": "Вивчити сайт",
+  "activity.stage.understand": "Вивчити сайт",
+  "activity.role.understand": "Вивчити сайт",
+  "activity.phase.review": "Перевірити весь процес",
+  "activity.role.review": "Перевірити весь процес",
+  "activity.note.understanding": "Вивчаємо сайт і вибираємо корисні завдання для повного виконання.",
+  "activity.note.workflow_planned": "Визначено потрібні результати та кроки для їх досягнення.",
+  "activity.note.workflow_review": "Перевіряємо кожен крок, необхідні дані та кінцевий результат.",
+  "activity.note.workflow_incomplete": "Деяких кроків бракує. Досліджуємо інші способи.",
+  "activity.phase.needs_review": "Потрібна перевірка",
+  "sites.allowChanges": "Дозволити зміни",
+  "sites.allowChangesHint": "Вимк.: ваш ШІ та CLI можуть лише читати цей сайт. Увімк.: кожна зміна все одно чекає вашого схвалення тут.",
+  "sites.changesOff": "зміни вимкнено",
+  "errors.writes_disabled": "Зміни для цього сайту вимкнено. Увімкніть «Дозволити зміни» в деталях, щоб використати цю дію.",
+  "errors.launch_required": "Відкрийте Hycli командою hycli dashboard, щоб використовувати це вікно.",
+  "activity.note.coverage_incomplete": "У {count} задокументованих операцій ще немає дій. Додаємо."
 }

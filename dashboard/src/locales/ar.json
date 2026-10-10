@@ -1,5 +1,5 @@
 {
-  "app.tagline": "مواقع جاهزة للذكاء الاصطناعي.",
+  "app.tagline": "أتمت أي موقع ويب.",
   "nav.websites": "المواقع",
   "nav.activity": "النشاط",
   "nav.connections": "اتصالات الذكاء الاصطناعي",
@@ -484,5 +484,21 @@
   "errors.response_mismatch": "أعاد الموقع نتيجة مختلفة عن المتوقع. أعد ربط حسابك أو إعداد الموقع.",
   "sites.intentLabel": "ماذا تود أن تفعل؟",
   "sites.intentPlaceholder": "على سبيل المثال، العثور على المقالات المحفوظة وتنظيمها حسب الموضوع",
-  "errors.query_failed": "تعذّر على الموقع إكمال هذا الاستعلام. تحقّق من المدخلات أو أعِد تجهيز الموقع."
+  "errors.query_failed": "تعذّر على الموقع إكمال هذا الاستعلام. تحقّق من المدخلات أو أعِد تجهيز الموقع.",
+  "activity.phase.understand": "فهم الموقع",
+  "activity.stage.understand": "فهم الموقع",
+  "activity.role.understand": "فهم الموقع",
+  "activity.phase.review": "مراجعة سير العمل",
+  "activity.role.review": "مراجعة سير العمل",
+  "activity.note.understanding": "نفهم الموقع ونختار مسارات عمل مفيدة ومتكاملة.",
+  "activity.note.workflow_planned": "تم تحديد النتائج المطلوبة والخطوات اللازمة لتحقيقها.",
+  "activity.note.workflow_review": "نتحقق من كل خطوة والمدخلات المطلوبة والنتيجة النهائية.",
+  "activity.note.workflow_incomplete": "بعض الخطوات لا تزال ناقصة. نستكشف طرقًا أخرى.",
+  "activity.phase.needs_review": "يلزم التحقق",
+  "sites.allowChanges": "السماح بالتغييرات",
+  "sites.allowChangesHint": "إيقاف: يمكن للذكاء الاصطناعي وCLI قراءة هذا الموقع فقط. تشغيل: كل تغيير ينتظر موافقتك هنا.",
+  "sites.changesOff": "التغييرات متوقفة",
+  "errors.writes_disabled": "التغييرات متوقفة لهذا الموقع. فعّل السماح بالتغييرات في تفاصيله لاستخدام هذا الإجراء.",
+  "errors.launch_required": "افتح Hycli باستخدام الأمر hycli dashboard لاستخدام هذه النافذة.",
+  "activity.note.coverage_incomplete": "لا يوجد إجراء بعد لـ {count} من العمليات الموثقة. جارٍ إضافتها."
 }

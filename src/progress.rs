@@ -46,6 +46,11 @@ impl Job {
             summary
         } else {
             match code {
+                "understanding" => "Understanding the website and selecting useful complete workflows.".into(),
+                "workflow_planned" => "Selected the user outcomes and the steps needed to complete them.".into(),
+                "workflow_review" => "Checking every workflow step, required input and final result.".into(),
+                "workflow_incomplete" => "Some workflow steps are missing. Exploring further approaches.".into(),
+                "coverage_incomplete" => format!("{count} documented operations have no action yet. Adding them."),
                 "environment_checked" => "Checked this device and its available browsers.".into(),
                 "tool_started" => "The agent is trying the next available method.".into(),
                 "tool_completed" => "The method returned a result for the agent to inspect.".into(),

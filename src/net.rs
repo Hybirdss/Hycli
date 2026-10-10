@@ -338,6 +338,20 @@ impl Drop for Lease<'_> {
     }
 }
 
+/// Normalize a user-entered website address. Request and SiteSpec validation
+/// still require an explicit scheme via `validate_url`.
+pub fn website_url(raw: &str) -> AppResult<url::Url> {
+    let raw = raw.trim();
+    let address = if raw.starts_with("//") {
+        format!("https:{raw}")
+    } else if raw.contains("://") {
+        raw.to_owned()
+    } else {
+        format!("https://{raw}")
+    };
+    validate_url(&address)
+}
+
 pub fn validate_url(raw: &str) -> AppResult<url::Url> {
     if raw.len() > 8192 || raw.chars().any(char::is_control) {
         return Err(AppError::api("bad_url", 400));
@@ -422,4 +436,29 @@ pub fn retry_after(headers: &[(String, String)]) -> Option<Duration> {
             .unwrap_or(Duration::from_secs(1))
             .min(Duration::from_secs(86_400))
     })
+}
+
+#[cfg(test)]
+mod website_input_tests {
+    use super::*;
+    #[test]
+    fn website_input_normalizes_domains_without_weakening_request_validation() {
+        assert_eq!(
+            website_url("  blog.naver.com  ").unwrap().as_str(),
+            "https://blog.naver.com/"
+        );
+        assert_eq!(
+            website_url("//example.org/path").unwrap().as_str(),
+            "https://example.org/path"
+        );
+        assert!(validate_url("example.org").is_err());
+        for value in [
+            "",
+            "file:///etc/passwd",
+            "https://user:password@example.org",
+            "javascript:alert(1)",
+        ] {
+            assert!(website_url(value).is_err(), "{value}");
+        }
+    }
 }

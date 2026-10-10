@@ -42,7 +42,9 @@ try{
  if(!assets.length)throw Error('Embedded dashboard assets missing');
  for(const document of ['/guide.html','/license.txt'])if(!(await fetch(base+document)).ok)throw Error('Missing offline documentation: '+document);
  for(const asset of assets)if(!(await fetch(new URL(asset,base))).ok)throw Error(`Embedded asset unavailable: ${asset}`);
- const session=await fetch(base+'/api/session'),cookie=session.headers.get('set-cookie')?.split(';')[0];
+ if((await fetch(base+'/api/session')).status!==401)throw Error('A plain local request minted a dashboard session');
+ const launch=startup.match(/[?&]launch=([A-Za-z0-9]+)/)?.[1];if(!launch)throw Error('Missing launch address: '+startup);
+ const session=await fetch(base+'/api/session?launch='+launch),cookie=session.headers.get('set-cookie')?.split(';')[0];
  if(!cookie)throw Error('Missing local session');
  const state=await (await fetch(base+'/api/state',{headers:{cookie}})).json();
  if(state.sites.length||state.accounts.length)throw Error('Release includes website/account data');

@@ -241,6 +241,6 @@ async fn codex_uses_independent_workers_without_mixing_replies() {
             )
             .await
             .is_err(),
-        "Activity notifications must not enable native tool execution"
+        "Agent delegation must not enable unrelated native tool execution"
     );
 }

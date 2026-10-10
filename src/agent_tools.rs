@@ -387,6 +387,7 @@ mod tests {
         .unwrap();
         drop(db);
         let environment = Environment {
+            discovery_pending: false,
             os: "fixture".into(),
             architecture: "fixture".into(),
             browsers: vec![],

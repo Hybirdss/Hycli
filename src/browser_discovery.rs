@@ -302,7 +302,7 @@ impl Runtime {
         render: bool,
         profiles: Option<Vec<BrowserProfile>>,
     ) -> AppResult<BrowserSearch> {
-        let target = crate::net::validate_url(raw_url)?;
+        let target = crate::net::website_url(raw_url)?;
         if !crate::policy::safe_read_url(&target) {
             return Err(crate::apperr::AppError::api("bad_url", 400));
         }

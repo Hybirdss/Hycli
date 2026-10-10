@@ -15,9 +15,15 @@ Use the connection from **Coding agents → View connection settings**. Its exec
 
 Read and search actions run autonomously through Hycli. Use exact typed inputs and the intended account. MCP `hycli_run` can execute an installed action by site and action ID even when the client has not refreshed its tool list. CLI equivalents are `hycli SITE ACTION --input value` and `hycli run SITE ACTION --arg name=value --account ID`. Discover saved account IDs with `hycli_accounts` or `hycli accounts --site SITE`.
 
+Each website starts read-only. Its change actions are hidden from MCP, and the CLI answers `writes_disabled`. Only the user can turn on **Allow changes** for that website in the dashboard. Tell them which website and action need it, then stop. Never try to enable it, approve a change, or reach the dashboard's local API yourself.
+
 For a change, request the action once. The runtime returns a receipt for the user to review in the dashboard. Keep that receipt and use `hycli_result` to obtain the approved result; do not create duplicate requests while it is pending. An uncertain outcome means the website may already have applied the change. Check its actual state before proposing another attempt.
 
 Use `hycli_activity`, `hycli_result`, or `hycli jobs show ID --watch` to follow work. A timeout while observing a live job does not mean that job failed. Read its status before retrying. Confirm the useful result and explain any remaining missing inputs or capabilities in the user's language.
+
+## Check before retrying
+
+When an action that used to work fails, run `hycli check SITE` or MCP `hycli_check` before you retry or prepare again. It replays the website's recorded reads without AI and never runs a change. `signed_out` means the sign-in expired: ask the user to reconnect the account in the dashboard, and do not prepare again. `site_changed` means the account works but responses no longer match: use `hycli request SITE "Repair the failing reads"`. `blocked` means wait; `unreachable` means check the connection.
 
 ## Adapt from evidence
 

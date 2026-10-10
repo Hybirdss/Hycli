@@ -1,5 +1,5 @@
 {
-  "app.tagline": "让 AI 使用网站工具。",
+  "app.tagline": "自动化任何网站。",
   "nav.websites": "网站",
   "nav.activity": "活动记录",
   "nav.connections": "AI 连接",
@@ -484,5 +484,21 @@
   "errors.response_mismatch": "网站返回了与预期不同的结果。请重新连接账户或重新准备网站。",
   "sites.intentLabel": "您想做什么？",
   "sites.intentPlaceholder": "例如，查找已保存的文章并按主题整理",
-  "errors.query_failed": "网站无法完成此查询。请检查输入内容或重新准备网站。"
+  "errors.query_failed": "网站无法完成此查询。请检查输入内容或重新准备网站。",
+  "activity.phase.understand": "了解网站",
+  "activity.stage.understand": "了解网站",
+  "activity.role.understand": "了解网站",
+  "activity.phase.review": "检查完整流程",
+  "activity.role.review": "检查完整流程",
+  "activity.note.understanding": "正在了解网站并选择有用的完整工作流程。",
+  "activity.note.workflow_planned": "已确定用户需要的结果及完成这些结果所需的步骤。",
+  "activity.note.workflow_review": "正在检查每个步骤、必填输入和最终结果。",
+  "activity.note.workflow_incomplete": "仍有步骤缺失，正在探索其他方法。",
+  "activity.phase.needs_review": "需要检查",
+  "sites.allowChanges": "允许更改",
+  "sites.allowChangesHint": "关闭时，你的 AI 和 CLI 只能读取此网站。开启后，每项更改仍需在此处批准。",
+  "sites.changesOff": "更改已关闭",
+  "errors.writes_disabled": "此网站的更改已关闭。要使用此操作，请在详情中开启“允许更改”。",
+  "errors.launch_required": "请使用 hycli dashboard 命令打开 Hycli 以使用此窗口。",
+  "activity.note.coverage_incomplete": "还有 {count} 个已记录的操作没有对应动作，正在添加。"
 }

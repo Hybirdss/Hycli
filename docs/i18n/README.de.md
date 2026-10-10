@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <strong>Mach Websites zu Werkzeugen, die deine KI nutzen kann.</strong>
+  <strong>Automatisiere jede Website.</strong>
 </p>
 
 <p align="center">
@@ -32,6 +32,8 @@ Füge eine Website hinzu. Hycli bereitet Aktionen vor, die deine KI nutzen kann,
 <p align="center"><sub>Beispiel-Workspace mit Beispiel-Tools und -Konten.</sub></p>
 
 <a id="get-started"></a>
+Geben Sie eine Domain und daneben optional einen Zweck ein. Die KI versteht zuerst die Website und wählt nützliche Abläufe aus. Anschließend prüft sie Voraussetzungen, Eingaben und Endergebnisse. Fehlende Schritte bleiben als prüfbedürftig markiert.
+
 ## Erste Schritte
 
 **[Herunterladen v0.1.0 · Linux x64](https://github.com/Hybirdss/Hycli/releases/tag/v0.1.0)** · glibc ≥ 2.39 · [SHA-256](https://github.com/Hybirdss/Hycli/releases/download/v0.1.0/hycli-0.1.0-linux-x64.tar.gz.sha256)
@@ -63,14 +65,16 @@ Drei unabhängige KI-Agenten kümmern sich um Lesezugriffe und Suche, nützliche
 </p>
 <p align="center"><sub>Drei Worker. Ein sehr beschäftigtes kleines Vögelchen.</sub></p>
 
-Die Vorbereitung nutzt tatsächlich verfügbare Informationen der Website: verlinkte Dokumentation, API-Schemata, veröffentlichtes JavaScript und von der Browser-Erweiterung beobachtete Anfragestrukturen. Sie kann begrenzte Lesezugriffe durchführen, um eine Operation zu prüfen. Dabei werden keine Testdatensätze erstellt, Inhalte bearbeitet, Objekte gelöscht, lange Listen von Endpunkten erraten oder Fuzzing-Tests auf einem laufenden Server ausgeführt.
+Die Vorbereitung nutzt tatsächlich verfügbare Informationen der Website: verlinkte Dokumentation, API-Schemata, veröffentlichtes JavaScript und von der Browser-Erweiterung beobachtete Anfragestrukturen. Nach den geplanten Workflows arbeiten die KI-Agenten jede dokumentierte API-Operation ohne Aktion ab, bis jede umgesetzt oder mit Begründung gemeldet ist; das `coverage` des Auftrags listet auf, was noch offen ist. Sie kann begrenzte Lesezugriffe durchführen, um eine Operation zu prüfen. Dabei werden keine Testdatensätze erstellt, Inhalte bearbeitet, Objekte gelöscht, lange Listen von Endpunkten erraten oder Fuzzing-Tests auf einem laufenden Server ausgeführt.
 
 | Aktion | Verhalten |
 | --- | --- |
 | Lesen oder suchen | Wird selbstständig ausgeführt, wenn die Operation durch Belege gestützt und als Lesezugriff eingestuft ist. |
-| Erstellen, senden, bearbeiten oder löschen | Zeigt Website, Konto, Aktion und aufgelöste Eingabewerte zur Freigabe durch den Nutzer an. |
+| Erstellen, senden, bearbeiten oder löschen | Ist aus, bis du Änderungen für diese Website erlaubst. Danach zeigt es Website, Konto, Aktion und aufgelöste Eingabewerte zur Freigabe durch dich an. |
 | Unklare Wirkung | Erfordert eine Prüfung, bevor die Anfrage gesendet wird. |
 | Authentifizierung, Sicherheitsprüfung oder Anfragelimit | Pausiert betroffene Anfragen und lässt dich erneut verbinden oder warten. |
+
+Jede Website startet schreibgeschützt. Ihre Änderungsaktionen sind in MCP ausgeblendet und werden von der CLI abgelehnt, bis du in den Details der Website **Änderungen erlauben** einschaltest; beim Ausschalten werden offene Freigaben abgebrochen. Der Schalter und die Freigabe-Schaltfläche existieren nur im Dashboard, und das Dashboard erteilt seine Sitzung nur der Adresse, die `hycli dashboard` öffnet. Ein Agent, der Hycli aufruft, kann Änderungen also weder einschalten noch seine eigene Anfrage freigeben. Ein Agent, der beliebige Befehle als dein Nutzer ausführen kann, kann auch deine Dateien lesen; lass solche Agenten bei ihren eigenen Rückfragen zur Berechtigung.
 
 Eine Freigabe gilt für genau eine Anfrage, läuft nach fünf Minuten ab und kann nur einmal verwendet werden. Änderungen an Eingaben, Konto, gespeicherten Anmeldedaten oder installierter Werkzeugdefinition machen sie ungültig. Ausführungen über CLI, MCP und Dashboard unterliegen denselben Regeln. Schreibzugriffe werden niemals automatisch wiederholt.
 
@@ -144,7 +148,16 @@ hycli run SITE ACTION --arg query="design systems"
 hycli jobs show JOB_ID --watch
 ```
 
-Übergib in MCP die URL und `intent` an `hycli_prepare` und verfolge den Auftrag mit `hycli_job` oder `hycli_result`. `hycli_run` führt neue Aktionen auch aus, bevor der Client seine Werkzeugliste aktualisiert hat. Ermittle interne IDs zuerst über passende Listen- oder Suchaktionen.
+Prüfe die Website ohne KI, bevor du eine fehlgeschlagene Aktion wiederholst:
+
+```sh
+hycli check          # jede installierte Website
+hycli check SITE
+```
+
+Die Vorbereitung zeichnet die erfolgreichen Lesezugriffe der Reihe nach auf, auch solche, die die Kennung eines früheren Ergebnisses an den nächsten weitergeben. `hycli check` spielt sie erneut ab und bestätigt zuerst die Identität des gespeicherten Kontos. Das Ergebnis unterscheidet `signed_out` (Konto erneut verbinden) von `site_changed` (das Konto funktioniert, aber die Antworten passen nicht mehr; Reparatur anfordern) sowie `blocked` und `unreachable`. Es führt nie eine Änderung aus, und der Exit-Status folgt dem Ergebnis. MCP-Clients erhalten dieselbe Prüfung als `hycli_check`.
+
+Übergib in MCP die URL und `intent` an `hycli_prepare` und verfolge den Auftrag mit `hycli_job` oder `hycli_result`. `hycli_run` führt neue Aktionen auch aus, bevor der Client seine Werkzeugliste aktualisiert hat. Ermittle interne IDs zuerst über passende Listen- oder Suchaktionen. `hycli_result`, `hycli_check` und `hycli_activity` bleiben in beiden Modi verfügbar, damit deine KI Arbeitsnotizen, Fortschritt und freigegebene Ergebnisse verfolgen und eine abgelaufene Anmeldung von einer geänderten Website unterscheiden kann.
 
 Änderungen liefern einen Beleg zur Prüfung im Dashboard. Verfolge dessen Ergebnis, ohne die Anfrage erneut zu senden. Fehlgeschlagene Lesezugriffe und unerwartete Antworten führen auch in der CLI zu einem Fehlerstatus.
 

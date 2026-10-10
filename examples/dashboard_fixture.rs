@@ -1,6 +1,7 @@
 //! End-to-end test service. All accounts, keys and writes are synthetic.
 use axum::{
     Json, Router,
+    extract::Path as RoutePath,
     http::{HeaderMap, StatusCode},
     response::IntoResponse,
     routing::{get, post},
@@ -36,8 +37,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let intent_count = intent_prompts.clone();
     let site=Router::new().route("/",get(||async{axum::response::Html("<html><head><title>Research library</title><link rel='icon' href='/favicon.svg'></head><body><h1>Research library</h1><p>Search and save reference material.</p><a href='/docs/openapi.json'>API documentation</a></body></html>")}))
       .route("/favicon.svg",get(|headers:HeaderMap|async move {if headers.get("sec-fetch-dest").and_then(|v|v.to_str().ok()) != Some("image") { assert!(headers.get("cookie").is_none(), "Broker image fetch must be anonymous"); } ([ ("content-type", "image/svg+xml") ], r##"<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#294c3d"/><path d="M15 18h15v29H15zm19 0h15v29H34z" fill="#fafaf7"/></svg>"##)}))
-      .route("/docs/openapi.json",get(||async{Json(json!({"openapi":"3.1.0","info":{"title":"Research library","version":"1"},"paths":{"/articles":{"get":{"operationId":"find-articles","summary":"Search articles"}},"/tasks":{"post":{"operationId":"create-task","summary":"Create a task","requestBody":{"content":{"application/json":{"schema":{"type":"object","properties":{"title":{"type":"string"}},"required":["title"]}}}}}},"/account":{"get":{"operationId":"read-account","summary":"Read the current account"}}}}))}))
-      .route("/articles",get(||async{Json(json!({"items":[{"title":"Learning to observe","collection":"Research","saved":true},{"title":"A quieter workflow","collection":"Design","saved":false}],"token":"synthetic-response-secret"}))}))
+      .route("/docs/openapi.json",get(||async{Json(json!({"openapi":"3.1.0","info":{"title":"Research library","version":"1"},"paths":{"/articles/{id}":{"get":{"operationId":"read-article","parameters":[{"in":"path","name":"id","required":true,"schema":{"type":"string"}}]}},"/articles":{"get":{"operationId":"find-articles","summary":"Search articles"}},"/tasks":{"post":{"operationId":"create-task","summary":"Create a task","requestBody":{"content":{"application/json":{"schema":{"type":"object","properties":{"title":{"type":"string"}},"required":["title"]}}}}}},"/account":{"get":{"operationId":"read-account","summary":"Read the current account"}}}}))}))
+      .route("/articles/{id}",get(|RoutePath(id):RoutePath<String>|async move { if id != "ref-1" { return (StatusCode::NOT_FOUND,Json(json!({"error":"unknown article"}))); } (StatusCode::OK,Json(json!({"id":id,"title":"Learning to observe","content":"Observe actual behavior before choosing the next design task."}))) }))
+      .route("/articles",get(||async{Json(json!({"items":[{"id":"ref-1","title":"Learning to observe","collection":"Research","saved":true},{"title":"A quieter workflow","collection":"Design","saved":false}],"token":"synthetic-response-secret"}))}))
       .route("/tasks",post(move|Json(body):Json<Value>|{let c=write_count.clone();async move{c.fetch_add(1,Ordering::SeqCst);Json(json!({"created":true,"title":body["title"],"id":42}))}}))
       .route("/account",get(|headers:HeaderMap|async move{if headers.get("cookie").and_then(|v|v.to_str().ok()).is_some_and(|v|v.contains("session=synthetic-browser-secret")){(StatusCode::OK,Json(json!({"user":{"id":"mina","name":"Mina Kim","email":"mina@example.com"},"csrf":"synthetic-csrf-secret"})))}else{(StatusCode::UNAUTHORIZED,Json(json!({"error":"sign in"})))}}))
       .route("/key-items",get(|headers:HeaderMap|async move {
@@ -61,10 +63,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let api=Router::new().route("/models",get(||async{Json(json!({"data":[{"id":"fixture-model"}]}))})).route("/responses",post(move|Json(body):Json<Value>|{let website=source_url.clone();let calls=provider_calls.clone();let secrets=secret_prompts.clone();let intent=intent_prompts.clone();let fail=fail_summary.clone();let delay=delay_ai_ms.clone();async move{
         calls.fetch_add(1,Ordering::SeqCst);let prompt=body.pointer("/input/1/content").and_then(Value::as_str).unwrap_or("");if ["synthetic-browser-secret","synthetic-csrf-secret","synthetic-response-secret","synthetic-provider-key","synthetic-website-key"].iter().any(|s|prompt.contains(s)){secrets.fetch_add(1,Ordering::SeqCst);}
         let input:Value=serde_json::from_str(prompt).unwrap_or(Value::Null);
+        let website=input["base_url"].as_str().unwrap_or(&website).to_owned();
         if input["intended_outcome"]=="Find references about design" { intent.fetch_add(1,Ordering::SeqCst); }
         tokio::time::sleep(std::time::Duration::from_millis(delay.load(Ordering::SeqCst))).await;
         if input.get("result").is_some() && fail.load(Ordering::SeqCst) { return (StatusCode::SERVICE_UNAVAILABLE,Json(json!({"error":{"message":"Synthetic summary failure"}}))).into_response(); }
-        let text=if input.get("output_contract").is_some(){if !input["sources"].as_array().is_some_and(|sources|sources.iter().any(|source|source["kind"]=="API documentation")){json!({"read_urls":[format!("{website}/docs/openapi.json")]}).to_string()}else if !input["sources"].as_array().is_some_and(|sources| sources.iter().any(|source| source["content"]["tool"]=="web.read" && source["content"]["result"]["error"]=="unsupported_evidence")) { json!({"calls":[{"tool":"web.read","arguments":{"url":format!("{website}/not-published")}}]}).to_string() } else if !input["sources"].as_array().is_some_and(|sources| sources.iter().any(|source| source["content"]["tool"]=="evidence.search" && source["content"]["result"]["source_url"]==format!("{website}/docs/openapi.json"))) { json!({"calls":[{"tool":"evidence.search","arguments":{"source_url":format!("{website}/docs/openapi.json"),"query":"/articles"}}]}).to_string() } else{let id=input["site_id"].as_str().unwrap_or("library");let mut spec=fixture_spec(id,"Research library",&website);let operation=match input["worker_role"].as_str(){Some("explore")=>"find-articles",Some("organize")=>"create-task",Some("check")=>"read-account",_=>""};if !operation.is_empty(){spec["operations"].as_array_mut().unwrap().retain(|item|item["name"]==operation);}if operation=="find-articles" && !input["sources"].as_array().is_some_and(|sources| sources.iter().any(|source|source["kind"]=="Read verification failures; revise using observed evidence")) { spec["operations"][0]["response"]=json!({"format":"json","required_pointers":["/incorrect-fixture-field"]}); }json!({"spec":spec,"description":description("Research library","Find the references you need.")}).to_string()}}else if input.get("spec").is_some(){description(input["spec"]["site"]["title"].as_str().unwrap_or("Website"),"Find the information you need.").to_string()}else if input.get("result").is_some(){"Two references are ready to use: Learning to observe and A quieter workflow.".into()}else{"OK".into()};
+        let text=if input["phase"]=="understand" {
+            assert!(input.get("environment").is_none(), "Outcome selection must not be limited by local capabilities");
+            json!({"understanding":{"summary":"Find references and turn them into a useful next task.","workflows":[{"id":"research","title":"Research and plan the next task","benefit":"Act on the references you find.","steps":["Find relevant articles","Read the complete selected article","Create a named follow-up task"],"success_criteria":"Relevant references and a task with a returned identifier."}]}}).to_string()
+        } else if input["phase"]=="review" {
+            json!({"workflow_review":{"decision":"complete","read_checks":[{"action":"find-articles","inputs":{"q":"design"}},{"action":"read-article","inputs":{"id":"$result:find-articles:/items/0/id"}}],"workflows":[{"id":"research","steps":[{"step":1,"actions":["find-articles"],"result_check":"Articles contain titles and summaries"},{"step":2,"actions":["read-article"],"input_sources":{"read-article.id":"Identifier returned by find-articles"},"result_check":"Full article content is returned"},{"step":3,"actions":["create-task"],"input_sources":{"create-task.title":"User-provided task title informed by article results"},"result_check":"Task response includes the created identifier"}]}]}}).to_string()
+        } else if input.get("output_contract").is_some(){if !input["sources"].as_array().is_some_and(|sources|sources.iter().any(|source|source["kind"]=="API documentation")){json!({"read_urls":[format!("{website}/docs/openapi.json")]}).to_string()}else if !input["sources"].as_array().is_some_and(|sources| sources.iter().any(|source| source["content"]["tool"]=="web.read" && source["content"]["result"]["error"]=="unsupported_evidence")) { json!({"calls":[{"tool":"web.read","arguments":{"url":format!("{website}/not-published")}}]}).to_string() } else if !input["sources"].as_array().is_some_and(|sources| sources.iter().any(|source| source["content"]["tool"]=="evidence.search" && source["content"]["result"]["source_url"]==format!("{website}/docs/openapi.json"))) { json!({"calls":[{"tool":"evidence.search","arguments":{"source_url":format!("{website}/docs/openapi.json"),"query":"/articles"}}]}).to_string() } else{let id=input["site_id"].as_str().unwrap_or("library");let mut spec=fixture_spec(id,"Research library",&website);let operation=match input["worker_role"].as_str(){Some("explore")=>"find-articles",Some("organize")=>"create-task",Some("check")=>"read-account",_=>""};if !operation.is_empty(){spec["operations"].as_array_mut().unwrap().retain(|item|item["name"]==operation);}if operation=="read-account" { spec["operations"].as_array_mut().unwrap().push(json!({"name":"read-article","desc":"Read a selected reference in full.","method":"GET","path":"/articles/{id}","effect":"read","evidence":format!("{website}/docs/openapi.json"),"params":{"id":{"type":"string","required":true}},"response":{"format":"json","required_pointers":["/id","/content"]}})); }if operation=="find-articles" && !input["sources"].as_array().is_some_and(|sources| sources.iter().any(|source|source["kind"]=="Read verification failures; revise using observed evidence")) { spec["operations"][0]["response"]=json!({"format":"json","required_pointers":["/incorrect-fixture-field"]}); }json!({"spec":spec,"description":description("Research library","Find the references you need.")}).to_string()}}else if input.get("spec").is_some(){description(input["spec"]["site"]["title"].as_str().unwrap_or("Website"),"Find the information you need.").to_string()}else if input.get("result").is_some(){"Two references are ready to use: Learning to observe and A quieter workflow.".into()}else{"OK".into()};
         Json(json!({"status":"completed","output":[{"type":"message","content":[{"type":"output_text","text":text}]}]})).into_response()
     }}));
     let mut api = api;
@@ -152,11 +160,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let port = listener.local_addr()?.port();
     let address = format!("http://127.0.0.1:{port}");
+    let launch = hycli::dashboard::Web::new(core.clone(), port)?.launch;
     util::atomic_file(
         &std::env::var_os("HYCLI_FIXTURE_OUTPUT")
             .map(std::path::PathBuf::from)
             .unwrap_or_else(|| project.join(".cache/e2e-ports.json")),
-        &serde_json::to_vec(&json!({"dashboard":address,"website":website,"data":root}))?,
+        &serde_json::to_vec(
+            &json!({"dashboard":address,"launch":launch,"website":website,"data":root}),
+        )?,
     )?;
     println!("Synthetic dashboard fixture: {address}");
     let mut first = Some(listener);
@@ -165,7 +176,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Some(listener) => listener,
             None => tokio::net::TcpListener::bind(("127.0.0.1", port)).await?,
         };
-        let router = hycli::dashboard::router(hycli::dashboard::Web::new(core.clone(), port));
+        let router = hycli::dashboard::router(hycli::dashboard::Web::new(core.clone(), port)?);
         let mut server = tokio::spawn(async move { axum::serve(listener, router).await });
         tokio::select! {
             result = &mut server => { result??; break; }

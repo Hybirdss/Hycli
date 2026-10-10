@@ -1,5 +1,5 @@
 {
-  "app.tagline": "Сайты, готовые к работе с ИИ.",
+  "app.tagline": "Автоматизируйте любой сайт.",
   "nav.websites": "Сайты",
   "nav.activity": "История",
   "nav.connections": "Подключения ИИ",
@@ -484,5 +484,21 @@
   "errors.response_mismatch": "Сайт вернул неожиданный результат. Подключите аккаунт заново или повторно подготовьте сайт.",
   "sites.intentLabel": "Что вы хотите сделать?",
   "sites.intentPlaceholder": "Например, найти сохранённые статьи и упорядочить их по темам",
-  "errors.query_failed": "Сайт не смог выполнить этот запрос. Проверьте введённые данные или подготовьте сайт заново."
+  "errors.query_failed": "Сайт не смог выполнить этот запрос. Проверьте введённые данные или подготовьте сайт заново.",
+  "activity.phase.understand": "Изучить сайт",
+  "activity.stage.understand": "Изучить сайт",
+  "activity.role.understand": "Изучить сайт",
+  "activity.phase.review": "Проверить весь процесс",
+  "activity.role.review": "Проверить весь процесс",
+  "activity.note.understanding": "Изучаем сайт и выбираем полезные задачи для полного выполнения.",
+  "activity.note.workflow_planned": "Определены нужные результаты и шаги для их достижения.",
+  "activity.note.workflow_review": "Проверяем каждый шаг, необходимые данные и конечный результат.",
+  "activity.note.workflow_incomplete": "Некоторых шагов не хватает. Исследуем другие способы.",
+  "activity.phase.needs_review": "Нужна проверка",
+  "sites.allowChanges": "Разрешить изменения",
+  "sites.allowChangesHint": "Выкл.: ваш ИИ и CLI могут только читать этот сайт. Вкл.: каждое изменение всё равно ждёт вашего одобрения здесь.",
+  "sites.changesOff": "изменения выключены",
+  "errors.writes_disabled": "Изменения для этого сайта выключены. Включите «Разрешить изменения» в подробностях, чтобы использовать это действие.",
+  "errors.launch_required": "Откройте Hycli командой hycli dashboard, чтобы использовать это окно.",
+  "activity.note.coverage_incomplete": "У {count} документированных операций ещё нет действий. Добавляем."
 }

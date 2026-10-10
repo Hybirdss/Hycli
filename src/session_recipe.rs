@@ -381,6 +381,7 @@ mod tests {
         job.site_id = "fixture".into();
         job.url = format!("{origin}/");
         let environment = crate::environment::Environment {
+            discovery_pending: false,
             os: "fixture".into(),
             architecture: "fixture".into(),
             browsers: vec![],
@@ -598,6 +599,7 @@ mod tests {
         job.site_id = "fixture".into();
         job.url = origin.clone();
         let environment = crate::environment::Environment {
+            discovery_pending: false,
             os: "fixture".into(),
             architecture: "fixture".into(),
             browsers: vec![],

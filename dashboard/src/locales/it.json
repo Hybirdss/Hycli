@@ -1,5 +1,5 @@
 {
-  "app.tagline": "Siti web pronti per l’IA.",
+  "app.tagline": "Automatizza qualsiasi sito web.",
   "nav.websites": "Siti web",
   "nav.activity": "Attività",
   "nav.connections": "Connessioni IA",
@@ -484,5 +484,21 @@
   "errors.response_mismatch": "Il sito ha restituito un risultato diverso da quello previsto. Ricollega il tuo account o prepara di nuovo il sito.",
   "sites.intentLabel": "Cosa vorresti fare?",
   "sites.intentPlaceholder": "Per esempio, trovare gli articoli salvati e organizzarli per argomento",
-  "errors.query_failed": "Il sito non ha potuto completare questa query. Controlla i dati inseriti o prepara nuovamente il sito."
+  "errors.query_failed": "Il sito non ha potuto completare questa query. Controlla i dati inseriti o prepara nuovamente il sito.",
+  "activity.phase.understand": "Comprendere il sito",
+  "activity.stage.understand": "Comprendere il sito",
+  "activity.role.understand": "Comprendere il sito",
+  "activity.phase.review": "Verificare i flussi",
+  "activity.role.review": "Verificare i flussi",
+  "activity.note.understanding": "Analisi del sito per scegliere flussi completi e utili.",
+  "activity.note.workflow_planned": "Sono stati definiti i risultati desiderati e i passaggi necessari.",
+  "activity.note.workflow_review": "Verifica di ogni passaggio, dei dati richiesti e del risultato finale.",
+  "activity.note.workflow_incomplete": "Mancano alcuni passaggi. Esplorazione di altri approcci.",
+  "activity.phase.needs_review": "Da verificare",
+  "sites.allowChanges": "Consenti modifiche",
+  "sites.allowChangesHint": "Disattivato: la tua IA e la CLI possono solo leggere questo sito. Attivato: ogni modifica attende comunque la tua approvazione qui.",
+  "sites.changesOff": "modifiche disattivate",
+  "errors.writes_disabled": "Le modifiche sono disattivate per questo sito. Attiva Consenti modifiche nei dettagli per usare questa azione.",
+  "errors.launch_required": "Apri Hycli con il comando hycli dashboard per usare questa finestra.",
+  "activity.note.coverage_incomplete": "{count} operazioni documentate non hanno ancora un'azione. Le aggiungo."
 }

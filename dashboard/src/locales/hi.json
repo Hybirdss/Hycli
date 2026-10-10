@@ -1,5 +1,5 @@
 {
-  "app.tagline": "वेबसाइटें, AI के लिए तैयार।",
+  "app.tagline": "किसी भी वेबसाइट को ऑटोमेट करें।",
   "nav.websites": "वेबसाइटें",
   "nav.activity": "गतिविधि",
   "nav.connections": "AI कनेक्शन",
@@ -484,5 +484,21 @@
   "errors.response_mismatch": "वेबसाइट ने अपेक्षा से अलग परिणाम लौटाया। अपना खाता फिर से जोड़ें या वेबसाइट को फिर से तैयार करें।",
   "sites.intentLabel": "आप क्या करना चाहेंगे?",
   "sites.intentPlaceholder": "उदाहरण के लिए, सहेजे गए लेख ढूँढना और उन्हें विषय के अनुसार व्यवस्थित करना",
-  "errors.query_failed": "वेबसाइट यह क्वेरी पूरी नहीं कर सकी। इनपुट जाँचें या वेबसाइट फिर से तैयार करें।"
+  "errors.query_failed": "वेबसाइट यह क्वेरी पूरी नहीं कर सकी। इनपुट जाँचें या वेबसाइट फिर से तैयार करें।",
+  "activity.phase.understand": "वेबसाइट समझें",
+  "activity.stage.understand": "वेबसाइट समझें",
+  "activity.role.understand": "वेबसाइट समझें",
+  "activity.phase.review": "पूरे कार्य की समीक्षा",
+  "activity.role.review": "पूरे कार्य की समीक्षा",
+  "activity.note.understanding": "वेबसाइट को समझकर उपयोगी और पूर्ण कार्य चुने जा रहे हैं।",
+  "activity.note.workflow_planned": "वांछित परिणाम और उन्हें पूरा करने के चरण तय कर लिए गए हैं।",
+  "activity.note.workflow_review": "हर चरण, आवश्यक इनपुट और अंतिम परिणाम की जाँच हो रही है।",
+  "activity.note.workflow_incomplete": "कुछ चरण अभी अधूरे हैं। अन्य तरीके खोजे जा रहे हैं।",
+  "activity.phase.needs_review": "जाँच ज़रूरी है",
+  "sites.allowChanges": "बदलावों की अनुमति दें",
+  "sites.allowChangesHint": "बंद: आपका AI और CLI इस वेबसाइट को सिर्फ़ पढ़ सकते हैं। चालू: हर बदलाव फिर भी यहाँ आपकी मंज़ूरी का इंतज़ार करता है।",
+  "sites.changesOff": "बदलाव बंद हैं",
+  "errors.writes_disabled": "इस वेबसाइट के लिए बदलाव बंद हैं। यह कार्रवाई इस्तेमाल करने के लिए विवरण में बदलावों की अनुमति दें चालू करें।",
+  "errors.launch_required": "इस विंडो का उपयोग करने के लिए hycli dashboard कमांड से Hycli खोलें।",
+  "activity.note.coverage_incomplete": "{count} दस्तावेज़ित ऑपरेशन के लिए अभी कोई ऐक्शन नहीं है। जोड़ रहे हैं।"
 }

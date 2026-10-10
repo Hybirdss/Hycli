@@ -1,5 +1,5 @@
 {
-  "app.tagline": "Biến trang web thành công cụ cho AI.",
+  "app.tagline": "Tự động hóa mọi trang web.",
   "nav.websites": "Trang web",
   "nav.activity": "Hoạt động",
   "nav.connections": "Kết nối AI",
@@ -484,5 +484,21 @@
   "errors.response_mismatch": "Trang web trả về kết quả khác dự kiến. Hãy kết nối lại tài khoản hoặc chuẩn bị lại trang web.",
   "sites.intentLabel": "Bạn muốn làm gì?",
   "sites.intentPlaceholder": "Ví dụ: tìm các bài viết đã lưu và sắp xếp theo chủ đề",
-  "errors.query_failed": "Trang web không thể hoàn tất truy vấn này. Hãy kiểm tra dữ liệu nhập hoặc chuẩn bị lại trang web."
+  "errors.query_failed": "Trang web không thể hoàn tất truy vấn này. Hãy kiểm tra dữ liệu nhập hoặc chuẩn bị lại trang web.",
+  "activity.phase.understand": "Tìm hiểu trang web",
+  "activity.stage.understand": "Tìm hiểu trang web",
+  "activity.role.understand": "Tìm hiểu trang web",
+  "activity.phase.review": "Kiểm tra quy trình",
+  "activity.role.review": "Kiểm tra quy trình",
+  "activity.note.understanding": "Đang tìm hiểu trang web và chọn các quy trình đầy đủ, hữu ích.",
+  "activity.note.workflow_planned": "Đã xác định kết quả cần đạt và các bước cần thiết.",
+  "activity.note.workflow_review": "Đang kiểm tra từng bước, dữ liệu bắt buộc và kết quả cuối cùng.",
+  "activity.note.workflow_incomplete": "Vẫn còn thiếu một số bước. Đang tìm các cách tiếp cận khác.",
+  "activity.phase.needs_review": "Cần kiểm tra",
+  "sites.allowChanges": "Cho phép thay đổi",
+  "sites.allowChangesHint": "Tắt: AI và CLI chỉ có thể đọc trang web này. Bật: mọi thay đổi vẫn chờ bạn phê duyệt tại đây.",
+  "sites.changesOff": "đã tắt thay đổi",
+  "errors.writes_disabled": "Thay đổi đang tắt cho trang web này. Bật Cho phép thay đổi trong phần chi tiết để dùng thao tác này.",
+  "errors.launch_required": "Mở Hycli bằng lệnh hycli dashboard để dùng cửa sổ này.",
+  "activity.note.coverage_incomplete": "{count} thao tác có tài liệu chưa có hành động. Đang thêm."
 }

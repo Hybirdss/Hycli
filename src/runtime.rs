@@ -71,6 +71,8 @@ pub struct SiteView {
     pub summary: String,
     pub status: String,
     pub pinned: bool,
+    /// False keeps the website read-only for every caller.
+    pub writes: bool,
     pub account_id: String,
     pub actions: Vec<ActionView>,
     pub credentials: Vec<WebsiteCredentialView>,
@@ -378,11 +380,11 @@ impl Runtime {
                         .is_some_and(|account| account.status == "expired")
                 {
                     "needs_signin"
-                } else if m
-                    .preparation
-                    .as_ref()
-                    .is_some_and(|report| report.verified_reads == 0)
-                    && !has_verified_read
+                } else if m.workflows_complete == Some(false)
+                    || m.preparation
+                        .as_ref()
+                        .is_some_and(|report| report.verified_reads == 0)
+                        && !has_verified_read
                 {
                     "needs_review"
                 } else {
@@ -390,6 +392,7 @@ impl Runtime {
                 }
                 .into(),
                 pinned: m.pinned,
+                writes: m.writes,
                 account_id: m.account_id,
                 actions,
                 credentials,
@@ -453,7 +456,15 @@ impl Runtime {
             credential_hash: util::hash(&serde_json::to_vec(&headers)?),
         })
     }
+    /// Only the dashboard can turn changes on; CLI and MCP have no path to this setting.
+    pub fn ensure_writes(&self, site: &str) -> AppResult<()> {
+        if self.state.read()?.sites.get(site).is_some_and(|m| m.writes) {
+            return Ok(());
+        }
+        Err(AppError::api("writes_disabled", 409))
+    }
     pub fn approval(&self, request: ExecutionRequest, locale: &str) -> AppResult<Approval> {
+        self.ensure_writes(&request.site_id)?;
         let site = self
             .sites(locale)?
             .into_iter()
@@ -536,18 +547,19 @@ impl Runtime {
         self.execute_definition(&sp, request, approval, true).await
     }
     /// Verify a proposed read without replacing the user's installed definition.
-    pub(crate) async fn verify_candidate(
+    pub(crate) async fn verify_candidate_with_inputs(
         &self,
         sp: &Spec,
         action: &str,
         account: &str,
+        inputs: BTreeMap<String, String>,
     ) -> AppResult<(OpResult, i64)> {
         policy::validate_spec(sp)?;
         let op = sp.op(action)?;
-        if policy::operation_effect(op, &BTreeMap::new()) != Effect::Read {
+        if policy::operation_effect(op, &inputs) != Effect::Read {
             return Err(AppError::api("approval_required", 409));
         }
-        let request = self.request(sp, action, BTreeMap::new(), Some(account))?;
+        let request = self.request(sp, action, inputs, Some(account))?;
         self.execute_definition(sp, request, None, false).await
     }
     async fn execute_definition(
@@ -575,6 +587,7 @@ impl Runtime {
         let (headers, secrets) = self.headers(&sp, op, &url, &request.account_id)?;
         checked.credential_hash = util::hash(&serde_json::to_vec(&headers)?);
         if effect != Effect::Read {
+            self.ensure_writes(&sp.site.name)?;
             self.policy.consume(
                 approval.ok_or_else(|| AppError::api("approval_required", 409))?,
                 &checked,

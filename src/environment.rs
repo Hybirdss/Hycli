@@ -5,6 +5,8 @@ use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, BTreeSet, VecDeque},
     path::{Path, PathBuf},
+    sync::{Condvar, Mutex, OnceLock},
+    time::{Duration, Instant},
 };
 
 #[derive(Clone, Serialize)]
@@ -19,6 +21,7 @@ pub struct BrowserEngine {
 
 #[derive(Clone, Serialize)]
 pub struct Environment {
+    pub discovery_pending: bool,
     pub os: String,
     pub architecture: String,
     pub browsers: Vec<BrowserEngine>,
@@ -353,7 +356,12 @@ impl Inventory {
         }
     }
 
+    #[cfg(test)]
     fn scan_profiles(&mut self) {
+        self.scan_profiles_with(|_| {});
+    }
+
+    fn scan_profiles_with(&mut self, publish: impl Fn(&Self)) {
         let mut queue: VecDeque<_> = std::mem::take(&mut self.roots)
             .into_iter()
             .map(|(browser, path)| (browser, path, 0))
@@ -361,6 +369,7 @@ impl Inventory {
         let mut visited = BTreeSet::new();
         let mut inspected = 0;
         while let Some((hint, root, depth)) = queue.pop_front() {
+            publish(self);
             if inspected >= 12_000 {
                 break;
             }
@@ -510,16 +519,72 @@ fn metadata_command(binary: &str, args: &[&str]) -> Option<String> {
     String::from_utf8(receiver.recv_timeout(Duration::from_secs(1)).ok()?).ok()
 }
 
+// One shared discovery worker avoids multiplying slow filesystem scans. A stalled
+// profile or mount must not hold up website preparation or browser rendering.
+struct Discovery {
+    snapshot: Environment,
+    running: bool,
+    completed: Option<Instant>,
+}
+static DISCOVERY: OnceLock<(Mutex<Discovery>, Condvar)> = OnceLock::new();
+
 pub fn inspect() -> Environment {
-    let mut inventory = Inventory::default();
-    inventory.running_apps();
-    inventory.path_apps();
-    if let Some(dirs) = directories::BaseDirs::new() {
-        inventory.registered_apps(&dirs);
-        inventory.configuration_roots(&dirs);
+    let (lock, changed) = DISCOVERY.get_or_init(|| {
+        (
+            Mutex::new(Discovery {
+                snapshot: inventory_snapshot(&Inventory::default(), true),
+                running: false,
+                completed: None,
+            }),
+            Condvar::new(),
+        )
+    });
+    let mut state = lock.lock().unwrap_or_else(|error| error.into_inner());
+    if state
+        .completed
+        .is_some_and(|at| at.elapsed() < Duration::from_secs(30))
+    {
+        return state.snapshot.clone();
     }
-    inventory.scan_profiles();
-    let mut browsers: Vec<_> = inventory.engines.into_values().collect();
+    if !state.running {
+        state.running = true;
+        state.snapshot.discovery_pending = true;
+        std::thread::spawn(move || {
+            let publish = |inventory: &Inventory| {
+                let mut state = lock.lock().unwrap_or_else(|error| error.into_inner());
+                state.snapshot = inventory_snapshot(inventory, true);
+                changed.notify_all();
+            };
+            let mut inventory = Inventory::default();
+            inventory.path_apps();
+            publish(&inventory);
+            if let Some(dirs) = directories::BaseDirs::new() {
+                inventory.registered_apps(&dirs);
+                publish(&inventory);
+                inventory.configuration_roots(&dirs);
+            }
+            inventory.running_apps();
+            publish(&inventory);
+            // Active profiles should be inspected before the broad configuration scan.
+            inventory
+                .roots
+                .sort_by_key(|(_, path)| !inventory.active_roots.contains(path));
+            inventory.scan_profiles_with(publish);
+            let mut state = lock.lock().unwrap_or_else(|error| error.into_inner());
+            state.snapshot = inventory_snapshot(&inventory, false);
+            state.running = false;
+            state.completed = Some(Instant::now());
+            changed.notify_all();
+        });
+    }
+    let (state, _) = changed
+        .wait_timeout_while(state, Duration::from_secs(2), |state| state.running)
+        .unwrap_or_else(|error| error.into_inner());
+    state.snapshot.clone()
+}
+
+fn inventory_snapshot(inventory: &Inventory, pending: bool) -> Environment {
+    let mut browsers: Vec<_> = inventory.engines.values().cloned().collect();
     browsers.sort_by_key(|b| {
         (
             match b.discovered_from.as_str() {
@@ -532,7 +597,7 @@ pub fn inspect() -> Environment {
             b.id.clone(),
         )
     });
-    let mut profiles: Vec<_> = inventory.profiles.into_values().collect();
+    let mut profiles: Vec<_> = inventory.profiles.values().cloned().collect();
     profiles.sort_by_key(|p| {
         (
             std::cmp::Reverse(p.running),
@@ -541,6 +606,7 @@ pub fn inspect() -> Environment {
         )
     });
     Environment {
+        discovery_pending: pending,
         os: std::env::consts::OS.into(),
         architecture: std::env::consts::ARCH.into(),
         capabilities: vec![

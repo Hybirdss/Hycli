@@ -1,5 +1,5 @@
 {
-  "app.tagline": "Sites prontos para a IA.",
+  "app.tagline": "Automatize qualquer site.",
   "nav.websites": "Sites",
   "nav.activity": "Atividade",
   "nav.connections": "Conexões de IA",
@@ -484,5 +484,21 @@
   "errors.response_mismatch": "O site retornou um resultado diferente do esperado. Reconecte sua conta ou prepare o site novamente.",
   "sites.intentLabel": "O que você gostaria de fazer?",
   "sites.intentPlaceholder": "Por exemplo, encontrar artigos salvos e organizá-los por assunto",
-  "errors.query_failed": "O site não conseguiu concluir esta consulta. Confira os dados ou prepare o site novamente."
+  "errors.query_failed": "O site não conseguiu concluir esta consulta. Confira os dados ou prepare o site novamente.",
+  "activity.phase.understand": "Entender o site",
+  "activity.stage.understand": "Entender o site",
+  "activity.role.understand": "Entender o site",
+  "activity.phase.review": "Revisar os fluxos",
+  "activity.role.review": "Revisar os fluxos",
+  "activity.note.understanding": "Analisando o site para escolher fluxos completos e úteis.",
+  "activity.note.workflow_planned": "Os resultados desejados e as etapas necessárias foram definidos.",
+  "activity.note.workflow_review": "Verificando cada etapa, os dados necessários e o resultado final.",
+  "activity.note.workflow_incomplete": "Algumas etapas estão faltando. Explorando outras alternativas.",
+  "activity.phase.needs_review": "Precisa de verificação",
+  "sites.allowChanges": "Permitir alterações",
+  "sites.allowChangesHint": "Desligado: sua IA e a CLI só podem ler este site. Ligado: cada alteração ainda espera sua aprovação aqui.",
+  "sites.changesOff": "alterações desligadas",
+  "errors.writes_disabled": "As alterações estão desligadas para este site. Ative Permitir alterações nos detalhes para usar esta ação.",
+  "errors.launch_required": "Abra o Hycli com o comando hycli dashboard para usar esta janela.",
+  "activity.note.coverage_incomplete": "{count} operações documentadas ainda não têm ação. Adicionando."
 }

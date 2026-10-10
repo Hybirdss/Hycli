@@ -1,5 +1,5 @@
 {
-  "app.tagline": "Web siteleri, AI için hazır.",
+  "app.tagline": "Her web sitesini otomatikleştirin.",
   "nav.websites": "Web siteleri",
   "nav.activity": "Etkinlik",
   "nav.connections": "AI bağlantıları",
@@ -484,5 +484,21 @@
   "errors.response_mismatch": "Web sitesi beklenenden farklı bir sonuç döndürdü. Hesabınızı yeniden bağlayın veya web sitesini yeniden hazırlayın.",
   "sites.intentLabel": "Ne yapmak istersiniz?",
   "sites.intentPlaceholder": "Örneğin, kaydedilmiş makaleleri bulup konularına göre düzenlemek",
-  "errors.query_failed": "Web sitesi bu sorguyu tamamlayamadı. Girdileri kontrol edin veya siteyi yeniden hazırlayın."
+  "errors.query_failed": "Web sitesi bu sorguyu tamamlayamadı. Girdileri kontrol edin veya siteyi yeniden hazırlayın.",
+  "activity.phase.understand": "Siteyi anla",
+  "activity.stage.understand": "Siteyi anla",
+  "activity.role.understand": "Siteyi anla",
+  "activity.phase.review": "İş akışlarını incele",
+  "activity.role.review": "İş akışlarını incele",
+  "activity.note.understanding": "Site inceleniyor ve yararlı, eksiksiz iş akışları seçiliyor.",
+  "activity.note.workflow_planned": "İstenen sonuçlar ve bunlara ulaşmak için gereken adımlar belirlendi.",
+  "activity.note.workflow_review": "Her adım, gerekli girdiler ve nihai sonuç kontrol ediliyor.",
+  "activity.note.workflow_incomplete": "Bazı adımlar eksik. Başka yaklaşımlar araştırılıyor.",
+  "activity.phase.needs_review": "Kontrol gerekli",
+  "sites.allowChanges": "Değişikliklere izin ver",
+  "sites.allowChangesHint": "Kapalı: Yapay zekânız ve CLI bu web sitesini yalnızca okuyabilir. Açık: her değişiklik yine burada onayınızı bekler.",
+  "sites.changesOff": "değişiklikler kapalı",
+  "errors.writes_disabled": "Bu web sitesi için değişiklikler kapalı. Bu işlemi kullanmak için ayrıntılarda Değişikliklere izin ver seçeneğini açın.",
+  "errors.launch_required": "Bu pencereyi kullanmak için Hycli'yi hycli dashboard komutuyla açın.",
+  "activity.note.coverage_incomplete": "Belgelenmiş {count} işlemin henüz eylemi yok. Ekleniyor."
 }

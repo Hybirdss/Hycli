@@ -73,10 +73,28 @@ pub struct PreparationReport {
     pub attempted_reads: usize,
     pub verified_reads: usize,
     pub account_verified: bool,
+    pub workflows_total: usize,
+    pub workflows_complete: usize,
+}
+#[derive(Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct WebsiteUnderstanding {
+    pub summary: String,
+    pub workflows: Vec<WebsiteWorkflow>,
+}
+#[derive(Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct WebsiteWorkflow {
+    pub id: String,
+    pub title: String,
+    pub benefit: String,
+    pub steps: Vec<String>,
+    pub success_criteria: String,
 }
 #[derive(Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SiteMeta {
+    pub workflows_complete: Option<bool>,
     pub pinned: bool,
     pub title: String,
     pub created_at: String,
@@ -91,6 +109,10 @@ pub struct SiteMeta {
     pub preparation: Option<PreparationReport>,
     pub icon_type: String,
     pub icon_source: String,
+    /// Changes are off until the user allows them for this website in the dashboard.
+    pub writes: bool,
+    /// Reads that passed during preparation, replayed by `hycli check` without AI.
+    pub smoke: Vec<crate::smoke::ReadCheck>,
 }
 #[derive(Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
@@ -120,6 +142,8 @@ pub struct Job {
     pub url: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub intent: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub understanding: Option<WebsiteUnderstanding>,
     pub action_id: String,
     pub action_title: String,
     pub provider: String,
@@ -160,6 +184,7 @@ impl Job {
             site_title: String::new(),
             url: String::new(),
             intent: String::new(),
+            understanding: None,
             action_id: String::new(),
             action_title: String::new(),
             provider: String::new(),

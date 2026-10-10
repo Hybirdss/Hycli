@@ -233,10 +233,9 @@ async fn installed_cli_help_inputs_accounts_and_failures_are_real_command_contra
         op: "read-public".into(),
     });
     core.install(&sp).unwrap();
-    assert_eq!(
-        ok(cli(&root, &["--allow-local", "health", "sample"]).await)["op"],
-        "read-public"
-    );
+    let report = ok(cli(&root, &["--allow-local", "check", "sample"]).await);
+    assert_eq!(report[0]["checks"][0]["action"], "read-public");
+    assert_eq!(report[0]["checks"][0]["outcome"], "ok");
     for (action, code, exit_code) in [
         ("read-missing", "request_failed", 1),
         ("read-unexpected", "response_mismatch", 1),

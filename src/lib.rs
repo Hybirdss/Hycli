@@ -22,6 +22,7 @@ pub mod progress;
 pub mod runtime;
 pub mod session_recipe;
 pub mod site_images;
+pub mod smoke;
 pub mod spec;
 pub mod state;
 pub mod store;

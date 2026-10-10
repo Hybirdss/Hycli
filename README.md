@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <strong>Turn websites into tools your AI can use.</strong>
+  <strong>Automate any website.</strong>
 </p>
 
 <p align="center">
@@ -29,7 +29,7 @@
 
 </details>
 
-Give Hycli a website and a task. It learns the available interface, prepares typed CLI and MCP actions, and checks useful reads. Your AI can then use those actions with the same accounts, approvals and results you see in the local dashboard.
+Give Hycli a website. Add a purpose if you have one. It learns the available interface, prepares typed CLI and MCP actions, and checks useful reads. Your AI can then use those actions with the same accounts, approvals and results you see in the local dashboard.
 
 | Connect | Prepare | Use |
 | --- | --- | --- |
@@ -41,6 +41,8 @@ Give Hycli a website and a task. It learns the available interface, prepares typ
 <p align="center"><sub>Example workspace with sample tools and accounts.</sub></p>
 
 <a id="get-started"></a>
+Enter a domain and, optionally, a purpose beside it. The AI first understands the website and selects useful workflows, then checks their prerequisites, inputs and final results. Missing steps keep the website marked for review.
+
 ## Get started
 
 Hycli is one native executable with an embedded local dashboard. Rust and Node.js are needed to build it; neither is needed to run a packaged release.
@@ -107,14 +109,16 @@ Three independent AI workers handle reads and search, useful workflows, and acco
 </p>
 <p align="center"><sub>Three workers. One very busy little bird.</sub></p>
 
-Preparation follows information actually available from the website: linked documentation, API schemas, published JavaScript, and request shapes observed by the browser companion. It performs bounded reads before installing a replacement. If a request or extraction check fails, the workers receive that evidence and can revise the definition before checking again. An already working definition stays installed during preparation. It does not create test records, edit content, delete objects, guess large lists of endpoints, or fuzz a live server.
+Preparation follows information actually available from the website: linked documentation, API schemas, published JavaScript, and request shapes observed by the browser companion. After the planned workflows, the workers keep going through every documented API operation that has no action yet, until each one is implemented or reported with its reason; the job's `coverage` lists what remains. It performs bounded reads before installing a replacement. If a request or extraction check fails, the workers receive that evidence and can revise the definition before checking again. An already working definition stays installed during preparation. It does not create test records, edit content, delete objects, guess large lists of endpoints, or fuzz a live server.
 
 | Action | Behavior |
 | --- | --- |
 | Read or search | Runs autonomously when the operation is supported by evidence and classified as a read. |
-| Create, send, edit or delete | Shows the website, account, action and resolved inputs for the user to approve. |
+| Create, send, edit or delete | Off until you allow changes for that website. Then shows the website, account, action and resolved inputs for you to approve. |
 | Unclear effect | Requires review before sending the request. |
 | Authentication, challenge or request limit | Pauses the affected requests and lets you reconnect or wait. |
+
+Every website starts read-only. Its change actions are hidden from MCP and refused by the CLI until you turn on **Allow changes** in that website's details; turning it off again cancels pending approvals. The switch and the approval button exist only in the dashboard, and the dashboard grants its session only to the address `hycli dashboard` opens, so an agent calling Hycli cannot turn changes on or approve its own request. An agent that can run any command as your user can also read your files; keep such agents on their own permission prompts.
 
 Approval applies to one exact request, expires after five minutes, and can be consumed only once. Changing the inputs, account, saved sign-in or installed tool definition invalidates it. CLI, MCP and dashboard execution use the same boundary. Writes are never retried automatically. If a change is interrupted after authorization, its outcome is marked uncertain so you can check the website before trying again. An open dashboard reconnects automatically after the local server restarts.
 
@@ -164,7 +168,7 @@ A typical MCP configuration looks like this:
 }
 ```
 
-Use the executable path shown by the dashboard if `hycli` is not on your agent’s PATH. The general MCP server offers preparation, job status, website listings, account metadata and `hycli_run` for executing newly installed actions even before a client refreshes its tool list. It never offers a tool for reading credentials or approving a change on the user's behalf. The `hycli_result` and `hycli_activity` tools remain available in both modes, so your AI can follow work notes, progress and approved results.
+Use the executable path shown by the dashboard if `hycli` is not on your agent’s PATH. The general MCP server offers preparation, job status, website listings, account metadata and `hycli_run` for executing newly installed actions even before a client refreshes its tool list. It never offers a tool for reading credentials or approving a change on the user's behalf. The `hycli_result`, `hycli_check` and `hycli_activity` tools remain available in both modes, so your AI can follow work notes, progress and approved results, and tell an expired sign-in from a changed website.
 
 ```sh
 hycli jobs ls
@@ -182,6 +186,15 @@ hycli describe SITE ACTION
 hycli SITE ACTION --help
 hycli run SITE ACTION --arg query="design systems"
 ```
+
+Before retrying a failed action, check the website without AI:
+
+```sh
+hycli check          # every installed website
+hycli check SITE
+```
+
+Preparation records the reads that passed, in order, including reads that pass an earlier result's identifier to the next one. `hycli check` replays them, first confirming the saved account's identity. The verdict separates `signed_out` (reconnect the account) from `site_changed` (the account works but responses no longer match; request a repair), plus `blocked` and `unreachable`. It never runs a change, and the exit status follows the verdict. MCP clients get the same check as `hycli_check`.
 
 Replace the sample URL and uppercase IDs with your website and the names returned by `describe`. Direct syntax such as `hycli SITE ACTION --query "design systems"` also works. Required inputs, typed values, defaults and account selection are shared with the dashboard. A failed HTTP response or unexpected login page produces a failed action and a nonzero CLI exit status.
 

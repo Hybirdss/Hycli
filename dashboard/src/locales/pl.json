@@ -1,5 +1,5 @@
 {
-  "app.tagline": "Strony gotowe do pracy z AI.",
+  "app.tagline": "Automatyzuj dowolną stronę.",
   "nav.websites": "Strony",
   "nav.activity": "Aktywność",
   "nav.connections": "Połączenia z AI",
@@ -484,5 +484,21 @@
   "errors.response_mismatch": "Witryna zwróciła inny wynik niż oczekiwany. Połącz konto ponownie lub ponownie przygotuj witrynę.",
   "sites.intentLabel": "Co chcesz zrobić?",
   "sites.intentPlaceholder": "Na przykład znaleźć zapisane artykuły i uporządkować je według tematu",
-  "errors.query_failed": "Witryna nie mogła wykonać tego zapytania. Sprawdź dane lub przygotuj witrynę ponownie."
+  "errors.query_failed": "Witryna nie mogła wykonać tego zapytania. Sprawdź dane lub przygotuj witrynę ponownie.",
+  "activity.phase.understand": "Poznaj witrynę",
+  "activity.stage.understand": "Poznaj witrynę",
+  "activity.role.understand": "Poznaj witrynę",
+  "activity.phase.review": "Sprawdź przebieg pracy",
+  "activity.role.review": "Sprawdź przebieg pracy",
+  "activity.note.understanding": "Analizowanie witryny i wybieranie przydatnych, kompletnych zadań.",
+  "activity.note.workflow_planned": "Określono oczekiwane wyniki i kroki potrzebne do ich osiągnięcia.",
+  "activity.note.workflow_review": "Sprawdzanie każdego kroku, wymaganych danych i wyniku końcowego.",
+  "activity.note.workflow_incomplete": "Brakuje niektórych kroków. Badane są inne podejścia.",
+  "activity.phase.needs_review": "Wymaga sprawdzenia",
+  "sites.allowChanges": "Zezwalaj na zmiany",
+  "sites.allowChangesHint": "Wyłączone: Twoja AI i CLI mogą tylko czytać tę witrynę. Włączone: każda zmiana nadal czeka tutaj na Twoją zgodę.",
+  "sites.changesOff": "zmiany wyłączone",
+  "errors.writes_disabled": "Zmiany są wyłączone dla tej witryny. Włącz Zezwalaj na zmiany w szczegółach, aby użyć tej akcji.",
+  "errors.launch_required": "Otwórz Hycli poleceniem hycli dashboard, aby używać tego okna.",
+  "activity.note.coverage_incomplete": "{count} udokumentowanych operacji nie ma jeszcze akcji. Dodawanie."
 }

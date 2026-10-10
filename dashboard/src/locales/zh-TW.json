@@ -1,5 +1,5 @@
 {
-  "app.tagline": "讓 AI 使用網站工具。",
+  "app.tagline": "自動化任何網站。",
   "nav.websites": "網站",
   "nav.activity": "活動紀錄",
   "nav.connections": "AI 連線",
@@ -484,5 +484,21 @@
   "errors.response_mismatch": "網站傳回了與預期不同的結果。請重新連接帳戶或重新準備網站。",
   "sites.intentLabel": "您想做什麼？",
   "sites.intentPlaceholder": "例如，找出已儲存的文章，並依主題整理",
-  "errors.query_failed": "網站無法完成此查詢。請檢查輸入內容或重新準備網站。"
+  "errors.query_failed": "網站無法完成此查詢。請檢查輸入內容或重新準備網站。",
+  "activity.phase.understand": "了解網站",
+  "activity.stage.understand": "了解網站",
+  "activity.role.understand": "了解網站",
+  "activity.phase.review": "檢查完整流程",
+  "activity.role.review": "檢查完整流程",
+  "activity.note.understanding": "正在了解網站並選擇實用的完整工作流程。",
+  "activity.note.workflow_planned": "已確定使用者需要的結果及完成這些結果所需的步驟。",
+  "activity.note.workflow_review": "正在檢查每個步驟、必填輸入和最終結果。",
+  "activity.note.workflow_incomplete": "仍有步驟缺漏，正在探索其他方法。",
+  "activity.phase.needs_review": "需要檢查",
+  "sites.allowChanges": "允許變更",
+  "sites.allowChangesHint": "關閉時，你的 AI 與 CLI 只能讀取此網站。開啟後，每項變更仍需在此處核准。",
+  "sites.changesOff": "變更已關閉",
+  "errors.writes_disabled": "此網站的變更已關閉。若要使用此動作，請在詳細資料中開啟「允許變更」。",
+  "errors.launch_required": "請使用 hycli dashboard 指令開啟 Hycli 以使用此視窗。",
+  "activity.note.coverage_incomplete": "仍有 {count} 個已記錄的操作沒有對應動作，正在新增。"
 }
