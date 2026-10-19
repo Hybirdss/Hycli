@@ -155,6 +155,28 @@ fn interrupted_or_truncated_output_is_not_presented_as_complete() {
         assert!(extract_text(provider, &value).is_err());
     }
 }
+#[test]
+fn provider_refusal_is_reported_distinctly_from_an_outage() {
+    assert_eq!(
+        provider("anthropic").unwrap().default_model,
+        "claude-opus-4-8"
+    );
+    for (provider, value) in [
+        (
+            "anthropic",
+            json!({"stop_reason":"refusal","stop_details":{"type":"refusal","category":"reasoning_extraction"},"content":[]}),
+        ),
+        (
+            "openai",
+            json!({"status":"completed","output":[{"type":"message","content":[{"type":"refusal","refusal":"I can't help with that."}]}]}),
+        ),
+    ] {
+        assert_eq!(
+            extract_text(provider, &value).unwrap_err().public_code,
+            "ai_refused"
+        );
+    }
+}
 
 #[tokio::test]
 async fn inference_runs_three_workers_and_queues_the_rest() {

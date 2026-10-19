@@ -26,7 +26,7 @@ pub const PROVIDERS: [Provider; 6] = [
     Provider {
         id: "anthropic",
         name: "Claude",
-        default_model: "claude-opus-5-5",
+        default_model: "claude-opus-4-8",
         key_url: "https://platform.claude.com/settings/keys",
     },
     Provider {
@@ -271,6 +271,11 @@ pub fn extract_text(provider: &str, value: &Value) -> AppResult<String> {
     let mut text = String::new();
     match provider {
         "anthropic" => {
+            // A safety refusal arrives as a successful response; retrying the same
+            // request does not help, so it must not look like a transient outage.
+            if value.get("stop_reason").and_then(Value::as_str) == Some("refusal") {
+                return Err(AppError::api("ai_refused", 502));
+            }
             if ![Some("end_turn"), Some("stop_sequence")]
                 .contains(&value.get("stop_reason").and_then(Value::as_str))
                 || value.get("error").is_some_and(|e| !e.is_null())
@@ -307,21 +312,28 @@ pub fn extract_text(provider: &str, value: &Value) -> AppResult<String> {
             {
                 return Err(AppError::api("ai_unavailable", 502));
             }
+            let mut refused = false;
             if let Some(output) = value.get("output").and_then(Value::as_array) {
                 for item in output {
                     if item.get("type").and_then(Value::as_str) == Some("message") {
                         if let Some(content) = item.get("content").and_then(Value::as_array) {
                             for block in content {
-                                if block.get("type").and_then(Value::as_str) == Some("output_text")
-                                {
-                                    if let Some(s) = block.get("text").and_then(Value::as_str) {
-                                        text.push_str(s);
+                                match block.get("type").and_then(Value::as_str) {
+                                    Some("output_text") => {
+                                        if let Some(s) = block.get("text").and_then(Value::as_str) {
+                                            text.push_str(s);
+                                        }
                                     }
+                                    Some("refusal") => refused = true,
+                                    _ => {}
                                 }
                             }
                         }
                     }
                 }
+            }
+            if refused && text.trim().is_empty() {
+                return Err(AppError::api("ai_refused", 502));
             }
         }
     }

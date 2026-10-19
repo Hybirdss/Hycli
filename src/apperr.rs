@@ -65,6 +65,7 @@ impl AppError {
             remedy: match public_code {
                 "auth_required" | "identity_unavailable" => "Open `hycli open` and reconnect the website account or configure its website API key.",
                 "provider_missing" | "provider_not_connected" | "provider_required" => "Open `hycli open` and connect an AI provider in AI connections.",
+                "ai_refused" => "The AI provider declined this request. Retrying will not help; choose another model or AI connection in `hycli open`.",
                 "query_failed" => "The website reported query errors. Check the inputs and the action definition before retrying.",
                 "response_mismatch" => "The website returned a different response than this action expects. Reconnect if signed out, or prepare the website again.",
                 "site_rate_limited" | "rate_limited" => "Wait for the website's request limit to clear before retrying.",

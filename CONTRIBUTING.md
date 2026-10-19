@@ -52,6 +52,12 @@ Browser setup and platform prerequisites are in [BUILD.md](docs/BUILD.md). Use s
 
 For a pull request, include the problem, the resulting behavior and the checks you ran. Flag any checks you could not run. Keep account data, credentials, browser profiles, private logs and generated site definitions out of commits and attachments.
 
+External pull requests are not merged directly. Maintainers review and verify proposed changes, land them through a new maintainer-authored commit and pull request, and credit the contributor (`Co-authored-by:` and contributor attribution).
+
 ## Package a release
 
 Follow [RELEASING.md](docs/RELEASING.md). Source and native archives use explicit file lists. A new root document or asset may need to be added to `scripts/package.mjs`; checking `.gitignore` alone does not verify a release archive.
+
+## Contributors
+
+- [@ytw418](https://github.com/ytw418) (윤성준) — AI provider refusal classification (`ai_refused`), partial action preservation across preparation rounds, and `self_qa` prompt hardening.

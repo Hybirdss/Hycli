@@ -71,6 +71,7 @@ impl Job {
                 "agent_retry" => "Refining the proposed actions.".into(),
                 "agent_done" => format!("Prepared {count} supported actions."),
                 "agent_failed" => "This agent could not finish. Keeping the other findings.".into(),
+                "ai_stopped" => "The AI stopped before finishing. Keeping the actions found so far.".into(),
                 "found" => format!("Found {count} useful actions."),
                 "checking" => "Checking the actions that can be safely read.".into(),
                 "checked" => format!("Checked {count} read actions."),
