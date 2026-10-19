@@ -9,11 +9,12 @@ Run the checks in [BUILD.md](BUILD.md), then:
 ```sh
 node scripts/build.mjs
 node scripts/package.mjs
+node scripts/mcpb.mjs
 node scripts/package.mjs --source
 node scripts/smoke-package.mjs dist/artifacts/hycli-0.1.0-linux-x64.tar.gz
 ```
 
-Use the archive matching the current native platform for the last command. Archives and their SHA-256 sidecars are under `dist/artifacts/`. Each archive also includes checksums for its individual files. `*.manifest.json` records the exact packaged file list.
+Use the archive matching the current native platform for the last command. Archives and their SHA-256 sidecars are under `dist/artifacts/`. Each archive also includes checksums for its individual files. `*.manifest.json` records the exact packaged file list. `node scripts/mcpb.mjs` wraps that archive into the MCP bundle the official registry links to; see [REGISTRY.md](REGISTRY.md) for the registry entry, the measured checks and the publish order.
 
 Packaging copies only the declared public files. It does not archive the entire `dist/` folder, Git index, working tree or Git history. The source snapshot omits installed site definitions, saved accounts, browser profiles, local databases, credentials, debug executables, tool state and private development records. Unknown files at the project root are not automatically included.
 

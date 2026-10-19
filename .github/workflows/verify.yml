@@ -91,6 +91,11 @@ jobs:
         run: node scripts/build.mjs --skip-dependencies
       - name: Package public files
         run: node scripts/package.mjs
+      - name: MCP bundle
+        shell: bash
+        run: |
+          npm install --prefix .cache/mcpb --no-save "@anthropic-ai/mcpb@2.1.2"
+          node scripts/mcpb.mjs --platform ${{ matrix.platform }}
       - name: Extracted package smoke check
         shell: bash
         run: node scripts/smoke-package.mjs dist/artifacts/hycli-*-${{ matrix.platform }}.tar.gz
