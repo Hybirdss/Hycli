@@ -109,6 +109,19 @@ async fn dispatch(deps: Deps, cmd: Cmd, emit: &Emitter) -> Result<(), AppError> 
             emit.data(&serde_json::json!({"version": env!("CARGO_PKG_VERSION")}));
             Ok(())
         }
+        Cmd::Feedback => {
+            let url = crate::feedback::issue_url();
+            // A browser is optional: hand the URL to the user and keep the exit code at 0.
+            if crate::dashboard::open_url(&url).is_ok() {
+                emit.data(&serde_json::json!({"url": url, "opened": true}));
+            } else {
+                println!("{url}");
+                eprintln!(
+                    "hycli: no browser available — open the printed URL to send feedback"
+                );
+            }
+            Ok(())
+        }
         Cmd::Describe { site, action } => {
             // Diagnose damaged definitions instead of silently losing them from discovery.
             let _ = hycli_sites();

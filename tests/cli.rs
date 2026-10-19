@@ -381,3 +381,24 @@ async fn installed_cli_help_inputs_accounts_and_failures_are_real_command_contra
     drop(core);
     let _ = std::fs::remove_dir_all(&root);
 }
+
+#[tokio::test]
+async fn feedback_is_advertised_and_composes_a_public_issue_url_offline() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join(".cache/cli-tests")
+        .join(util::id());
+    let help = cli(&root, &["--help"]).await;
+    let text = String::from_utf8_lossy(&help.stdout);
+    assert!(help.status.success(), "{}", text);
+    assert!(
+        text.contains("feedback"),
+        "feedback must be listed in the command surface: {text}"
+    );
+    // Opening the URL is the only side effect, so the URL contract is checkable without a browser.
+    let url = hycli::feedback::issue_url();
+    assert!(
+        url.starts_with("https://github.com/Hybirdss/Hycli/issues/new?"),
+        "{url}"
+    );
+    assert!(url.contains(env!("CARGO_PKG_VERSION")), "{url}");
+}
