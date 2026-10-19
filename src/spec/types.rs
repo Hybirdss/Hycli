@@ -49,7 +49,7 @@ pub struct Defaults {
     pub tls_profile: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AuthStrategy {
     pub name: String,
     pub kind: String, // none | header | browser | derived
@@ -173,7 +173,7 @@ impl Body {
 
 pub type Model = std::collections::BTreeMap<String, Field>;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Field {
     #[serde(default)]
     pub path: String,
