@@ -26,6 +26,7 @@ export function buildServerJson({version, bundles, tag = `v${version}`}) {
     $schema: 'https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json',
     name: 'io.github.Hybirdss/hycli',
     title: 'Hycli',
+    websiteUrl: `${REPOSITORY_URL}#use-hycli-with-your-ai`,
     description: 'Turn any website into a typed CLI and MCP server for your AI agent.',
     repository: {url: REPOSITORY_URL, source: 'github', id: REPOSITORY_ID},
     version,

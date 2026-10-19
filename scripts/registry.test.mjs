@@ -71,6 +71,7 @@ test('local default discovers only existing native archives and hashes output', 
   assert.equal(result.status, 0, result.stderr);
   const server = JSON.parse(await fs.readFile(path.join(dir, 'server.json')));
   assert.equal(server.packages.length, 1);
+  assert.equal(server.websiteUrl, 'https://github.com/Hybirdss/Hycli#use-hycli-with-your-ai');
   const file = 'hycli-mcp-0.1.0-darwin-arm64.mcpb';
   assert.ok(server.packages[0].identifier.endsWith('/' + file));
   assert.equal(server.packages[0].fileSha256, digest(await fs.readFile(path.join(dir, 'output', file))));

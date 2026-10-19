@@ -52,6 +52,14 @@ A bundle contains `manifest.json`, `server/hycli` (or `server/hycli.exe`), `LICE
 - `tools_generated` is `true`: website actions are generated on the user's machine. A fresh install exposes the ten built-in tools (`hycli_sites`, `hycli_run`, `hycli_prepare`, `hycli_request`, `hycli_recon`, `hycli_check`, `hycli_result`, `hycli_job`, `hycli_activity`, `hycli_accounts`).
 - No `user_config` entry: sign-in state lives in the platform data directory, never in the manifest.
 
+### OS and CPU selection is a publication gate
+
+Choose the bundle whose filename matches both the operating system and CPU (for example, `linux-arm64`, not merely `linux`). Neither the registry Package schema nor MCPB manifest v0.4 supplies a standard CPU selector. A valid six-package `server.json` does **not** prove that a downstream client chooses the correct executable automatically. Do not install the first package blindly or invent unsupported architecture variables.
+
+The native smoke matrix proves that an explicitly selected bundle runs on its matching runner. Registry discovery and automatic package selection are separate, currently unverified integration steps. Before publishing this multi-package entry, verify the intended downstream client's OS/CPU selection, or obtain a maintainer decision on a supported distribution design. Public registry identities and installation behavior must not be changed implicitly. Until then, use explicit matching-archive selection and the repository setup instructions; registry publication remains on hold.
+
+References: [MCPB architecture tracking](https://github.com/modelcontextprotocol/mcpb/issues/10) and [official registry installation metadata](https://github.com/modelcontextprotocol/registry/blob/main/docs/reference/server-json/generic-server-json.md).
+
 ## Verification
 
 The original contribution recorded the following checks on 2026-10-19 using v0.1.0 release binaries. These historical results are not evidence that the revised workflow has passed on every native runner:
@@ -74,7 +82,7 @@ The linux-x64 release binary requires glibc 2.38 (`GLIBC_2.38` not found on Debi
 
 ## Publishing (maintainer)
 
-Bundles must be on the release before publishing, because the registry only stores the link and the hash. Three steps, in this order:
+Only proceed after the OS/CPU selection publication gate above is satisfied and publication is authorized. Bundles must be on the release before publishing, because the registry only stores the link and the hash. Three steps, in this order:
 
 1. Build the bundles from the published archives and write the entry: `node scripts/mcpb.mjs --fetch --server-json packaging/registry/server.json`
 2. Upload exactly those bytes: `gh release upload v0.1.0 dist/artifacts/hycli-mcp-0.1.0-*.mcpb dist/artifacts/hycli-mcp-0.1.0-*.mcpb.sha256 packaging/registry/server.json --clobber`
