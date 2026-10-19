@@ -2,6 +2,26 @@ name: Suggest an improvement
 description: Describe a task that Hycli could make easier.
 title: "[Feature] "
 body:
+  - type: markdown
+    attributes:
+      value: |
+        Start with the task you are trying to finish. Remove credentials, cookies, account details and private website data from anything you attach.
+        Open-ended questions and "is this possible?" threads are easier to answer in [Discussions](https://github.com/Hybirdss/Hycli/discussions).
+  - type: input
+    id: version
+    attributes:
+      label: Hycli version
+      description: The output of `hycli version`, when the request depends on the current release.
+      placeholder: "0.1.0"
+    validations:
+      required: false
+  - type: input
+    id: os
+    attributes:
+      label: Operating system and architecture
+      placeholder: "Ubuntu 24.04 · x64"
+    validations:
+      required: false
   - type: textarea
     id: task
     attributes:

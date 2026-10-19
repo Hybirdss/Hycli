@@ -16,6 +16,7 @@
 
 <p align="center">
   <a href="https://github.com/Hybirdss/Hycli/releases/tag/v0.1.0">Download (Windows · macOS · Linux)</a> ·
+  <a href="https://github.com/Hybirdss/Hycli/discussions">Discussions</a> ·
   <a href="#try-it-in-30-seconds">30-second quickstart</a> ·
   <a href="#what-your-ai-can-do">What your AI can do</a> ·
   <a href="#common-concerns">Common concerns</a> ·
@@ -251,6 +252,12 @@ node scripts/test-e2e.mjs --full
 ```
 
 All tests run against synthetic local websites and fixtures—never test write operations against a real third-party account.
+
+## Community
+
+Questions, prepared-site showcases and ideas live in [Discussions](https://github.com/Hybirdss/Hycli/discussions). Ask "how do I…" in Q&A, show what you prepared in Show your sites, and suggest the next step in Ideas; Announcements carries release notes. Use the [issue templates](https://github.com/Hybirdss/Hycli/issues/new/choose) when something is reproducible.
+
+`hycli feedback` opens a pre-filled issue in your own browser with your version and operating system already filled in. It sends nothing by itself — no request leaves the machine until you press submit, and the issue is public, so remove credentials, cookies and private website data first.
 
 ## License and intended use
 
