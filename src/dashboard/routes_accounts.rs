@@ -43,14 +43,15 @@ pub(super) async fn save_provider(
     if id == "codex" && web.core.ai.codex.refresh_account().await?.is_none() {
         return Err(AppError::api("auth_required", 401));
     }
+    let model = body.model.trim();
     let config = ai::Config {
         provider: id.clone(),
-        model: if body.model.is_empty() {
+        model: if model.is_empty() {
             provider.default_model.into()
         } else {
-            body.model
+            model.to_owned()
         },
-        key,
+        key: key.trim().to_owned(),
     };
     let models = web.core.ai.check(&config).await?;
     if id != "codex" {

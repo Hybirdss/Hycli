@@ -205,6 +205,11 @@ impl Client {
         if config.key.is_empty() {
             return Err(AppError::api("provider_missing", 400));
         }
+        // Validate before building a request: malformed pasted credentials are not
+        // a provider outage, and must never appear in an error or log.
+        if reqwest::header::HeaderValue::from_str(&config.key).is_err() {
+            return Err(AppError::api("credentials_invalid", 400));
+        }
         let default = api_origin(&config.provider)?;
         // Injectable only by local contract tests. There is no UI or model setting for this.
         let origin = self
@@ -249,7 +254,7 @@ impl Client {
             bytes.extend_from_slice(&chunk);
         }
         if !(200..300).contains(&status) {
-            return Err(provider_error(status, &bytes));
+            return Err(request_error(&config.provider, path, status, &bytes));
         }
         serde_json::from_slice(&bytes).map_err(|_| AppError::api("ai_unavailable", 502))
     }
@@ -341,6 +346,43 @@ pub fn extract_text(provider: &str, value: &Value) -> AppResult<String> {
         return Err(AppError::api("ai_unavailable", 502));
     }
     Ok(util::redact_generated_text(&text))
+}
+fn request_error(provider: &str, path: &str, status: u16, bytes: &[u8]) -> AppError {
+    if provider != "anthropic" {
+        return provider_error(status, bytes);
+    }
+    // Provider bodies can contain request data. Inspect structured fields only for
+    // classification; never return or persist the body or echo request metadata.
+    let value: Value = serde_json::from_slice(bytes).unwrap_or(Value::Null);
+    let error_type = value.pointer("/error/type").and_then(Value::as_str);
+    let message = value
+        .pointer("/error/message")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let code = match (status, error_type) {
+        (401, _) | (_, Some("authentication_error")) => "credentials_invalid",
+        (402, _) | (_, Some("billing_error")) => "ai_billing_error",
+        (403, _) | (_, Some("permission_error")) => "ai_permission_denied",
+        (404, Some("not_found_error")) if path == "/messages" => "model_unavailable",
+        (404, Some("not_found_error")) => "ai_request_invalid",
+        (400, Some("invalid_request_error")) if message.contains("credit balance") => {
+            "insufficient_balance"
+        }
+        (400 | 429, Some("invalid_request_error" | "rate_limit_error"))
+            if ["spend limit", "spend cap"]
+                .iter()
+                .any(|text| message.contains(text)) =>
+        {
+            "ai_billing_error"
+        }
+        (429 | 529, _) => "rate_limited",
+        (400 | 413, _) | (_, Some("invalid_request_error" | "request_too_large")) => {
+            "ai_request_invalid"
+        }
+        _ => "ai_unavailable",
+    };
+    AppError::api(code, if code == "rate_limited" { 429 } else { 502 })
 }
 pub fn provider_error(status: u16, bytes: &[u8]) -> AppError {
     let body = String::from_utf8_lossy(bytes).to_ascii_lowercase();

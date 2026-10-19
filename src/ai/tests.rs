@@ -266,3 +266,126 @@ async fn codex_uses_independent_workers_without_mixing_replies() {
         "Agent delegation must not enable unrelated native tool execution"
     );
 }
+
+#[test]
+fn typed_anthropic_errors_are_actionable_without_echoing_provider_data() {
+    for (status, kind, message, expected) in [
+        (
+            401,
+            "authentication_error",
+            "private-key",
+            "credentials_invalid",
+        ),
+        (
+            403,
+            "permission_error",
+            "private-key",
+            "ai_permission_denied",
+        ),
+        (402, "billing_error", "private-key", "ai_billing_error"),
+        (
+            404,
+            "not_found_error",
+            "model: private-model",
+            "model_unavailable",
+        ),
+        (
+            400,
+            "invalid_request_error",
+            "Your credit balance is too low",
+            "insufficient_balance",
+        ),
+        (
+            400,
+            "invalid_request_error",
+            "Organization spend limit reached",
+            "ai_billing_error",
+        ),
+        (
+            400,
+            "invalid_request_error",
+            "max_tokens exceeds the maximum for this model",
+            "ai_request_invalid",
+        ),
+        (
+            413,
+            "request_too_large",
+            "private-request",
+            "ai_request_invalid",
+        ),
+        (429, "rate_limit_error", "private-request", "rate_limited"),
+        (529, "overloaded_error", "private-request", "rate_limited"),
+        (500, "api_error", "private-request", "ai_unavailable"),
+    ] {
+        let body = json!({"type":"error","error":{"type":kind,"message":message},"request_id":"private-request"});
+        let error = request_error(
+            "anthropic",
+            "/messages",
+            status,
+            body.to_string().as_bytes(),
+        );
+        assert_eq!(error.public_code, expected, "{status} {kind}");
+        assert!(!format!("{error:?}").contains("private-"));
+    }
+    let missing = json!({"error":{"type":"not_found_error","message":"resource not found"}});
+    assert_eq!(
+        request_error("anthropic", "/models", 404, missing.to_string().as_bytes()).public_code,
+        "ai_request_invalid"
+    );
+    assert_eq!(
+        request_error(
+            "openai",
+            "/responses",
+            400,
+            br#"{"error":{"code":"model_not_found"}}"#
+        )
+        .public_code,
+        "model_unavailable"
+    );
+    assert_eq!(
+        request_error(
+            "zai",
+            "/chat/completions",
+            400,
+            br#"{"error":{"code":"1113"}}"#
+        )
+        .public_code,
+        "insufficient_balance"
+    );
+}
+
+#[test]
+fn unrelated_request_metadata_does_not_misclassify_provider_failure() {
+    let body = br#"{"error":{"type":"api_error","message":"Unexpected server error"},"request_id":"req_1113_model_not_found"}"#;
+    assert_eq!(
+        request_error("anthropic", "/messages", 500, body).public_code,
+        "ai_unavailable"
+    );
+}
+
+#[test]
+fn anthropic_status_errors_remain_safe_without_json_and_spend_caps_are_not_transient() {
+    for (status, expected) in [
+        (401, "credentials_invalid"),
+        (402, "ai_billing_error"),
+        (403, "ai_permission_denied"),
+        (429, "rate_limited"),
+        (529, "rate_limited"),
+        (500, "ai_unavailable"),
+    ] {
+        let error = request_error(
+            "anthropic",
+            "/models",
+            status,
+            b"<html>private-secret</html>",
+        );
+        assert_eq!(error.public_code, expected);
+        assert!(!format!("{error:?}").contains("private-secret"));
+    }
+    let body =
+        br#"{"error":{"type":"rate_limit_error","message":"Organization spend cap reached"}}"#;
+    assert_eq!(
+        request_error("anthropic", "/messages", 429, body).public_code,
+        "ai_billing_error"
+    );
+}

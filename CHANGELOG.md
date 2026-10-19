@@ -25,6 +25,7 @@ Automate any website, with changes only where you allow them.
 
 ### Complete website CLIs
 
+- Claude API connection failures now distinguish billing, permissions, unavailable models and invalid requests without exposing provider response data. Connection setup trims surrounding whitespace from pasted keys and model IDs, rejects malformed keys locally, and preserves the previous connection if validation fails.
 - Preparation plans complete user workflows, reviews every step, and verifies chained reads before installing.
 - After the workflows, workers continue through documented API operations that have no action yet. The job reports `coverage` with any remaining operations.
 - Anthropic connections now default to `claude-opus-4-8` to avoid false-positive safety refusals on `claude-opus-5-5`, and a request the AI provider declines is reported as `ai_refused` instead of `ai_unavailable`; retrying the same request does not help.

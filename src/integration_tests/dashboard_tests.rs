@@ -614,3 +614,137 @@ async fn documentation_redirect_drops_the_original_session() {
     docs_server.abort();
     home_server.abort();
 }
+
+#[tokio::test]
+async fn anthropic_registration_normalizes_inputs_and_preserves_saved_connection_on_failure() {
+    let calls = Arc::new(AtomicUsize::new(0));
+    let observed = calls.clone();
+    let (origin, provider_server) = host(Router::new()
+        .route("/models", get(move |headers: HeaderMap| {
+            let calls = observed.clone();
+            async move {
+                calls.fetch_add(1, Ordering::SeqCst);
+                assert!(["synthetic-registered-key", "synthetic-replacement-key"].contains(&headers["x-api-key"].to_str().unwrap()));
+                assert_eq!(headers["anthropic-version"], "2023-06-01");
+                Json(json!({"data":[{"id":"fixture-model"}],"has_more":false}))
+            }
+        }))
+        .route("/messages", post(|headers: HeaderMap, Json(body): Json<Value>| async move {
+            assert!(["synthetic-registered-key", "synthetic-replacement-key"].contains(&headers["x-api-key"].to_str().unwrap()));
+            assert_eq!(body["system"], "Reply with OK only.");
+            assert_eq!(body["messages"], json!([{"role":"user","content":"Connection check."}]));
+            assert!(!body.to_string().contains("synthetic-registered-key"));
+            let failure = match body["model"].as_str().unwrap() {
+                "missing-model" => Some((404,"not_found_error")),
+                "billing-model" => Some((402,"billing_error")),
+                "permission-model" => Some((403,"permission_error")),
+                "invalid-model" => Some((400,"invalid_request_error")),
+                "fixture-model" => None,
+                other => panic!("Unexpected unnormalized model: {other:?}"),
+            };
+            if let Some((status, kind)) = failure {
+                return (StatusCode::from_u16(status).unwrap(), Json(json!({"type":"error","error":{"type":kind,"message":"synthetic-private-provider-body synthetic-registered-key"},"request_id":"synthetic-private-request"})));
+            }
+            (StatusCode::OK, Json(json!({"stop_reason":"end_turn","content":[{"type":"text","text":"OK"}]})))
+        }))).await;
+    let mut core = runtime();
+    Arc::get_mut(&mut core)
+        .unwrap()
+        .ai
+        .origins
+        .insert("anthropic".into(), origin);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let web = crate::dashboard::Web::new(core.clone(), port).unwrap();
+    let launch = web.launch.clone();
+    let server = tokio::spawn(async move {
+        axum::serve(listener, crate::dashboard::router(web))
+            .await
+            .unwrap();
+    });
+    let base = format!("http://127.0.0.1:{port}");
+    let client = reqwest::Client::new();
+    let response = client
+        .get(format!("{base}/api/session?launch={launch}"))
+        .send()
+        .await
+        .unwrap();
+    let cookie = response.headers()["set-cookie"]
+        .to_str()
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .to_owned();
+    let csrf = response.json::<Value>().await.unwrap()["csrf"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let save = |body: Value| {
+        client
+            .put(format!("{base}/api/providers/anthropic"))
+            .header("cookie", &cookie)
+            .header("x-hycli-csrf", &csrf)
+            .json(&body)
+            .send()
+    };
+    let response = save(json!({"key":" \t synthetic-registered-key\r\n", "model":"  fixture-model \n", "default":true})).await.unwrap();
+    assert!(
+        response.status().is_success(),
+        "{}",
+        response.text().await.unwrap()
+    );
+    let saved = core.state.read().unwrap();
+    assert_eq!(saved.providers["anthropic"].model, "fixture-model");
+    assert!(saved.providers["anthropic"].connected);
+    assert_eq!(
+        core.vault.lock().unwrap().get("providers", "anthropic"),
+        Some("synthetic-registered-key")
+    );
+    for (model, code) in [
+        ("missing-model", "model_unavailable"),
+        ("billing-model", "ai_billing_error"),
+        ("permission-model", "ai_permission_denied"),
+        ("invalid-model", "ai_request_invalid"),
+    ] {
+        let response =
+            save(json!({"key":"synthetic-replacement-key","model":model,"default":false}))
+                .await
+                .unwrap();
+        assert!(!response.status().is_success());
+        let text = response.text().await.unwrap();
+        let body: Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(body["error"]["code"], code);
+        assert!(!text.contains("synthetic-private"));
+        assert!(!text.contains("synthetic-registered-key"));
+        let current = core.state.read().unwrap();
+        assert!(current.providers == saved.providers);
+        assert!(current.settings == saved.settings);
+        assert_eq!(
+            core.vault.lock().unwrap().get("providers", "anthropic"),
+            Some("synthetic-registered-key")
+        );
+    }
+    let before_calls = calls.load(Ordering::SeqCst);
+    let response = save(json!({"key":"synthetic\nprivate", "model":"fixture-model"}))
+        .await
+        .unwrap();
+    let text = response.text().await.unwrap();
+    assert_eq!(
+        serde_json::from_str::<Value>(&text).unwrap()["error"]["code"],
+        "credentials_invalid"
+    );
+    assert!(!text.contains("synthetic"));
+    assert_eq!(
+        calls.load(Ordering::SeqCst),
+        before_calls,
+        "invalid credential must not reach provider"
+    );
+    assert!(core.state.read().unwrap().providers == saved.providers);
+    assert_eq!(
+        core.vault.lock().unwrap().get("providers", "anthropic"),
+        Some("synthetic-registered-key")
+    );
+    server.abort();
+    provider_server.abort();
+}
