@@ -1616,20 +1616,11 @@ impl Runtime {
             })
             .cloned()
             .unwrap_or_else(|| origin_str.clone());
-        let primary_ssr = [
-            "__NEXT_DATA__",
-            "__remixContext",
-            "__NEXT_F__",
-            "__APOLLO_STATE__",
-            "__NUXT_DATA__",
-            "__INITIAL_STATE__",
-            "__PRELOADED_STATE__",
-            "__STATE__",
-            "INIT_DATA",
-        ]
-        .into_iter()
-        .find(|k| ssr_map.contains_key(*k))
-        .unwrap_or("");
+        let primary_ssr = crate::html::SSR_GLOBAL_KEYS
+            .iter()
+            .copied()
+            .find(|k| ssr_map.contains_key(*k))
+            .unwrap_or("");
 
         let mut form_query_map: BTreeMap<String, BTreeMap<String, spec::Param>> = BTreeMap::new();
         let mut form_body_map: BTreeMap<(String, String), BTreeMap<String, spec::Param>> =
@@ -1788,18 +1779,11 @@ impl Runtime {
                 }
             }
         }
-        for ssr_key in [
-            "__NEXT_DATA__",
-            "__remixContext",
-            "__NEXT_F__",
-            "__APOLLO_STATE__",
-            "__NUXT_DATA__",
-            "__INITIAL_STATE__",
-            "__PRELOADED_STATE__",
-            "__STATE__",
-            "INIT_DATA",
-            "ld+json",
-        ] {
+        for ssr_key in crate::html::SSR_GLOBAL_KEYS
+            .iter()
+            .copied()
+            .chain(std::iter::once("ld+json"))
+        {
             if let Some(doc) = ssr_map.get(ssr_key) {
                 let slug = if ssr_key == "__remixContext" {
                     "remix-context".to_string()
