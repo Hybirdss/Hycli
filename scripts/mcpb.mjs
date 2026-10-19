@@ -93,10 +93,18 @@ for (const entry of selected) {
   await fs.mkdir(path.join(stage, 'server'), {recursive: true});
   await fs.mkdir(unpacked, {recursive: true});
 
-  // Stdin avoids GNU tar treating a Windows drive letter as a remote host.
+  // A file-backed stdin avoids both Windows drive-letter parsing and spawnSync's
+  // buffered pipe writes, which can fail with EOF on large Windows archives.
   const tarEnv = {...process.env};
   delete tarEnv.TAR_OPTIONS;
-  run('tar', ['-xzf', '-', '-C', unpacked, '--strip-components=1'], {input: await fs.readFile(archive), env: tarEnv});
+  const archiveHandle = await fs.open(archive, 'r');
+  try {
+    run('tar', ['-xzf', '-', '-C', unpacked, '--strip-components=1'], {
+      stdio: [archiveHandle.fd, 'pipe', 'pipe'], env: tarEnv
+    });
+  } finally {
+    await archiveHandle.close();
+  }
   await rejectLinks(unpacked);
   const binary = path.join(unpacked, entry.exe);
   await require(binary);

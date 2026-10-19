@@ -52,6 +52,7 @@ jobs:
           cache: npm
           cache-dependency-path: dashboard/package-lock.json
       - name: Registry packaging regression tests
+        shell: bash
         run: node --test scripts/registry.test.mjs
       - name: Rust toolchain
         run: |

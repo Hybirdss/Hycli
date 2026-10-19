@@ -10,9 +10,12 @@ const root=path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const archive=process.argv[2];if(!archive)throw Error('Usage: node scripts/smoke-package.mjs <native.tar.gz>');
 const scratch=path.join(root,'.cache','package-smoke');await fs.mkdir(scratch,{recursive:true});
 const directory=await fs.mkdtemp(path.join(scratch,'fresh-'));
-// Read from stdin so GNU tar cannot interpret a Windows drive letter as a remote host.
-const extracted=spawnSync('tar',['-xzf','-'],{cwd:directory,input:await fs.readFile(path.resolve(archive)),stdio:['pipe','inherit','inherit']});
-if(extracted.error)throw extracted.error;if(extracted.status!==0)throw Error('Cannot extract archive');
+// File-backed stdin avoids Windows drive-letter parsing and large buffered-pipe EOF failures.
+const archiveHandle=await fs.open(path.resolve(archive),'r');
+try{
+ const extracted=spawnSync('tar',['-xzf','-'],{cwd:directory,stdio:[archiveHandle.fd,'inherit','inherit']});
+ if(extracted.error)throw extracted.error;if(extracted.status!==0)throw Error('Cannot extract archive');
+}finally{await archiveHandle.close();}
 const entries=await fs.readdir(directory);if(entries.length!==1)throw Error('Expected a single package root');
 const packageRoot=path.join(directory,entries[0]);
 for(const line of (await fs.readFile(path.join(packageRoot,'SHA256SUMS'),'utf8')).trim().split('\n')){

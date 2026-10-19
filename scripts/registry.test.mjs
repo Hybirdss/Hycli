@@ -10,7 +10,7 @@ import {buildServerJson} from './registry-server.mjs';
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const platforms = ['linux-x64', 'linux-arm64', 'darwin-x64', 'darwin-arm64', 'win32-x64', 'win32-arm64'];
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
-async function fixture(t, selected = []) {
+async function fixture(t, selected = [], binary) {
   const scratch = path.join(root, '.cache', 'registry-tests');
   await fs.mkdir(scratch, {recursive: true});
   const dir = await fs.mkdtemp(path.join(scratch, 'case with spaces #hash-'));
@@ -31,12 +31,12 @@ else throw new Error('Unexpected test CLI command');
   const source = path.join(dir, 'input', 'package');
   for (const name of ['agent', 'skills/hycli']) await fs.mkdir(path.join(source, name), {recursive: true});
   for (const name of ['hycli', 'hycli.exe', 'LICENSE', 'README.md', 'agent/AGENTS.md', 'skills/hycli/SKILL.md']) {
-    await fs.writeFile(path.join(source, name), `synthetic ${name}\n`);
+    await fs.writeFile(path.join(source, name), name === 'hycli' && binary ? binary : `synthetic ${name}\n`);
   }
   const env = {...process.env};
   delete env.TAR_OPTIONS;
   // Stream the output to avoid Windows drive-letter interpretation in GNU tar.
-  const packed = spawnSync('tar', ['-czf', '-', 'package'], {cwd: path.dirname(source), env, maxBuffer: 1024 * 1024});
+  const packed = spawnSync('tar', ['-czf', '-', 'package'], {cwd: path.dirname(source), env, maxBuffer: 64 * 1024 * 1024});
   assert.equal(packed.status, 0, String(packed.stderr));
   for (const platform of selected) {
     await fs.writeFile(path.join(dir, 'assets', `hycli-0.1.0-${platform}.tar.gz`), packed.stdout);
@@ -75,6 +75,38 @@ test('local default discovers only existing native archives and hashes output', 
   const file = 'hycli-mcp-0.1.0-darwin-arm64.mcpb';
   assert.ok(server.packages[0].identifier.endsWith('/' + file));
   assert.equal(server.packages[0].fileSha256, digest(await fs.readFile(path.join(dir, 'output', file))));
+});
+
+test('large gzip archive preserves the complete extracted executable', async t => {
+  const tarVersion = spawnSync('tar', ['--version'], {encoding: 'utf8'});
+  assert.equal(tarVersion.status, 0, tarVersion.stderr);
+  t.diagnostic(tarVersion.stdout.split(/\r?\n/)[0]);
+  // Deterministic, incompressible payload comparable to a real release archive.
+  // Tiny fixtures cannot exercise the Windows buffered-stdin failure boundary.
+  const binary = Buffer.alloc(16 * 1024 * 1024);
+  let state = 0x12345678;
+  for (let i = 0; i < binary.length; i++) {
+    state ^= state << 13;
+    state ^= state >>> 17;
+    state ^= state << 5;
+    binary[i] = state & 255;
+  }
+  const {dir, archive} = await fixture(t, ['linux-x64'], binary);
+  assert.ok(archive.length > 15 * 1024 * 1024, 'fixture must remain a large compressed input');
+  const result = run(dir, 'mcpb.mjs', [...bundleArgs(dir), '--keep-stage']);
+  assert.equal(result.status, 0, result.stderr);
+  const extracted = await fs.readFile(path.join(dir, 'dist/mcpb/stage/hycli-mcp-0.1.0-linux-x64/server/hycli'));
+  assert.equal(extracted.length, binary.length);
+  assert.equal(digest(extracted), digest(binary));
+});
+
+test('invalid gzip input fails extraction instead of packing partial files', async t => {
+  const {dir} = await fixture(t, ['linux-x64']);
+  await fs.writeFile(path.join(dir, 'assets/hycli-0.1.0-linux-x64.tar.gz'), 'not a gzip archive');
+  const result = run(dir, 'mcpb.mjs', bundleArgs(dir));
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /tar .*failed/);
+  assert.deepEqual(await fs.readdir(path.join(dir, 'output')), []);
 });
 
 test('empty local default and unknown platform fail clearly', async t => {
