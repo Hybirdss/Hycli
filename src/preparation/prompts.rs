@@ -5,7 +5,7 @@ use super::{
 use crate::{
     environment::Environment,
     spec::Spec,
-    state::{Job, SelfQa, WebsiteUnderstanding},
+    state::{Job, WebsiteUnderstanding},
 };
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
@@ -43,7 +43,6 @@ pub(super) fn build_round_prompt(
     routes: &BTreeSet<(String, String)>,
     link_list: &[String],
     sources: &[Source],
-    self_interrogation: &BTreeMap<String, Vec<SelfQa>>,
     feedback: &BTreeMap<String, String>,
     api_routes: &BTreeSet<(String, String)>,
     installed: Option<&Spec>,
@@ -72,7 +71,6 @@ pub(super) fn build_round_prompt(
         "documented_method_paths":routes,
         "available_read_urls":link_list,
         "sources":sources,
-        "prior_self_qa":self_interrogation,
         "correction_needed":feedback
     });
     prompt["self_interrogation_protocol"] = json!([

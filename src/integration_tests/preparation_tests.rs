@@ -664,3 +664,105 @@ fn har_capture_synthesizes_rich_v2_spec_with_query_body_auth_and_pointers() {
     );
     assert!(!body.json.contains_key("password"));
 }
+
+#[tokio::test]
+async fn a_round_the_ai_refuses_entirely_keeps_actions_prepared_earlier() {
+    let (website, site_server) = host(
+        Router::new()
+            .route(
+                "/",
+                get(|| async {
+                    (
+                        [("content-type", "text/html; charset=utf-8")],
+                        r#"<!doctype html><title>Library</title><a href="/docs/openapi.json">API</a>"#,
+                    )
+                }),
+            )
+            .route(
+                "/docs/openapi.json",
+                get(|| async {
+                    Json(json!({"openapi":"3.1.0","info":{"title":"Library","version":"1"},"paths":{"/articles":{"get":{"operationId":"find-articles","summary":"Search articles"}}}}))
+                }),
+            )
+            .route(
+                "/articles",
+                get(|| async { Json(json!({"items":[{"id":"a1","title":"Observe first"}]})) }),
+            ),
+    )
+    .await;
+    let (provider, provider_server) = host(Router::new().route(
+        "/responses",
+        post(|Json(body): Json<Value>| async move {
+            let prompt = body
+                .pointer("/input/1/content")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            let input: Value = serde_json::from_str(prompt).unwrap_or(Value::Null);
+            let website = input["base_url"].as_str().unwrap_or_default().to_owned();
+            // Once an action exists, every later call is declined.
+            if !input["prepared_actions"].is_null() {
+                return Json(json!({"status":"completed","output":[{"type":"message","content":[{"type":"refusal","refusal":"Declined."}]}]}));
+            }
+            let text = if input["phase"] == "understand" {
+                json!({"understanding":{"summary":"Find articles.","workflows":[{"id":"find","title":"Find articles","benefit":"Read what matters.","steps":["Search articles"],"success_criteria":"Articles with titles are returned."}]}})
+            } else if !input["sources"].as_array().is_some_and(|sources| {
+                sources
+                    .iter()
+                    .any(|source| source["kind"] == "API documentation")
+            }) {
+                json!({"read_urls":[format!("{website}/docs/openapi.json")]})
+            } else {
+                json!({"spec":{"spec_version":1,"site":{"name":input["site_id"],"title":"Library","base_url":website},"operations":[{"name":"find-articles","desc":"Search articles.","method":"GET","path":"/articles","effect":"read","evidence":format!("{website}/docs/openapi.json"),"response":{"format":"json","required_pointers":["/items"]}}]},"description":{"title":"Library","summary":"Find articles.","actions":{"find-articles":{"title":"Find articles","description":"Search articles.","output":"Articles.","inputs":{}}}}})
+            };
+            Json(json!({"status":"completed","output":[{"type":"message","content":[{"type":"output_text","text":text.to_string()}]}]}))
+        }),
+    ))
+    .await;
+    let mut core = Runtime::open(&root(), None, None, true, true, false).unwrap();
+    Arc::get_mut(&mut core)
+        .unwrap()
+        .ai
+        .origins
+        .insert("openai".into(), provider);
+    core.vault
+        .lock()
+        .unwrap()
+        .set("providers", "openai", "synthetic-provider-key")
+        .unwrap();
+    core.state
+        .update(|d| {
+            d.providers.insert(
+                "openai".into(),
+                crate::state::ProviderSettings {
+                    model: "fixture-model".into(),
+                    connected: true,
+                    ..Default::default()
+                },
+            );
+            Ok(())
+        })
+        .unwrap();
+    let job = core
+        .start_prepare_with_intent(&website, "", "openai", "en", "")
+        .unwrap();
+    let mut finished = None;
+    for _ in 0..600 {
+        let current = core.state.job(&job.id).unwrap();
+        if !["queued", "running"].contains(&current.status.as_str()) {
+            finished = Some(current);
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let finished = finished.expect("preparation finished");
+    assert_ne!(finished.status, "failed", "error: {}", finished.error_code);
+    assert!(finished.notes.iter().any(|note| note.code == "ai_stopped"));
+    assert!(
+        core.spec(&finished.site_id)
+            .unwrap()
+            .op("find-articles")
+            .is_ok()
+    );
+    site_server.abort();
+    provider_server.abort();
+}

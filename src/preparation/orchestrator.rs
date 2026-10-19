@@ -152,7 +152,6 @@ impl Runtime {
                 &routes,
                 &link_list,
                 &sources,
-                &self_interrogation,
                 &feedback,
                 &api_routes,
                 installed.as_ref(),
@@ -373,10 +372,44 @@ impl Runtime {
                 }
             }
             if successes == 0 {
-                return Err(failures
+                // Report the most specific cause, e.g. a refusal over a generic outage.
+                let error = failures
                     .into_iter()
-                    .next()
-                    .unwrap_or_else(|| AppError::api("ai_unavailable", 502)));
+                    .max_by_key(|error| error.public_code != "ai_unavailable")
+                    .unwrap_or_else(|| AppError::api("ai_unavailable", 502));
+                let prepared_new = candidate.as_ref().is_some_and(|sp| {
+                    sp.operations.iter().any(|op| {
+                        installed
+                            .as_ref()
+                            .is_none_or(|existing| existing.op(&op.name).is_err())
+                    })
+                });
+                if !prepared_new {
+                    return Err(error);
+                }
+                // Earlier rounds already prepared actions. Check their reads without AI
+                // and finish with them instead of discarding the work.
+                self.job_note(&job.id, "ai_stopped", "", 0, "")?;
+                if let Some(proposed) = candidate.as_mut() {
+                    self.verify_candidate_reads(
+                        job,
+                        &account_id,
+                        proposed,
+                        &mut description,
+                        &mut workflow_review,
+                        &mut review_requested,
+                        &mut verification,
+                        &mut read_attempts,
+                        &mut read_results,
+                        &mut smoke_checks,
+                        &mut attempted,
+                        &mut repair_rounds,
+                        &mut sources,
+                        &mut feedback,
+                    )
+                    .await?;
+                }
+                break;
             }
             if let Some(sp) = &candidate {
                 self.state.update_job(&job.id, |work| {
