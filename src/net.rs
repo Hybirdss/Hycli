@@ -22,6 +22,7 @@ pub struct Network {
     pub allow_local: bool,
     pub clients: std::sync::Mutex<std::collections::BTreeMap<String, reqwest::Client>>,
 }
+#[derive(Clone)]
 pub struct Request {
     pub url: String,
     pub method: String,

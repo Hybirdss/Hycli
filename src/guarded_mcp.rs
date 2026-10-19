@@ -1,7 +1,7 @@
 //! MCP tools share the exact same execution and approval boundary as the dashboard.
 use crate::{
     apperr::{AppError, AppResult},
-    policy::{self, Effect},
+    policy::Effect,
     runtime::Runtime,
     util,
 };
@@ -344,15 +344,7 @@ impl Server {
     ) -> AppResult<Value> {
         self.allowed(site)?;
         let sp = self.core.spec(site)?;
-        let op = sp.op(action)?;
         let request = self.core.request(&sp, action, inputs, account)?;
-        let effect = policy::operation_effect(op, &request.inputs);
-        if op.effect == Effect::Read && effect != Effect::Read {
-            return Err(AppError::api("approval_required", 409));
-        }
-        if effect != Effect::Read {
-            self.core.ensure_writes(site)?;
-        }
         let (result, _) = self.core.execute_observed(request, locale).await?;
         Ok(json!(result))
     }

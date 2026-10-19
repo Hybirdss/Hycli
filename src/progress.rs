@@ -219,6 +219,13 @@ impl Runtime {
             && let Ok(op) = sp.op(&request.action_id)
         {
             job.effect = crate::policy::operation_effect(op, &request.inputs);
+            if op.effect == crate::policy::Effect::Read && job.effect != crate::policy::Effect::Read
+            {
+                return Err(crate::apperr::AppError::api("approval_required", 409));
+            }
+            if job.effect != crate::policy::Effect::Read {
+                self.ensure_writes(&request.site_id)?;
+            }
         }
         if let Some(site) = self
             .sites(locale)?
