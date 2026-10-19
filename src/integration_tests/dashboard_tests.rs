@@ -574,6 +574,41 @@ fn automatic_browser_account_selection_preserves_the_selected_person() {
     assert_eq!(core.browser_account_for("fixture", url).unwrap(), first.id);
 }
 
+#[test]
+fn a_named_site_reuses_a_session_captured_under_the_auto_generated_id() {
+    let core = runtime();
+    let url = "https://news.example";
+    // A spec prepared under a chosen name ("fixture"), with no account selected.
+    core.install(&spec_for(url)).unwrap();
+    let cookies = crate::accounts::parse_cookies(
+        r#"[{"name":"sid","value":"synthetic-session","domain":"news.example","path":"/"}]"#,
+        url,
+    )
+    .unwrap();
+    let account = core
+        .connect_account("fixture", url, cookies, "Chrome", "Work", "")
+        .unwrap();
+    // The same login, but recorded under the auto-generated "site-<host>-<hash>"
+    // id a raw-URL observe/import uses, not the chosen spec name.
+    let auto = crate::runtime::site_id_for(&crate::net::validate_url(url).unwrap());
+    assert_ne!(auto, "fixture");
+    core.state
+        .update(|state| {
+            let a = state.accounts.get_mut(&account.id).unwrap();
+            a.site_id = auto.clone();
+            a.user_id = "person".into();
+            a.verified_identity = true;
+            a.status = "connected".into();
+            state.sites.get_mut("fixture").unwrap().account_id.clear();
+            Ok(())
+        })
+        .unwrap();
+    assert_eq!(
+        core.browser_account_for("fixture", url).unwrap(),
+        account.id
+    );
+}
+
 #[tokio::test]
 async fn documentation_redirect_drops_the_original_session() {
     let seen = Arc::new(AtomicUsize::new(0));

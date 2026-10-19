@@ -539,11 +539,14 @@ impl Runtime {
     pub(crate) fn browser_account_for(&self, site_id: &str, url: &str) -> AppResult<String> {
         let target_url = crate::net::validate_url(url)?;
         let data = self.state.read()?;
+        // An imported session is scoped by origin, not by the id a site was
+        // prepared under. A spec prepared under a chosen name must reuse a login
+        // captured under the auto-generated "site-<host>-<hash>" id for the same
+        // origin, so match on origin rather than an exact site id.
         let usable = |id: &str| {
             data.accounts.get(id).is_some_and(|account| {
-                account.site_id == site_id
-                    && crate::net::validate_url(&account.site_url)
-                        .is_ok_and(|site_url| crate::net::same_site_origin(&target_url, &site_url))
+                crate::net::validate_url(&account.site_url)
+                    .is_ok_and(|site_url| crate::net::same_site_origin(&target_url, &site_url))
                     && account.status == "connected"
                     && account.verified_identity
             })
