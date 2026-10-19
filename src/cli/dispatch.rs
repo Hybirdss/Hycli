@@ -1,6 +1,6 @@
 use super::{
     actions,
-    args::{Cmd, Deps, JobsCmd, KbCmd},
+    args::{AccountsCmd, Cmd, Deps, JobsCmd, KbCmd},
     site_cmd::{
         auth_cmd, capture_run, check_run, find_spec, hycli_sites, job_outcome, site_run, spec_cmd,
         try_run, wait_preparation,
@@ -181,7 +181,10 @@ async fn dispatch(deps: Deps, cmd: Cmd, emit: &Emitter) -> Result<(), AppError> 
             }));
             Ok(())
         }
-        Cmd::Accounts { site } => {
+        Cmd::Accounts { site, cmd } => {
+            if let Some(cmd) = cmd {
+                return accounts_cmd(&deps, cmd, emit).await;
+            }
             let accounts: Vec<_> = runner(&deps)?
                 .state
                 .accounts()?
@@ -421,6 +424,197 @@ async fn dispatch(deps: Deps, cmd: Cmd, emit: &Emitter) -> Result<(), AppError> 
         Cmd::Check { site } => check_run(deps, site, emit).await,
         Cmd::Site(rest) => site_run(deps, rest, emit).await,
     }
+}
+
+async fn accounts_cmd(deps: &Deps, cmd: AccountsCmd, emit: &Emitter) -> Result<(), AppError> {
+    use crate::{accounts::Observation, session_recipe::ConnectionRecipe};
+    use serde_json::json;
+    let core = runner(deps)?;
+    let id = match &cmd {
+        AccountsCmd::Inspect { account }
+        | AccountsCmd::Read { account, .. }
+        | AccountsCmd::Observe { account, .. }
+        | AccountsCmd::Verify { account, .. }
+        | AccountsCmd::Refresh { account } => account,
+    };
+    let account = core
+        .state
+        .account(id)?
+        .ok_or_else(|| AppError::api("not_found", 404))?;
+    let account_origin = crate::runtime::origin(&account.site_url)?;
+    match cmd {
+        AccountsCmd::Inspect { account } => {
+            emit.data(&core.inspect_session_key(&account, &account_origin, "", 0)?);
+        }
+        AccountsCmd::Refresh { account } => emit.data(&core.refresh_account(&account).await?),
+        AccountsCmd::Read { account: id, url } => {
+            let target = crate::net::validate_url(&url)?;
+            if !account.verified_identity || account.status != "connected" {
+                return Err(AppError::api("auth_required", 401));
+            }
+            if !crate::net::same_site_origin(&target, &crate::net::validate_url(&account_origin)?)
+                || !safe_session_read_url(&target)
+            {
+                return Err(AppError::api("unsafe_target", 400));
+            }
+            let keys: std::collections::BTreeSet<_> =
+                target.query_pairs().map(|(k, _)| k.into_owned()).collect();
+            let observed = core
+                .state
+                .read()?
+                .sites
+                .get(&account.site_id)
+                .is_some_and(|meta| {
+                    meta.observations.iter().any(|o| {
+                        o.method == "GET"
+                            && (200..300).contains(&o.status)
+                            && o.path == target.path()
+                            && o.query
+                                .keys()
+                                .cloned()
+                                .collect::<std::collections::BTreeSet<_>>()
+                                == keys
+                    })
+                });
+            if !observed {
+                return Err(AppError::api("unsupported_evidence", 422));
+            }
+            let response = core.read_page(&url, &id).await?;
+            if !response.successful() {
+                return Err(AppError::api(
+                    match response.status {
+                        401 | 403 => "auth_required",
+                        429 => "site_rate_limited",
+                        _ => "request_failed",
+                    },
+                    422,
+                ));
+            }
+            let body = response
+                .json()
+                .ok_or_else(|| AppError::api("response_mismatch", 422))?;
+            if body
+                .get("errors")
+                .and_then(serde_json::Value::as_array)
+                .is_some_and(|e| !e.is_empty())
+            {
+                return Err(AppError::api("query_failed", 422));
+            }
+            emit.data(&crate::runtime::sanitized(
+                body,
+                &core.credential(&id)?.redaction_values(),
+            ));
+        }
+        AccountsCmd::Observe {
+            account: id,
+            url,
+            browser,
+        } => {
+            let target = crate::net::validate_url(&url)?;
+            if !crate::net::same_site_origin(&target, &crate::net::validate_url(&account_origin)?)
+                || !safe_session_read_url(&target)
+            {
+                return Err(AppError::api("unsafe_target", 400));
+            }
+            let (observations, result) = if browser {
+                let capture = crate::browser_session::capture(
+                    &core.credential(&id)?,
+                    &url,
+                    core.network.allow_local,
+                )
+                .await?;
+                let names: Vec<_> = capture.headers.keys().cloned().collect();
+                core.update_credential(&id, |credential| {
+                    credential.headers.extend(capture.headers);
+                    Ok(())
+                })?;
+                (
+                    capture.observations,
+                    json!({"status":capture.status,"authenticated_requests":capture.authenticated_requests,"captured_headers":names,"values_exposed":false}),
+                )
+            } else {
+                core.policy.resume_auth(&format!("{account_origin}|{id}"))?;
+                let response = core.read_page(&url, &id).await?;
+                let observation = Observation {
+                    method: "GET".into(),
+                    path: target.path().into(),
+                    query: target
+                        .query_pairs()
+                        .filter(|(key, _)| !crate::util::secret_field(key))
+                        .map(|(key, _)| (key.into_owned(), "string".into()))
+                        .collect(),
+                    status: response.status,
+                    observed_at: crate::util::now(),
+                    ..Default::default()
+                };
+                (
+                    vec![observation],
+                    json!({"status":response.status,"successful":response.successful(),"response_shape":response.json().as_ref().map(|body| crate::session_recipe::shape(body, 0)),"values_exposed":false}),
+                )
+            };
+            core.state.update(|data| {
+                let meta = data.sites.entry(account.site_id.clone()).or_default();
+                for observation in &observations {
+                    if let Some(old) = meta.observations.iter_mut().find(|old| {
+                        old.method == observation.method && old.path == observation.path
+                    }) {
+                        *old = observation.clone();
+                    } else {
+                        meta.observations.push(observation.clone());
+                    }
+                }
+                Ok(())
+            })?;
+            emit.data(&json!({"account_id":id,"observation":result,"requests":observations}));
+        }
+        AccountsCmd::Verify {
+            account: id,
+            recipe,
+        } => {
+            let recipe: ConnectionRecipe = serde_json::from_slice(&std::fs::read(recipe)?)
+                .map_err(|_| AppError::api("data_invalid", 400))?;
+            let target = crate::net::validate_url(&recipe.identity_url)?;
+            if !safe_session_read_url(&target) {
+                return Err(AppError::api("unsafe_target", 400));
+            }
+            let observed = core
+                .state
+                .read()?
+                .sites
+                .get(&account.site_id)
+                .is_some_and(|meta| {
+                    meta.observations
+                        .iter()
+                        .any(|o| o.method == "GET" && o.path == target.path())
+                });
+            if !observed || recipe.evidence.trim().is_empty() {
+                return Err(AppError::api("unsupported_evidence", 422));
+            }
+            emit.data(&core.verify_session_recipe(&id, &recipe).await?);
+        }
+    }
+    Ok(())
+}
+
+fn safe_session_read_url(target: &url::Url) -> bool {
+    if !crate::policy::safe_read_url(target) {
+        return false;
+    }
+    let args = target
+        .query_pairs()
+        .map(|(k, v)| (k.into_owned(), v.into_owned()))
+        .collect();
+    let operation = crate::spec::Operation {
+        name: "session-read".into(),
+        method: "GET".into(),
+        path: target.path().into(),
+        effect: crate::policy::Effect::Read,
+        evidence: "explicit observed session GET".into(),
+        ..Default::default()
+    };
+    let effect = crate::policy::operation_effect(&operation, &args);
+    effect != crate::policy::Effect::Write
+        && !(effect == crate::policy::Effect::Unknown && args.contains_key("query"))
 }
 
 async fn kb_cmd(deps: Deps, cmd: KbCmd, emit: &Emitter) -> Result<(), AppError> {
