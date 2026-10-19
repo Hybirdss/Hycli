@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
-import {fileURLToPath} from 'node:url';
+import {fileURLToPath, pathToFileURL} from 'node:url';
 import {buildServerJson} from './registry-server.mjs';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -13,7 +13,7 @@ const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 async function fixture(t, selected = []) {
   const scratch = path.join(root, '.cache', 'registry-tests');
   await fs.mkdir(scratch, {recursive: true});
-  const dir = await fs.mkdtemp(path.join(scratch, 'case-'));
+  const dir = await fs.mkdtemp(path.join(scratch, 'case with spaces #hash-'));
   t.after(() => fs.rm(dir, {recursive: true, force: true}));
   await fs.mkdir(path.join(dir, 'scripts'));
   for (const name of ['mcpb.mjs', 'registry-server.mjs', 'publish-release.mjs']) {
@@ -44,7 +44,7 @@ else throw new Error('Unexpected test CLI command');
   return {dir, archive: packed.stdout};
 }
 function run(dir, script, args = [], preload) {
-  return spawnSync(process.execPath, [...(preload ? ['--import', path.join(dir, preload)] : []),
+  return spawnSync(process.execPath, [...(preload ? ['--import', pathToFileURL(path.join(dir, preload)).href] : []),
     path.join(dir, 'scripts', script), ...args], {cwd: dir, encoding: 'utf8', timeout: 30000});
 }
 function bundleArgs(dir) {
