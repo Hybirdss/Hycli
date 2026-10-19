@@ -11,7 +11,7 @@ pub mod cli_actions;
 pub mod defend;
 pub mod discovery;
 pub mod environment;
-pub mod har;
+pub use capture::har;
 pub mod kb;
 pub mod net;
 pub mod output;

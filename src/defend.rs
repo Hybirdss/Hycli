@@ -46,6 +46,20 @@ impl Class {
             Class::None => "",
         }
     }
+
+    pub fn is_challenge(self) -> bool {
+        matches!(
+            self,
+            Class::Cloudflare | Class::BotManager | Class::Captcha | Class::Unknown
+        )
+    }
+}
+
+pub fn is_challenge_label(defense: &str) -> bool {
+    matches!(
+        defense,
+        "cloudflare" | "bot-manager" | "captcha" | "unknown"
+    )
 }
 
 #[derive(Debug, Clone, Default)]

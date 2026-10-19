@@ -193,21 +193,8 @@ impl Store {
     pub(crate) fn get(&self, site: &str, key: &str) -> Option<&str> {
         self.data.get(&format!("{site}/{key}")).map(String::as_str)
     }
-    pub(crate) fn values_for_redaction(&self) -> Vec<String> {
-        let mut values: Vec<String> = self
-            .data
-            .values()
-            .filter(|s| !s.is_empty())
-            .cloned()
-            .collect();
-        for (name, value) in &self.data {
-            if name.starts_with("accounts/") {
-                if let Ok(credential) = serde_json::from_str::<crate::accounts::Credential>(value) {
-                    values.extend(credential.redaction_values());
-                }
-            }
-        }
-        values
+    pub(crate) fn entries(&self) -> &BTreeMap<String, String> {
+        &self.data
     }
     pub fn contains(&self, site: &str, key: &str) -> bool {
         self.data.contains_key(&format!("{site}/{key}"))

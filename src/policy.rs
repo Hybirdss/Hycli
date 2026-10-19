@@ -129,10 +129,7 @@ pub fn operation_effect(op: &Operation, args: &BTreeMap<String, String>) -> Effe
     }
     resolved.extend(args.clone());
     for (key, value) in &resolved {
-        if ["action", "operation", "op", "method", "command", "mode"]
-            .contains(&key.to_ascii_lowercase().as_str())
-            && dangerous_intent(value)
-        {
+        if INTENT_KEYS.contains(&key.to_ascii_lowercase().as_str()) && dangerous_intent(value) {
             return Effect::Write;
         }
     }
@@ -225,11 +222,12 @@ pub fn operation_effect(op: &Operation, args: &BTreeMap<String, String>) -> Effe
     Effect::Unknown
 }
 
+pub const INTENT_KEYS: &[&str] = &["action", "operation", "op", "method", "command", "mode"];
+
 fn nested_change_intent(value: &serde_json::Value) -> bool {
     match value {
         serde_json::Value::Object(object) => object.iter().any(|(key, value)| {
-            (["action", "operation", "op", "method", "command", "mode"]
-                .contains(&key.to_ascii_lowercase().as_str())
+            (INTENT_KEYS.contains(&key.to_ascii_lowercase().as_str())
                 && value.as_str().is_some_and(dangerous_intent))
                 || nested_change_intent(value)
         }),
@@ -912,8 +910,7 @@ pub fn safe_read_url(url: &url::Url) -> bool {
         && !url.query_pairs().any(|(key, value)| {
             util::secret_field(&key)
                 || dangerous_intent(&key)
-                || (["action", "operation", "op", "command", "method", "mode"]
-                    .contains(&key.to_ascii_lowercase().as_str())
+                || (INTENT_KEYS.contains(&key.to_ascii_lowercase().as_str())
                     && dangerous_intent(&value))
         })
 }

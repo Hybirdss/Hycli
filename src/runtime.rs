@@ -782,10 +782,7 @@ impl Runtime {
             match fetched {
                 Ok(r)
                     if effect == Effect::Read
-                        && matches!(
-                            r.defense.as_str(),
-                            "cloudflare" | "bot-manager" | "captcha" | "unknown"
-                        )
+                        && crate::defend::is_challenge_label(&r.defense)
                         && !op.matches_response(&r)
                         && !is_local_url =>
                 {
@@ -1119,7 +1116,7 @@ impl Runtime {
             .chain(op.headers.iter())
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect();
-        let mut secrets = vault.values_for_redaction();
+        let mut secrets = accounts::collect_redaction_secrets(&vault);
         let mut loaded_credential: Option<Credential> = None;
         if !account.is_empty() {
             let credential: Credential = serde_json::from_str(
@@ -1400,11 +1397,7 @@ impl Runtime {
                 tls_profile: req_input.tls_profile.clone(),
             })
             .await?;
-        if matches!(
-            r.defense.as_str(),
-            "cloudflare" | "bot-manager" | "captcha" | "unknown"
-        ) && !is_local_url
-        {
+        if crate::defend::is_challenge_label(&r.defense) && !is_local_url {
             let _ = self.policy.resume_auth(&format!("{req_origin}|{account}"));
             let credential = load_credential();
             if let Ok(in_page) = self

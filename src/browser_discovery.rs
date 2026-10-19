@@ -1,53 +1,11 @@
 //! Browser inventory is metadata only. Site-scoped session import stays inside the local broker.
+pub use crate::environment::BrowserProfile;
+#[cfg(test)]
+use crate::environment::firefox_profiles;
 use crate::{apperr::AppResult, runtime::Runtime, util};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
-#[derive(Clone, Default, Serialize)]
-pub struct BrowserProfile {
-    pub id: String,
-    pub browser: String,
-    pub profile: String,
-    pub running: bool,
-    pub last_modified_ms: u64,
-    #[serde(skip)]
-    pub(crate) path: PathBuf,
-}
-pub(crate) fn firefox_profiles(root: &Path) -> Option<Vec<PathBuf>> {
-    let ini = [
-        root.join("profiles.ini"),
-        root.parent()?.join("profiles.ini"),
-    ]
-    .into_iter()
-    .find(|path| path.is_file())?;
-    let text = String::from_utf8(util::read_bounded(&ini, 64 * 1024).ok()?).ok()?;
-    let mut profiles = vec![];
-    let mut profile = false;
-    let mut path = String::new();
-    let mut relative = true;
-    let mut finish = |profile: bool, path: &str, relative: bool| {
-        if profile && !path.is_empty() {
-            profiles.push(if relative {
-                ini.parent().unwrap().join(path)
-            } else {
-                PathBuf::from(path)
-            });
-        }
-    };
-    for line in text.lines().chain(std::iter::once("[End]")) {
-        let line = line.trim();
-        if line.starts_with('[') && line.ends_with(']') {
-            finish(profile, &path, relative);
-            path.clear();
-            relative = true;
-            profile = line.starts_with("[Profile");
-        } else if let Some(value) = line.strip_prefix("Path=") {
-            path = value.trim().into();
-        } else if let Some(value) = line.strip_prefix("IsRelative=") {
-            relative = value.trim() != "0";
-        }
-    }
-    Some(profiles)
-}
+
 pub fn discover() -> Vec<BrowserProfile> {
     crate::environment::inspect().profiles
 }

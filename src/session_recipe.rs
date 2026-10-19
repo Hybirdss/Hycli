@@ -88,44 +88,18 @@ impl ConnectionRecipe {
             {
                 return Err(AppError::api("data_invalid", 400));
             }
-            let raw = match rule.source.as_str() {
-                "local_storage" => credential.local_storage.get(&rule.key).cloned(),
-                "cookie" => credential
-                    .cookies
-                    .iter()
-                    .find(|c| c.name == rule.key && crate::accounts::cookie_matches(c, &url))
-                    .or_else(|| credential.cookies.iter().find(|c| c.name == rule.key))
-                    .map(|c| c.value.clone()),
-                "captured_header" => credential
-                    .headers
-                    .iter()
-                    .find(|(name, _)| name.eq_ignore_ascii_case(&rule.key))
-                    .map(|(_, value)| value.clone()),
-                _ => None,
-            }
-            .ok_or_else(|| AppError::api("auth_required", 401))?;
-            let value = if rule.json_pointer.is_empty() {
-                // Browser storage commonly stores either a raw string or a JSON string.
-                match serde_json::from_str::<Value>(&raw) {
-                    Ok(Value::String(s)) => s,
-                    Ok(Value::Null) => String::new(),
-                    _ => raw,
-                }
-            } else {
-                let mut decoded: Value =
-                    serde_json::from_str(&raw).map_err(|_| AppError::api("data_invalid", 400))?;
-                if let Value::String(inner) = &decoded {
-                    if let Ok(nested) = serde_json::from_str::<Value>(inner) {
-                        decoded = nested;
-                    }
-                }
-                crate::html::resolve_pointer(&decoded, &rule.json_pointer)
-                    .and_then(scalar)
-                    .ok_or_else(|| AppError::api("auth_required", 401))?
-            };
-            if value.is_empty() || value.len() > 16384 || value.contains(['\r', '\n']) {
+            if !matches!(
+                rule.source.as_str(),
+                "local_storage" | "cookie" | "captured_header"
+            ) {
                 return Err(AppError::api("auth_required", 401));
             }
+            let value = credential.resolve_source(
+                &rule.source,
+                &rule.key,
+                &rule.json_pointer,
+                &self.identity_url,
+            )?;
             headers.insert(
                 rule.header.to_ascii_lowercase(),
                 format!("{}{value}", rule.prefix),

@@ -167,73 +167,101 @@ impl Credential {
         Ok(headers)
     }
 
-    pub fn resolve_derived_value(&self, value_from: &str, raw_url: &str) -> AppResult<String> {
+    pub fn resolve_source(
+        &self,
+        source: &str,
+        key: &str,
+        json_pointer: &str,
+        raw_url: &str,
+    ) -> AppResult<String> {
         let url = net::validate_url(raw_url)?;
         let origin = net::validate_url(&self.origin)?;
         if !net::same_site_origin(&url, &origin) {
             return Err(AppError::api("unsafe_target", 400));
         }
-        if let Some(cookie_name) = value_from.strip_prefix("cookie:") {
-            let value = self
+        let raw = match source {
+            "local_storage" | "storage" => self.local_storage.get(key).cloned(),
+            "cookie" => self
                 .cookies
                 .iter()
-                .find(|c| c.name == cookie_name && cookie_matches(c, &url))
-                .or_else(|| self.cookies.iter().find(|c| c.name == cookie_name))
-                .map(|c| c.value.clone())
-                .ok_or_else(|| AppError::api("auth_required", 401))?;
-            if value.is_empty() || value.contains(['\r', '\n']) {
-                return Err(AppError::api("auth_required", 401));
-            }
-            return Ok(value);
+                .find(|c| c.name == key && cookie_matches(c, &url))
+                .or_else(|| self.cookies.iter().find(|c| c.name == key))
+                .map(|c| c.value.clone()),
+            "captured_header" | "header" => self
+                .headers
+                .iter()
+                .find(|(name, _)| name.eq_ignore_ascii_case(key))
+                .map(|(_, value)| value.clone()),
+            _ => None,
         }
-        if let Some(storage_spec) = value_from.strip_prefix("storage:") {
-            let (key, pointer) = storage_spec.split_once('#').unwrap_or((storage_spec, ""));
-            let raw = self
-                .local_storage
-                .get(key)
-                .cloned()
-                .ok_or_else(|| AppError::api("auth_required", 401))?;
-            let value = if pointer.is_empty() {
+        .ok_or_else(|| AppError::api("auth_required", 401))?;
+        let value = if json_pointer.is_empty() {
+            if matches!(source, "local_storage" | "storage") {
                 match serde_json::from_str::<Value>(&raw) {
                     Ok(Value::String(s)) => s,
                     Ok(Value::Null) => String::new(),
                     _ => raw,
                 }
             } else {
-                let mut decoded: Value =
-                    serde_json::from_str(&raw).map_err(|_| AppError::api("data_invalid", 400))?;
-                if let Value::String(inner) = &decoded {
-                    if let Ok(nested) = serde_json::from_str::<Value>(inner) {
-                        decoded = nested;
-                    }
-                }
-                crate::html::resolve_pointer(&decoded, pointer)
-                    .and_then(|v| match v {
-                        Value::String(s) => Some(s.clone()),
-                        Value::Number(n) => Some(n.to_string()),
-                        _ => None,
-                    })
-                    .ok_or_else(|| AppError::api("auth_required", 401))?
-            };
-            if value.is_empty() || value.contains(['\r', '\n']) {
-                return Err(AppError::api("auth_required", 401));
+                raw
             }
-            return Ok(value);
+        } else {
+            let mut decoded: Value =
+                serde_json::from_str(&raw).map_err(|_| AppError::api("data_invalid", 400))?;
+            if let Value::String(inner) = &decoded {
+                if let Ok(nested) = serde_json::from_str::<Value>(inner) {
+                    decoded = nested;
+                }
+            }
+            crate::html::resolve_pointer(&decoded, json_pointer)
+                .and_then(|v| match v {
+                    Value::String(s) => Some(s.clone()),
+                    Value::Number(n) => Some(n.to_string()),
+                    _ => None,
+                })
+                .ok_or_else(|| AppError::api("auth_required", 401))?
+        };
+        if value.is_empty() || value.len() > 16384 || value.contains(['\r', '\n']) {
+            return Err(AppError::api("auth_required", 401));
+        }
+        Ok(value)
+    }
+
+    pub fn resolve_derived_value(&self, value_from: &str, raw_url: &str) -> AppResult<String> {
+        if let Some(cookie_name) = value_from.strip_prefix("cookie:") {
+            return self.resolve_source("cookie", cookie_name, "", raw_url);
+        }
+        if let Some(storage_spec) = value_from.strip_prefix("storage:") {
+            let (key, pointer) = storage_spec.split_once('#').unwrap_or((storage_spec, ""));
+            return self.resolve_source("storage", key, pointer, raw_url);
         }
         if let Some(header_name) = value_from.strip_prefix("header:") {
-            let value = self
-                .headers
-                .iter()
-                .find(|(k, _)| k.eq_ignore_ascii_case(header_name))
-                .map(|(_, v)| v.clone())
-                .ok_or_else(|| AppError::api("auth_required", 401))?;
-            if value.is_empty() || value.contains(['\r', '\n']) {
-                return Err(AppError::api("auth_required", 401));
-            }
-            return Ok(value);
+            return self.resolve_source("header", header_name, "", raw_url);
+        }
+        let url = net::validate_url(raw_url)?;
+        let origin = net::validate_url(&self.origin)?;
+        if !net::same_site_origin(&url, &origin) {
+            return Err(AppError::api("unsafe_target", 400));
         }
         Err(AppError::api("data_invalid", 400))
     }
+}
+
+pub(crate) fn collect_redaction_secrets(store: &crate::store::Store) -> Vec<String> {
+    let mut values: Vec<String> = store
+        .entries()
+        .values()
+        .filter(|s| !s.is_empty())
+        .cloned()
+        .collect();
+    for (name, value) in store.entries() {
+        if name.starts_with("accounts/") {
+            if let Ok(credential) = serde_json::from_str::<Credential>(value) {
+                values.extend(credential.redaction_values());
+            }
+        }
+    }
+    values
 }
 pub fn browser_header(name: &str) -> bool {
     matches!(
