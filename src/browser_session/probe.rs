@@ -1,9 +1,12 @@
-//! Browser rendering with a discovered engine and its normal platform defaults.
 use chromiumoxide::Browser;
 use futures_util::StreamExt;
 
-use crate::apperr::{self, AppError};
-use crate::defend;
+use crate::{
+    apperr::{self, AppError},
+    defend,
+};
+
+use super::config::{STEALTH_INIT_SCRIPT, build_stealth_browser_config, can_run_headed};
 
 #[derive(Debug, serde::Serialize)]
 pub struct Observation {
@@ -20,13 +23,12 @@ async fn run_probe_with_mode(
     url: &str,
     headed: bool,
 ) -> Result<Observation, AppError> {
-    let config = crate::browser_session::build_stealth_browser_config(engine, None, url, headed)
-        .map_err(|e| {
-            apperr::runtime_msg(
-                format!("Browser configuration failed: {e}"),
-                "Install Chrome, Chromium, or Edge, or set CHROME to the executable path.",
-            )
-        })?;
+    let config = build_stealth_browser_config(engine, None, url, headed).map_err(|e| {
+        apperr::runtime_msg(
+            format!("Browser configuration failed: {e}"),
+            "Install Chrome, Chromium, or Edge, or set CHROME to the executable path.",
+        )
+    })?;
     let (mut browser, mut handler) = Browser::launch(config).await.map_err(|e| {
         apperr::runtime(
             e,
@@ -53,15 +55,9 @@ pub async fn stealth_probe(url: &str) -> Result<Observation, AppError> {
         .ok_or_else(|| AppError::api("browser_unavailable", 422))?;
     let force_headed = std::env::var_os("HYCLI_HEADED").is_some();
     let first = run_probe_with_mode(engine, url, force_headed).await?;
-    let is_challenged = |defense: &str| {
-        matches!(
-            defense,
-            "cloudflare" | "bot-manager" | "captcha" | "cloudflare_challenge" | "bot_manager"
-        )
-    };
-    if !force_headed && is_challenged(&first.defense) && crate::browser_session::can_run_headed() {
+    if !force_headed && defend::is_challenge_label(&first.defense) && can_run_headed() {
         if let Ok(escalated) = run_probe_with_mode(engine, url, true).await {
-            if !is_challenged(&escalated.defense) {
+            if !defend::is_challenge_label(&escalated.defense) {
                 return Ok(escalated);
             }
         }
@@ -74,9 +70,7 @@ async fn observe(browser: &Browser, url: &str) -> Result<Observation, AppError> 
         .new_page("about:blank")
         .await
         .map_err(|e| apperr::runtime(e, "Failed to open browser page", ""))?;
-    let _ = page
-        .evaluate_on_new_document(crate::browser_session::STEALTH_INIT_SCRIPT)
-        .await;
+    let _ = page.evaluate_on_new_document(STEALTH_INIT_SCRIPT).await;
 
     let start = std::time::Instant::now();
     let handle = page

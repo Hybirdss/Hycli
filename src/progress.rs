@@ -193,20 +193,12 @@ impl Drop for ObservedJobGuard<'_> {
             if !["queued", "running"].contains(&work.status.as_str()) {
                 return;
             }
-            work.finished_at = util::now();
-            if work.is_outcome_uncertain() {
-                work.status = "failed".into();
-                work.phase = "failed".into();
-                work.error_code = "action_outcome_unknown".into();
-                work.note("failed", "", 0, "");
+            let note_code = if work.is_outcome_uncertain() {
+                "failed"
             } else {
-                work.status = "cancelled".into();
-                work.phase = "cancelled".into();
-                if work.error_code.is_empty() {
-                    work.error_code = "cancelled".into();
-                }
-                work.note("cancelled", "", 0, "");
-            }
+                "cancelled"
+            };
+            work.mark_interrupted(note_code);
         });
         self.core.changed();
     }

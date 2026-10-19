@@ -360,22 +360,7 @@ impl Runtime {
         self.state.update_job(id, |j| {
             if ["queued", "running"].contains(&j.status.as_str()) {
                 approval_id = j.approval_id.clone();
-                let uncertain = j.is_outcome_uncertain();
-                j.status = if uncertain { "failed" } else { "cancelled" }.into();
-                j.phase = j.status.clone();
-                if uncertain {
-                    j.error_code = "action_outcome_unknown".into();
-                } else if j.error_code.is_empty() {
-                    j.error_code = "cancelled".into();
-                }
-                j.finished_at = util::now();
-                j.note("cancelled", "", 0, "");
-                for agent in &mut j.agents {
-                    if ["running", "queued"].contains(&agent.status.as_str()) {
-                        agent.status = "cancelled".into();
-                        agent.finished_at = util::now();
-                    }
-                }
+                j.mark_interrupted("cancelled");
             }
         })?;
         if !approval_id.is_empty() {
