@@ -6,6 +6,7 @@ import {spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {parseArgs} from 'node:util';
+import {buildServerJson} from './registry-server.mjs';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const {values} = parseArgs({
@@ -39,7 +40,7 @@ const runId = values['run-id'] || JSON.parse(
 )[0]?.databaseId;
 if (!runId) throw new Error('No successful Verify and package run found on main');
 
-const baseTmp = process.platform === 'linux' ? '/data/tmp' : path.join(root, '.cache');
+const baseTmp = path.join(root, '.cache');
 await fs.mkdir(baseTmp, {recursive: true});
 const stage = await fs.mkdtemp(path.join(baseTmp, `hycli-release-${runId}-`));
 
@@ -86,12 +87,27 @@ try {
 
   const shaSumsPath = path.join(stage, 'SHA256SUMS');
   await fs.writeFile(shaSumsPath, shaEntries.join('\n') + '\n');
-  const uploadFiles = [...collected.values(), shaSumsPath];
+
+  // The registry entry must hash the exact bytes the release serves, so server.json is built from
+  // the collected bundles here instead of being committed with hashes measured somewhere else.
+  const bundles = [];
+  for (const [name, fullPath] of [...collected.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+    if (!name.endsWith('.mcpb')) continue;
+    bundles.push({file: name, sha256: createHash('sha256').update(await fs.readFile(fullPath)).digest('hex')});
+  }
+  const expectedBundles = ['linux-x64', 'linux-arm64', 'darwin-x64', 'darwin-arm64', 'win32-x64', 'win32-arm64'];
+  const missing = expectedBundles.filter(id => !bundles.some(bundle => bundle.file === `hycli-mcp-${version}-${id}.mcpb`));
+  if (missing.length) throw new Error(`Missing MCP bundles: ${missing.join(', ')}`);
+
+  const serverJsonPath = path.join(stage, 'server.json');
+  await fs.writeFile(serverJsonPath, JSON.stringify(buildServerJson({version, bundles, tag}), null, 2) + '\n');
+  const uploadFiles = [...collected.values(), shaSumsPath, serverJsonPath];
 
   console.log(JSON.stringify({
     run_id: runId,
     tag,
     verified_artifacts: shaEntries.length,
+    mcp_bundles: bundles.length,
     total_files: uploadFiles.length
   }));
 

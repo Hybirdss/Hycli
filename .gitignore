@@ -15,6 +15,9 @@
 /hycli-rs-bin
 /specs/
 
+# Registry entry is generated from the exact uploaded bundle bytes; a committed hash snapshot goes stale
+/packaging/registry/server.json
+
 # Local media-generation state, upload receipts and absolute source paths
 **/.klingx-state.json
 **/.gen-*.yaml

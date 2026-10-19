@@ -24,7 +24,7 @@ const scratch=path.join(root,'.cache','packages');await fs.mkdir(scratch,{recurs
 const stage=await fs.mkdtemp(path.join(scratch,name+'-'));
 const content=path.join(stage,name);await fs.mkdir(content);
 const excluded=new Set(['node_modules','target','dist','web','.cache','.localdata','.repowise','.git','test-results','playwright-report','__pycache__']);
-const authoringOnly=new Set(['scripts/build-motion.py','dashboard/inspect-ui.mjs','dashboard/progress-visual.mjs','dashboard/visual-fixture.mjs']);
+const authoringOnly=new Set(['scripts/build-motion.py','dashboard/inspect-ui.mjs','dashboard/progress-visual.mjs','dashboard/visual-fixture.mjs','packaging/registry/server.json']);
 const manifest=[];
 async function copy(relative,destination=relative){
  if(authoringOnly.has(relative.split(path.sep).join('/')))return;
@@ -45,7 +45,7 @@ try{
  if(values.source){
   for(const file of ['Cargo.toml','Cargo.lock','LICENSE','README.md','CONTRIBUTING.md','CHANGELOG.md','AGENTS.md','CLAUDE.md','.gitignore'])await copy(file);
   for(const directory of ['src','tests','examples','agent','skills','browser-companion','scripts','packaging','dashboard','.github'])await copy(directory);
-  for(const file of ['docs/BUILD.md','docs/ARCHITECTURE.md','docs/SITESPEC.md','docs/RELEASING.md','docs/brand/concepts/hycli-shima-banner-v4.png'])await copy(file);
+  for(const file of ['docs/BUILD.md','docs/ARCHITECTURE.md','docs/SITESPEC.md','docs/RELEASING.md','docs/REGISTRY.md','docs/brand/concepts/hycli-shima-banner-v4.png'])await copy(file);
   for(const directory of ['docs/i18n','docs/images','docs/brand/badges'])await copy(directory);
   for(const file of ['docs/design/brand-research/claude-official-32.provenance.txt','docs/design/motion/PROVENANCE.md'])await copy(file);
  }else{

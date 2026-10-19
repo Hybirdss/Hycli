@@ -51,6 +51,8 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: dashboard/package-lock.json
+      - name: Registry packaging regression tests
+        run: node --test scripts/registry.test.mjs
       - name: Rust toolchain
         run: |
           rustup update stable --no-self-update
@@ -67,9 +69,30 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          choco install cmake nsis -y --no-progress
-          "C:\Program Files\CMake\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
-          "C:\Program Files (x86)\NSIS" | Out-File -FilePath $env:GITHUB_PATH -Append
+          function Resolve-NativeTool($name, $candidate) {
+            $command = Get-Command $name -ErrorAction SilentlyContinue
+            if ($command) { return $command.Source }
+            if (Test-Path $candidate) { return $candidate }
+            return $null
+          }
+          $tools = @(
+            @{ Name = 'cmake'; Package = 'cmake'; Candidate = "$env:ProgramFiles\CMake\bin\cmake.exe"; Version = '--version' },
+            @{ Name = 'makensis'; Package = 'nsis'; Candidate = "${env:ProgramFiles(x86)}\NSIS\makensis.exe"; Version = '/VERSION' }
+          )
+          foreach ($tool in $tools) {
+            $executable = Resolve-NativeTool $tool.Name $tool.Candidate
+            if (-not $executable) {
+              choco install $tool.Package -y --no-progress
+              if ($LASTEXITCODE -ne 0) { throw "Failed to install $($tool.Package): $LASTEXITCODE" }
+              $executable = Resolve-NativeTool $tool.Name $tool.Candidate
+            }
+            if (-not $executable) { throw "Missing native tool: $($tool.Name)" }
+            $directory = Split-Path $executable
+            $directory | Out-File -FilePath $env:GITHUB_PATH -Append
+            $env:PATH = "$directory;$env:PATH"
+            & $executable $tool.Version
+            if ($LASTEXITCODE -ne 0) { throw "Native tool check failed: $($tool.Name)" }
+          }
       - name: Frontend
         run: |
           npm --prefix dashboard ci
@@ -91,6 +114,14 @@ jobs:
         run: node scripts/build.mjs --skip-dependencies
       - name: Package public files
         run: node scripts/package.mjs
+      - name: MCP bundle
+        shell: bash
+        run: |
+          npm install --prefix .cache/mcpb --no-save "@anthropic-ai/mcpb@2.1.2"
+          node scripts/mcpb.mjs --platform ${{ matrix.platform }}
+      - name: Extracted MCP bundle smoke check
+        shell: bash
+        run: node scripts/smoke-mcpb.mjs dist/artifacts/hycli-mcp-*-${{ matrix.platform }}.mcpb
       - name: Extracted package smoke check
         shell: bash
         run: node scripts/smoke-package.mjs dist/artifacts/hycli-*-${{ matrix.platform }}.tar.gz
