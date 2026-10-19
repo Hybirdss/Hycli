@@ -4,14 +4,15 @@ The executable hosts the local dashboard, CLI and MCP server. All three use the 
 
 | Area | Main files |
 | --- | --- |
-| Website preparation and evidence | `src/preparation.rs`, `src/agent_tools.rs`, `src/discovery.rs` |
-| Portable operation definitions and HTML extraction | `src/spec.rs`, `src/html.rs` |
-| Execution, request policy and HTTP | `src/runtime.rs`, `src/policy.rs`, `src/net.rs` |
-| Browser discovery, stored sessions and rendered reads | `src/environment.rs`, `src/browser_discovery.rs`, `src/browser_storage.rs`, `src/browser_session.rs`, `src/session_recipe.rs` |
+| Website preparation and evidence | `src/preparation/`, `src/agent_tools.rs`, `src/discovery/` |
+| Portable operation definitions and HTML extraction | `src/spec/`, `src/html/` |
+| Execution, request policy and HTTP | `src/runtime/`, `src/policy.rs`, `src/net.rs` |
+| State persistence, credential vault and knowledge base | `src/state/`, `src/store.rs`, `src/kb/` |
+| Browser discovery, stored sessions and rendered reads | `src/environment.rs`, `src/browser_discovery.rs`, `src/browser_storage.rs`, `src/browser_session/`, `src/session_recipe.rs` |
 | AI providers and managed sign-in | `src/ai/` |
-| Dashboard and client | `src/dashboard.rs`, `dashboard/src/` |
-| CLI and MCP | `src/main.rs`, `src/cli_actions.rs`, `src/guarded_mcp.rs` |
-| Reproducible synthetic services | `examples/dashboard_fixture.rs`, `tests/cli.rs`, `dashboard/*-e2e.mjs` |
+| Dashboard and client | `src/dashboard/`, `dashboard/src/` |
+| CLI and MCP | `src/main.rs`, `src/cli/`, `src/guarded_mcp.rs` |
+| Reproducible synthetic services | `examples/dashboard_fixture.rs`, `src/integration_tests/`, `tests/cli.rs`, `dashboard/*-e2e.mjs` |
 
 Read [BUILD.md](BUILD.md) for prerequisites, commands and release verification. End-user agent guidance lives in [agent/AGENTS.md](../agent/AGENTS.md); the portable skill is [skills/hycli/SKILL.md](../skills/hycli/SKILL.md).
 

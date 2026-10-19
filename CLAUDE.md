@@ -4,11 +4,11 @@ Hycli turns a user's website task into usable local CLI and MCP actions. Favor a
 
 ## Architecture
 
-- `src/preparation.rs` and `src/agent_tools.rs` coordinate evidence-led website preparation.
-- `src/runtime.rs`, `src/policy.rs` and `src/net.rs` are the shared execution boundary for CLI, MCP and dashboard actions.
-- `src/spec.rs` defines the portable operation contract. `src/session_recipe.rs` binds observed site identity to local credential sources.
-- `src/environment.rs` and browser adapters resolve local capabilities; machine paths must not enter generated definitions.
-- `src/main.rs` and `src/guarded_mcp.rs` expose CLI and MCP. `src/dashboard.rs` serves the React app in `dashboard/src`.
+- `src/preparation/` and `src/agent_tools.rs` coordinate evidence-led website preparation.
+- `src/runtime/`, `src/policy.rs` and `src/net.rs` are the shared execution boundary for CLI, MCP and dashboard actions.
+- `src/spec/` defines the portable operation contract. `src/session_recipe.rs` binds observed site identity to local credential sources.
+- `src/state/` and `src/store.rs` persist local state and encrypted credentials. `src/environment.rs` and `src/browser_session/` resolve local capabilities; machine paths must not enter generated definitions.
+- `src/main.rs`, `src/cli/` and `src/guarded_mcp.rs` expose CLI and MCP. `src/dashboard/` serves the React app in `dashboard/src`.
 
 Make failure actionable. Do not report a login page, a successful homepage fetch, a produced schema, or an unexecuted plan as a working integration. Preserve installed definitions and account data while preparing replacements. Keep UI and command behavior understandable to a new user without this repository's history.
 
