@@ -56,6 +56,27 @@ fn snapshot_failure(stage: &'static str, code: impl std::fmt::Debug) {
 type FileStamp = BTreeMap<std::ffi::OsString, (u64, std::time::SystemTime)>;
 type FileDigests = BTreeMap<std::ffi::OsString, String>;
 
+fn leveldb_entry_metadata(entry: &std::fs::DirEntry) -> Result<std::fs::Metadata, ()> {
+    // DirEntry metadata is cached enumeration data on Windows. Query a read-only
+    // handle instead: an open writer can have a newer size than the directory entry.
+    if !entry
+        .file_type()
+        .map_err(|error| snapshot_failure("type", error.raw_os_error()))?
+        .is_file()
+    {
+        return Err(snapshot_failure("bounds", "unsupported"));
+    }
+    let file = std::fs::File::open(entry.path())
+        .map_err(|error| snapshot_failure("metadata_open", error.raw_os_error()))?;
+    let meta = file
+        .metadata()
+        .map_err(|error| snapshot_failure("metadata", error.raw_os_error()))?;
+    if !meta.is_file() {
+        return Err(snapshot_failure("bounds", "unsupported"));
+    }
+    Ok(meta)
+}
+
 fn leveldb_stamp(source: &Path) -> Result<FileStamp, ()> {
     let mut stamp = FileStamp::new();
     for entry in std::fs::read_dir(source)
@@ -65,16 +86,8 @@ fn leveldb_stamp(source: &Path) -> Result<FileStamp, ()> {
         if entry.file_name() == "LOCK" {
             continue;
         }
-        let meta = entry
-            .metadata()
-            .map_err(|error| snapshot_failure("metadata", error.raw_os_error()))?;
-        if !entry
-            .file_type()
-            .map_err(|error| snapshot_failure("type", error.raw_os_error()))?
-            .is_file()
-            || meta.len() > 128 * 1024 * 1024
-            || stamp.len() >= 1024
-        {
+        let meta = leveldb_entry_metadata(&entry)?;
+        if meta.len() > 128 * 1024 * 1024 || stamp.len() >= 1024 {
             return Err(snapshot_failure("bounds", "unsupported"));
         }
         stamp.insert(
@@ -146,6 +159,8 @@ fn finish_leveldb_validation(source: &Path, before: &FileStamp) -> Result<(), ()
 fn open_chromium_leveldb(source: &Path) -> Result<(Snapshot, rusty_leveldb::DB), ()> {
     use rusty_leveldb::{DB, Options};
     let snapshot = Snapshot::new().map_err(|_| snapshot_failure("workspace", "unavailable"))?;
+    // This is bounded read-only consistency validation, not an atomic filesystem
+    // snapshot against arbitrary concurrent/ABA writes. Never retry a failed check.
     let (copied, digests) = copy_leveldb_files(source, &snapshot.0)?;
     let validated = validate_leveldb_contents(source, &copied, &digests)?;
     finish_leveldb_validation(source, &validated)?;
@@ -359,6 +374,43 @@ mod tests {
         std::fs::create_dir_all(&destination).unwrap();
         std::fs::write(source.join("000001.log"), b"synthetic-a").unwrap();
         (Snapshot(root), source, destination)
+    }
+
+    #[test]
+    fn snapshot_queries_current_handle_after_directory_entry_was_cached() {
+        use std::io::Write;
+        let (_root, source, destination) = owned_snapshot_fixture();
+        let path = source.join("000001.log");
+        let entry = std::fs::read_dir(&source).unwrap().next().unwrap().unwrap();
+        let mut writer = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .unwrap();
+        writer.write_all(b"-grown-after-enumeration").unwrap();
+        writer.flush().unwrap();
+        // Keep both writer and old directory entry alive. Windows DirEntry caches
+        // the old length, while the read-only handle must see the actual bytes.
+        let expected = std::fs::read(&path).unwrap();
+        #[cfg(windows)]
+        assert_ne!(
+            entry.metadata().unwrap().len(),
+            expected.len() as u64,
+            "Owned fixture must reproduce cached Windows enumeration length"
+        );
+        assert_eq!(
+            leveldb_entry_metadata(&entry).unwrap().len(),
+            expected.len() as u64
+        );
+        let (stamp, digests) = copy_leveldb_files(&source, &destination).unwrap();
+        let validated = validate_leveldb_contents(&source, &stamp, &digests).unwrap();
+        finish_leveldb_validation(&source, &validated).unwrap();
+        assert_eq!(
+            std::fs::read(destination.join("000001.log")).unwrap(),
+            expected
+        );
+        writer.write_all(b"-writer-still-owned").unwrap();
+        writer.flush().unwrap();
+        assert!(validate_leveldb_contents(&source, &stamp, &digests).is_err());
     }
 
     #[test]
