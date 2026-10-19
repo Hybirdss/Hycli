@@ -213,3 +213,60 @@ test('registry metadata rejects malformed hashes and empty bundle sets', () => {
   assert.throws(() => buildServerJson({version: '0.1.0', bundles: []}), /No MCP bundles/);
   assert.throws(() => buildServerJson({version: '0.1.0', bundles: [{file: 'hycli.mcpb', sha256: 'deadbeef'}]}), /Invalid sha256/);
 });
+
+test('native packager streams archives without drive-letter tar operands and preserves hashes', async t => {
+  for (const arch of ['x64', 'arm64']) {
+    const {dir} = await fixture(t);
+    await fs.copyFile(path.join(root, 'scripts/package.mjs'), path.join(dir, 'scripts/package.mjs'));
+    const files = ['dist/hycli.exe', 'dist/hycli-desktop.exe', 'dist/README.md', 'LICENSE',
+      'agent/AGENTS.md', 'agent/CLAUDE.md', 'docs/SITESPEC.md', 'docs/BUILD.md', 'docs/RELEASING.md',
+      'skills/hycli/SKILL.md', 'packaging/install-windows.ps1', 'packaging/icons/hycli.ico'];
+    for (const file of files) {
+      await fs.mkdir(path.dirname(path.join(dir, file)), {recursive: true});
+      await fs.writeFile(path.join(dir, file), `synthetic ${file}\n`);
+    }
+    const binaries = {};
+    for (const name of ['hycli.exe', 'hycli-desktop.exe']) binaries[name] = digest(await fs.readFile(path.join(dir, 'dist', name)));
+    await fs.writeFile(path.join(dir, 'dist/build.json'), JSON.stringify({platform: 'win32', arch, sha256: binaries['hycli.exe'], binaries}));
+    await fs.writeFile(path.join(dir, 'dist/private-session.json'), 'must not ship');
+    await fs.writeFile(path.join(dir, 'assert-stream.mjs'), `
+import assert from 'node:assert/strict';
+import cp from 'node:child_process';
+import {syncBuiltinESMExports} from 'node:module';
+const original = cp.spawnSync;
+cp.spawnSync = (command, args, options) => {
+  if (command === 'tar' && args.includes('-czf')) {
+    assert.equal(args[args.indexOf('-czf') + 1], '-', 'Do not expose D:\\\\archive paths to tar remote-host parsing');
+    assert.ok(!args.includes('-C'), 'Node cwd must handle native drive-letter directories');
+    assert.equal(typeof options.stdio[1], 'number', 'Archive must stream to an already opened file');
+    assert.ok(options.cwd);
+  }
+  return original(command, args, options);
+};
+syncBuiltinESMExports();
+`);
+    const result = run(dir, 'package.mjs', [], 'assert-stream.mjs');
+    assert.equal(result.status, 0, result.stderr);
+    const output = JSON.parse(result.stdout.trim());
+    const archive = await fs.readFile(output.archive);
+    assert.equal(output.sha256, digest(archive));
+    assert.equal(await fs.readFile(output.archive + '.sha256', 'utf8'), `${digest(archive)}  ${path.basename(output.archive)}\n`);
+    const manifest = JSON.parse(await fs.readFile(output.archive.replace(/\.tar\.gz$/, '.manifest.json')));
+    assert.equal(manifest.platform, 'win32');
+    assert.equal(manifest.arch, arch);
+    assert.equal(manifest.sha256, digest(archive));
+    assert.ok(!manifest.files.includes('private-session.json'));
+    const unpacked = path.join(dir, 'verify archive');
+    await fs.mkdir(unpacked);
+    const archiveHandle = await fs.open(output.archive, 'r');
+    let extraction;
+    try { extraction = spawnSync('tar', ['-xzf', '-'], {cwd: unpacked, stdio: [archiveHandle.fd, 'pipe', 'pipe']}); }
+    finally { await archiveHandle.close(); }
+    assert.equal(extraction.status, 0, String(extraction.stderr));
+    const content = path.join(unpacked, `hycli-0.1.0-win32-${arch}`);
+    const sums = (await fs.readFile(path.join(content, 'SHA256SUMS'), 'utf8')).trim().split('\n');
+    assert.deepEqual(sums.map(line => line.slice(66)).sort(), manifest.files.filter(file => file !== 'SHA256SUMS').sort());
+    for (const line of sums) assert.equal(digest(await fs.readFile(path.join(content, line.slice(66)))), line.slice(0, 64));
+    for (const [name, hash] of Object.entries(binaries)) assert.equal(digest(await fs.readFile(path.join(content, name))), hash);
+  }
+});

@@ -68,8 +68,14 @@ try{
  await fs.writeFile(path.join(content,'SHA256SUMS'),checksums.join('\n')+'\n');
  const output=path.join(root,'dist','artifacts');await fs.mkdir(output,{recursive:true});
  const archive=path.join(output,name+'.tar.gz');
- const packed=spawnSync('tar',[...metadataOptions,'-czf',archive,'-C',stage,name],{stdio:'inherit',env:tarEnv});
- if(packed.error)throw packed.error;if(packed.status!==0)throw Error('tar failed');
+ // Let Node handle native paths. GNU tar treats a Windows drive-letter archive
+ // as a remote host, and Git tar cannot reliably resolve native paths through -C.
+ // A descriptor streams bounded-memory output on GNU tar and BSD/libarchive alike.
+ const archiveHandle=await fs.open(archive,'w',0o644);
+ try{
+  const packed=spawnSync('tar',[...metadataOptions,'-czf','-',name],{cwd:stage,stdio:['ignore',archiveHandle.fd,'inherit'],env:tarEnv});
+  if(packed.error)throw packed.error;if(packed.status!==0)throw Error('tar failed');
+ }finally{await archiveHandle.close();}
  const digest=createHash('sha256').update(await fs.readFile(archive)).digest('hex');
  await fs.writeFile(archive+'.sha256',`${digest}  ${path.basename(archive)}\n`);
  await fs.writeFile(path.join(output,name+'.manifest.json'),JSON.stringify({version,kind:values.source?'source':'native',platform:build?.platform??null,arch:build?.arch??null,files:[...manifest,'SHA256SUMS'],sha256:digest},null,2)+'\n');
