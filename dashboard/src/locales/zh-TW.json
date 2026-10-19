@@ -56,6 +56,8 @@
   "sites.emptyStep1": "連線至 AI",
   "sites.emptyStep2": "新增網站",
   "sites.emptyStep3": "執行操作",
+  "sites.needHelp": "準備網站時遇到困難？",
+  "sites.needHelpCta": "在 GitHub 上取得協助",
   "sites.noResults": "找不到網站",
   "sites.noResultsDescription": "請嘗試其他名稱或網址。",
   "sites.yourAICan": "AI 可以執行的操作",

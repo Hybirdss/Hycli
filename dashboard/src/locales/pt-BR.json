@@ -56,6 +56,8 @@
   "sites.emptyStep1": "Conecte sua IA",
   "sites.emptyStep2": "Adicione um site",
   "sites.emptyStep3": "Use as ações dele",
+  "sites.needHelp": "Precisa de ajuda para preparar um site?",
+  "sites.needHelpCta": "Obter ajuda no GitHub",
   "sites.noResults": "Nenhum site encontrado",
   "sites.noResultsDescription": "Tente outro nome ou endereço.",
   "sites.yourAICan": "Sua IA pode",

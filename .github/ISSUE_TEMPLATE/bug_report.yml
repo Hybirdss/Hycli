@@ -4,14 +4,33 @@ title: "[Bug] "
 body:
   - type: markdown
     attributes:
-      value: Describe a reproducible problem. Remove credentials, cookies, account details and private website data from any attachments.
+      value: |
+        Describe a reproducible problem. Remove credentials, cookies, account details and private website data from any attachments.
+        `hycli feedback` opens a separate, generic issue editor with version and platform details in its title and body. This form asks for those details below.
+        For setup questions or ideas, you can also [open a general issue](https://github.com/Hybirdss/Hycli/issues/new).
   - type: input
     id: version
     attributes:
-      label: Hycli version and operating system
-      placeholder: "0.1.0 · Ubuntu 24.04 · x64"
+      label: Hycli version
+      description: The output of `hycli version`.
+      placeholder: "0.1.0"
     validations:
       required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system and architecture
+      placeholder: "Ubuntu 24.04 · x64"
+    validations:
+      required: true
+  - type: input
+    id: install_path
+    attributes:
+      label: Installation path or package
+      description: The executable path, or the archive/package you installed from.
+      placeholder: "~/Hycli/hycli from the linux-x64 release archive"
+    validations:
+      required: false
   - type: dropdown
     id: surface
     attributes:

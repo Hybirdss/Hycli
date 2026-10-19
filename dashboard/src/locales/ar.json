@@ -56,6 +56,8 @@
   "sites.emptyStep1": "اربط مساعدك الذكي",
   "sites.emptyStep2": "أضف موقعًا",
   "sites.emptyStep3": "استخدم عملياته",
+  "sites.needHelp": "هل تواجه صعوبة في تجهيز موقع ويب؟",
+  "sites.needHelpCta": "احصل على المساعدة عبر GitHub",
   "sites.noResults": "لم يتم العثور على مواقع",
   "sites.noResultsDescription": "جرّب اسمًا أو عنوانًا آخر.",
   "sites.yourAICan": "يمكن لمساعدك الذكي",

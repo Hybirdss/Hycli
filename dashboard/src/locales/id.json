@@ -56,6 +56,8 @@
   "sites.emptyStep1": "Hubungkan AI",
   "sites.emptyStep2": "Tambah situs web",
   "sites.emptyStep3": "Gunakan tindakannya",
+  "sites.needHelp": "Kesulitan menyiapkan situs web?",
+  "sites.needHelpCta": "Dapatkan bantuan di GitHub",
   "sites.noResults": "Situs web tidak ditemukan",
   "sites.noResultsDescription": "Coba nama atau alamat lain.",
   "sites.yourAICan": "AI Anda bisa",

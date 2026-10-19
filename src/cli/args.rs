@@ -142,6 +142,8 @@ pub enum Cmd {
     },
     /// Print the installed version.
     Version,
+    /// Request a browser to open a pre-filled GitHub issue with your version and platform. No issue is submitted automatically.
+    Feedback,
     /// Installed website commands: hycli <site> <action> --input value.
     #[clap(external_subcommand)]
     Site(Vec<String>),

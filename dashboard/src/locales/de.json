@@ -56,6 +56,8 @@
   "sites.emptyStep1": "Verbinde deine KI",
   "sites.emptyStep2": "Füge eine Website hinzu",
   "sites.emptyStep3": "Nutze ihre Aktionen",
+  "sites.needHelp": "Probleme beim Vorbereiten einer Website?",
+  "sites.needHelpCta": "Hilfe auf GitHub erhalten",
   "sites.noResults": "Keine Websites gefunden",
   "sites.noResultsDescription": "Versuche einen anderen Namen oder eine andere Adresse.",
   "sites.yourAICan": "Deine KI kann",

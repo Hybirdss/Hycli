@@ -56,6 +56,8 @@
   "sites.emptyStep1": "AIに接続",
   "sites.emptyStep2": "ウェブサイトを追加",
   "sites.emptyStep3": "操作を実行",
+  "sites.needHelp": "ウェブサイトの準備でお困りですか？",
+  "sites.needHelpCta": "GitHubでサポートを受ける",
   "sites.noResults": "ウェブサイトが見つかりません",
   "sites.noResultsDescription": "別の名前やアドレスで検索してください。",
   "sites.yourAICan": "AIでできること",

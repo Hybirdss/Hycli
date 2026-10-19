@@ -56,6 +56,8 @@
   "sites.emptyStep1": "Verbind je AI",
   "sites.emptyStep2": "Voeg een website toe",
   "sites.emptyStep3": "Gebruik de acties",
+  "sites.needHelp": "Loop je vast bij het voorbereiden van een website?",
+  "sites.needHelpCta": "Hulp krijgen op GitHub",
   "sites.noResults": "Geen websites gevonden",
   "sites.noResultsDescription": "Probeer een andere naam of een ander adres.",
   "sites.yourAICan": "Je AI kan",

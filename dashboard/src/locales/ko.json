@@ -56,6 +56,8 @@
   "sites.emptyStep1": "AI 연결",
   "sites.emptyStep2": "웹사이트 추가",
   "sites.emptyStep3": "작업 실행",
+  "sites.needHelp": "웹사이트 준비가 막히셨나요?",
+  "sites.needHelpCta": "GitHub에서 도움받기",
   "sites.noResults": "웹사이트를 찾을 수 없습니다",
   "sites.noResultsDescription": "다른 이름이나 주소로 검색해 보세요.",
   "sites.yourAICan": "AI가 할 수 있는 작업",

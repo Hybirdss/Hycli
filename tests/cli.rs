@@ -381,3 +381,192 @@ async fn installed_cli_help_inputs_accounts_and_failures_are_real_command_contra
     drop(core);
     let _ = std::fs::remove_dir_all(&root);
 }
+
+#[tokio::test]
+async fn feedback_is_advertised_and_composes_a_public_issue_url_offline() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join(".cache/cli-tests")
+        .join(util::id());
+    let help = cli(&root, &["--help"]).await;
+    let text = String::from_utf8_lossy(&help.stdout);
+    assert!(help.status.success(), "{}", text);
+    assert!(
+        text.contains("feedback"),
+        "feedback must be listed in the command surface: {text}"
+    );
+    // Opening the URL is the only side effect, so the URL contract is checkable without a browser.
+    let url = hycli::feedback::issue_url();
+    assert!(
+        url.starts_with("https://github.com/Hybirdss/Hycli/issues/new?"),
+        "{url}"
+    );
+    assert!(url.contains(env!("CARGO_PKG_VERSION")), "{url}");
+}
+
+// Use a real child process and a synthetic launcher, never the developer's browser.
+#[cfg(unix)]
+#[tokio::test]
+async fn feedback_keeps_json_and_reports_only_launcher_start() {
+    use std::os::unix::fs::PermissionsExt;
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join(".cache/cli-tests/feedback path with spaces")
+        .join(util::id());
+    let bin = root.join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    let launcher = bin.join(if cfg!(target_os = "macos") {
+        "open"
+    } else {
+        "xdg-open"
+    });
+    let capture = root.join("url.txt");
+    let release = root.join("release");
+    let done = root.join("done");
+    for (script, requested) in [
+        (None, false),
+        (
+            Some(
+                "#!/bin/sh\nprintf '%s' \"$1\" > \"$HYCLI_FEEDBACK_CAPTURE\"\nprintf done > \"$HYCLI_FEEDBACK_DONE\"\nexit 0\n",
+            ),
+            true,
+        ),
+        (
+            Some(
+                "#!/bin/sh\nprintf '%s' \"$1\" > \"$HYCLI_FEEDBACK_CAPTURE\"\nprintf done > \"$HYCLI_FEEDBACK_DONE\"\nexit 3\n",
+            ),
+            true,
+        ),
+        (
+            Some(
+                "#!/bin/sh\nprintf '%s' \"$1\" > \"$HYCLI_FEEDBACK_CAPTURE\"\nwhile [ ! -e \"$HYCLI_FEEDBACK_RELEASE\" ]; do /bin/sleep 0.05; done\nprintf done > \"$HYCLI_FEEDBACK_DONE\"\n",
+            ),
+            true,
+        ),
+    ] {
+        let _ = std::fs::remove_file(&capture);
+        let _ = std::fs::remove_file(&release);
+        let _ = std::fs::remove_file(&done);
+        if let Some(script) = script {
+            std::fs::write(&launcher, script).unwrap();
+            std::fs::set_permissions(&launcher, std::fs::Permissions::from_mode(0o700)).unwrap();
+        }
+        let mut command = tokio::process::Command::new(env!("CARGO_BIN_EXE_hycli"));
+        command
+            .args(["--format", "json", "feedback"])
+            .env("PATH", &bin)
+            .env("HOME", &root)
+            .env("HYCLI_DATA_DIR", root.join("data"))
+            .env("HYCLI_FEEDBACK_CAPTURE", &capture)
+            .env("HYCLI_FEEDBACK_RELEASE", &release)
+            .env("HYCLI_FEEDBACK_DONE", &done)
+            .kill_on_drop(true);
+        let out = tokio::time::timeout(std::time::Duration::from_secs(5), command.output()).await;
+        // Release even on failure so the synthetic opener cannot outlive this test indefinitely.
+        std::fs::write(&release, b"done").unwrap();
+        let out = out
+            .expect("feedback must not wait for the browser to close")
+            .unwrap();
+        let result = ok(out);
+        assert_eq!(result["launch_requested"], requested);
+        assert!(
+            result.get("opened").is_none(),
+            "a launcher cannot attest that a page opened"
+        );
+        let url = result["url"].as_str().unwrap();
+        let parsed = url::Url::parse(url).unwrap();
+        assert_eq!(parsed.host_str(), Some("github.com"));
+        assert_eq!(parsed.path(), "/Hybirdss/Hycli/issues/new");
+        let query: std::collections::HashMap<_, _> = parsed.query_pairs().into_owned().collect();
+        assert!(query["title"].contains(env!("CARGO_PKG_VERSION")));
+        assert!(query["body"].contains(std::env::consts::OS));
+        if requested {
+            for _ in 0..100 {
+                if done.exists() {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+            assert!(
+                done.exists(),
+                "synthetic launcher must finish before cleanup"
+            );
+            assert_eq!(std::fs::read_to_string(&capture).unwrap(), url);
+        }
+    }
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[cfg(windows)]
+#[tokio::test]
+async fn feedback_does_not_claim_a_page_opened_on_windows() {
+    // Build a tiny native launcher that records arguments and exits unsuccessfully.
+    // Copy the CLI beside it so Windows finds the synthetic launcher in the application
+    // directory before its system directories. Keep SystemRoot and other OS settings intact.
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join(".cache/cli-tests/feedback path with spaces")
+        .join(util::id());
+    std::fs::create_dir_all(&root).unwrap();
+    let mut compiler =
+        tokio::process::Command::new(std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into()));
+    compiler
+        .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/feedback_opener.rs"))
+        .arg("-o")
+        .arg(root.join("rundll32.exe"));
+    if let Some(target) = std::env::var_os("CARGO_BUILD_TARGET") {
+        compiler.arg("--target").arg(target);
+    }
+    let compiled = tokio::time::timeout(
+        std::time::Duration::from_secs(120),
+        compiler.kill_on_drop(true).output(),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert!(
+        compiled.status.success(),
+        "{}",
+        String::from_utf8_lossy(&compiled.stderr)
+    );
+    let capture = root.join("url.txt");
+    let binary = root.join("hycli.exe");
+    std::fs::copy(env!("CARGO_BIN_EXE_hycli"), &binary).unwrap();
+    let out = tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        tokio::process::Command::new(&binary)
+            .args(["--format", "json", "feedback"])
+            .current_dir(&root)
+            .env("HYCLI_FEEDBACK_CAPTURE", &capture)
+            .env("PATH", &root)
+            .env("HYCLI_DATA_DIR", root.join("data"))
+            .kill_on_drop(true)
+            .output(),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    let result = ok(out);
+    assert_eq!(result["launch_requested"], true);
+    assert!(result.get("opened").is_none());
+    let url = url::Url::parse(result["url"].as_str().unwrap()).unwrap();
+    assert_eq!(url.host_str(), Some("github.com"));
+    assert_eq!(url.path(), "/Hybirdss/Hycli/issues/new");
+    for _ in 0..500 {
+        if std::fs::read_to_string(&capture)
+            .is_ok_and(|args| args == format!("url.dll,FileProtocolHandler\n{url}"))
+        {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    assert_eq!(
+        std::fs::read_to_string(&capture).unwrap(),
+        format!("url.dll,FileProtocolHandler\n{url}")
+    );
+    // The rejected launcher can still be exiting after its capture was written.
+    for _ in 0..500 {
+        if std::fs::remove_dir_all(&root).is_ok() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    assert!(!root.exists(), "synthetic Windows launcher did not exit");
+}

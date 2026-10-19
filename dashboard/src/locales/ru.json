@@ -56,6 +56,8 @@
   "sites.emptyStep1": "Подключите ИИ",
   "sites.emptyStep2": "Добавьте сайт",
   "sites.emptyStep3": "Используйте его действия",
+  "sites.needHelp": "Возникли трудности при подготовке сайта?",
+  "sites.needHelpCta": "Получить помощь на GitHub",
   "sites.noResults": "Сайты не найдены",
   "sites.noResultsDescription": "Попробуйте другое название или адрес.",
   "sites.yourAICan": "Ваш ИИ может",

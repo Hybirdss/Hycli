@@ -56,6 +56,8 @@
   "sites.emptyStep1": "अपना AI जोड़ें",
   "sites.emptyStep2": "वेबसाइट जोड़ें",
   "sites.emptyStep3": "उसके काम इस्तेमाल करें",
+  "sites.needHelp": "वेबसाइट तैयार करने में अटक गए हैं?",
+  "sites.needHelpCta": "GitHub पर मदद पाएँ",
   "sites.noResults": "कोई वेबसाइट नहीं मिली",
   "sites.noResultsDescription": "कोई दूसरा नाम या पता डालकर देखें।",
   "sites.yourAICan": "आपका AI यह कर सकता है",

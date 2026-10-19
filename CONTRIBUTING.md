@@ -61,3 +61,4 @@ Follow [RELEASING.md](docs/RELEASING.md). Source and native archives use explici
 ## Contributors
 
 - [@ytw418](https://github.com/ytw418) (윤성준) — AI provider refusal classification (`ai_refused`), partial action preservation across preparation rounds, and `self_qa` prompt hardening.
+- [@jjigmeok-dev](https://github.com/jjigmeok-dev) — feedback/community entry points and environment-aware issue templates ([#15](https://github.com/Hybirdss/Hycli/pull/15)), plus MCP bundles and registry metadata ([#16](https://github.com/Hybirdss/Hycli/pull/16)).

@@ -13,6 +13,7 @@ pub mod defend;
 pub mod discovery;
 pub mod environment;
 pub use capture::har;
+pub mod feedback;
 pub mod kb;
 pub mod net;
 pub mod output;

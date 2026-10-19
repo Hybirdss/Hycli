@@ -109,6 +109,22 @@ async fn dispatch(deps: Deps, cmd: Cmd, emit: &Emitter) -> Result<(), AppError> 
             emit.data(&serde_json::json!({"version": env!("CARGO_PKG_VERSION")}));
             Ok(())
         }
+        Cmd::Feedback => {
+            let url = crate::feedback::issue_url();
+            // The platform opener is asynchronous: spawning it does not prove a page opened.
+            let launch_requested = crate::dashboard::open_url(&url).is_ok();
+            emit.data(&serde_json::json!({"url": url, "launch_requested": launch_requested}));
+            if launch_requested {
+                eprintln!(
+                    "hycli: browser launch requested; if no page opens, open the returned URL"
+                );
+            } else {
+                eprintln!(
+                    "hycli: browser launcher unavailable; open the returned URL to send feedback"
+                );
+            }
+            Ok(())
+        }
         Cmd::Describe { site, action } => {
             // Diagnose damaged definitions instead of silently losing them from discovery.
             let _ = hycli_sites();

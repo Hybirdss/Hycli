@@ -9,6 +9,7 @@
 
 <p align="center">
   <a href="https://github.com/Hybirdss/Hycli/releases/tag/v0.1.0">Tải xuống (Windows · macOS · Linux)</a> ·
+  <a href="https://github.com/Hybirdss/Hycli/issues">Nhận trợ giúp trên GitHub</a> ·
   <a href="#try-it-in-30-seconds">Dùng thử trong 30 giây</a> ·
   <a href="#get-started">Bắt đầu</a> ·
   <a href="#what-your-ai-can-do">AI của bạn có thể làm gì</a> ·

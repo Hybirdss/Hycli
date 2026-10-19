@@ -37,6 +37,11 @@ Automate any website, with changes only where you allow them.
 - Build per-user Windows installers, macOS app/DMG packages and Linux DEBs, plus portable archives with a Linux menu installer, for x64 and ARM64.
 - Verify background lifecycle and actual installer payloads in each native CI job. Support optional Windows signing and macOS Developer ID signing/notarization.
 
+### Feedback and community
+
+- `hycli feedback` requests a browser launch for a generic GitHub issue with version and platform details. It always returns a structured URL and launch-request status, even without a browser launcher; opening the URL contacts GitHub, but does not submit an issue.
+- The empty dashboard and translated README entry points link to Issues for help. The bug template asks for version, operating system and installation path; the feature template includes optional version and operating system fields.
+
 ## 0.1.0
 
 The first packaged Hycli release: websites, ready for AI.

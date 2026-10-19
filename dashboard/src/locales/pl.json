@@ -56,6 +56,8 @@
   "sites.emptyStep1": "Połącz swoje AI",
   "sites.emptyStep2": "Dodaj stronę",
   "sites.emptyStep3": "Korzystaj z jej działań",
+  "sites.needHelp": "Masz problem z przygotowaniem strony?",
+  "sites.needHelpCta": "Uzyskaj pomoc na GitHubie",
   "sites.noResults": "Nie znaleziono stron",
   "sites.noResultsDescription": "Spróbuj innej nazwy lub adresu.",
   "sites.yourAICan": "Twoje AI może",

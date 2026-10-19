@@ -9,6 +9,7 @@
 
 <p align="center">
   <a href="https://github.com/Hybirdss/Hycli/releases/tag/v0.1.0">İndir (Windows · macOS · Linux)</a> ·
+  <a href="https://github.com/Hybirdss/Hycli/issues">GitHub üzerinden yardım alın</a> ·
   <a href="#try-it-in-30-seconds">30 saniyede deneyin</a> ·
   <a href="#get-started">Başlangıç</a> ·
   <a href="#what-your-ai-can-do">Yapay zekânız neler yapabilir</a> ·

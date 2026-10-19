@@ -56,6 +56,8 @@
   "sites.emptyStep1": "Підключіть ШІ",
   "sites.emptyStep2": "Додайте сайт",
   "sites.emptyStep3": "Використовуйте його дії",
+  "sites.needHelp": "Виникли труднощі з підготовкою сайту?",
+  "sites.needHelpCta": "Отримати допомогу на GitHub",
   "sites.noResults": "Сайтів не знайдено",
   "sites.noResultsDescription": "Спробуйте іншу назву або адресу.",
   "sites.yourAICan": "Ваш ШІ може",

@@ -56,6 +56,8 @@
   "sites.emptyStep1": "เชื่อมต่อ AI",
   "sites.emptyStep2": "เพิ่มเว็บไซต์",
   "sites.emptyStep3": "ใช้คำสั่ง",
+  "sites.needHelp": "ติดขัดในการเตรียมเว็บไซต์ใช่ไหม?",
+  "sites.needHelpCta": "รับความช่วยเหลือบน GitHub",
   "sites.noResults": "ไม่พบเว็บไซต์",
   "sites.noResultsDescription": "ลองค้นหาด้วยชื่อหรือที่อยู่อื่น",
   "sites.yourAICan": "สิ่งที่ AI ของคุณทำได้",

@@ -9,6 +9,7 @@
 
 <p align="center">
   <a href="https://github.com/Hybirdss/Hycli/releases/tag/v0.1.0">Unduh (Windows · macOS · Linux)</a> ·
+  <a href="https://github.com/Hybirdss/Hycli/issues">Dapatkan bantuan di GitHub</a> ·
   <a href="#try-it-in-30-seconds">Coba dalam 30 detik</a> ·
   <a href="#get-started">Mulai</a> ·
   <a href="#what-your-ai-can-do">Apa yang dapat dilakukan AI Anda</a> ·

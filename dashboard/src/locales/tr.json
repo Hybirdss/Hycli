@@ -56,6 +56,8 @@
   "sites.emptyStep1": "AI'ınızı bağlayın",
   "sites.emptyStep2": "Web sitesi ekleyin",
   "sites.emptyStep3": "İşlemlerini kullanın",
+  "sites.needHelp": "Web sitesi hazırlarken takıldınız mı?",
+  "sites.needHelpCta": "GitHub üzerinden yardım alın",
   "sites.noResults": "Web sitesi bulunamadı",
   "sites.noResultsDescription": "Başka bir ad veya adres deneyin.",
   "sites.yourAICan": "AI'ınız şunları yapabilir",

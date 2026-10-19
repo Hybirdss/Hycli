@@ -56,6 +56,8 @@
   "sites.emptyStep1": "连接 AI",
   "sites.emptyStep2": "添加网站",
   "sites.emptyStep3": "执行操作",
+  "sites.needHelp": "准备网站时遇到困难？",
+  "sites.needHelpCta": "在 GitHub 上获取帮助",
   "sites.noResults": "未找到网站",
   "sites.noResultsDescription": "请尝试其他名称或地址。",
   "sites.yourAICan": "AI 可以执行的操作",

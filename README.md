@@ -16,6 +16,7 @@
 
 <p align="center">
   <a href="https://github.com/Hybirdss/Hycli/releases/tag/v0.1.0">Download (Windows · macOS · Linux)</a> ·
+  <a href="https://github.com/Hybirdss/Hycli/issues">Help and feedback</a> ·
   <a href="#try-it-in-30-seconds">30-second quickstart</a> ·
   <a href="#what-your-ai-can-do">What your AI can do</a> ·
   <a href="#common-concerns">Common concerns</a> ·
@@ -251,6 +252,14 @@ node scripts/test-e2e.mjs --full
 ```
 
 All tests run against synthetic local websites and fixtures—never test write operations against a real third-party account.
+
+## Community
+
+For setup questions and ideas, [open an issue](https://github.com/Hybirdss/Hycli/issues). Use the [issue templates](https://github.com/Hybirdss/Hycli/issues/new/choose) to report a reproducible bug or request an improvement.
+
+`hycli feedback` requests a browser to open a generic issue editor with the Hycli version and platform in the title and body. It always returns JSON containing `url` and `launch_requested`; the latter only says whether the browser launcher started, not whether a page opened. If no page opens, open the returned URL yourself. The command exits successfully even without a launcher.
+
+No issue is submitted automatically. Opening the URL contacts GitHub and sends the version and platform in the URL, along with ordinary browser request metadata. Review the public issue before submitting and remove credentials, cookies, account details and private website data.
 
 ## License and intended use
 
