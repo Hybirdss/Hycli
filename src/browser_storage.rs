@@ -44,36 +44,55 @@ fn chromium_string(bytes: &[u8]) -> Option<String> {
     }
 }
 
+// Emit only a fixed operation and an OS/library error code in synthetic unit tests.
+// Never log paths, LevelDB error messages, keys, values, or browser credentials.
+fn snapshot_failure(stage: &'static str, code: impl std::fmt::Debug) {
+    #[cfg(test)]
+    eprintln!("browser snapshot failure: stage={stage}, code={code:?}");
+    #[cfg(not(test))]
+    let _ = (stage, code);
+}
+
 fn open_chromium_leveldb(source: &Path) -> Result<(Snapshot, rusty_leveldb::DB), ()> {
     use rusty_leveldb::{DB, Options};
-    let snapshot = Snapshot::new()?;
+    let snapshot = Snapshot::new().map_err(|_| snapshot_failure("workspace", "unavailable"))?;
     let stamp = |path: &Path| -> Result<BTreeMap<String, (u64, std::time::SystemTime)>, ()> {
         std::fs::read_dir(path)
-            .map_err(|_| ())?
-            .filter_map(Result::ok)
+            .map_err(|error| snapshot_failure("enumerate", error.raw_os_error()))?
+            .map(|entry| entry.map_err(|error| snapshot_failure("entry", error.raw_os_error())))
+            .collect::<Result<Vec<_>, _>>()?
+            .into_iter()
             .filter(|e| e.file_name() != "LOCK")
             .map(|e| {
-                let m = e.metadata().map_err(|_| ())?;
+                let m = e
+                    .metadata()
+                    .map_err(|error| snapshot_failure("metadata", error.raw_os_error()))?;
                 if !m.is_file() || m.len() > 128 * 1024 * 1024 {
-                    return Err(());
+                    return Err(snapshot_failure("bounds", "unsupported"));
                 }
                 Ok((
                     e.file_name().to_string_lossy().into_owned(),
-                    (m.len(), m.modified().map_err(|_| ())?),
+                    (
+                        m.len(),
+                        m.modified()
+                            .map_err(|error| snapshot_failure("mtime", error.raw_os_error()))?,
+                    ),
                 ))
             })
             .collect()
     };
     let before = stamp(source)?;
     if before.len() > 1024 || before.values().map(|(n, _)| n).sum::<u64>() > 512 * 1024 * 1024 {
-        return Err(());
+        return Err(snapshot_failure("bounds", "unsupported"));
     }
     for name in before.keys() {
-        let bytes = util::read_bounded(&source.join(name), 128 * 1024 * 1024).map_err(|_| ())?;
-        util::atomic_file(&snapshot.0.join(name), &bytes).map_err(|_| ())?;
+        let bytes = util::read_bounded(&source.join(name), 128 * 1024 * 1024)
+            .map_err(|error| snapshot_failure("read", error.public_code))?;
+        util::atomic_file(&snapshot.0.join(name), &bytes)
+            .map_err(|error| snapshot_failure("copy", error.public_code))?;
     }
     if before != stamp(source)? {
-        return Err(());
+        return Err(snapshot_failure("consistency", "source_changed"));
     }
     let db = DB::open(
         &snapshot.0,
@@ -82,7 +101,7 @@ fn open_chromium_leveldb(source: &Path) -> Result<(Snapshot, rusty_leveldb::DB),
             ..Default::default()
         },
     )
-    .map_err(|_| ())?;
+    .map_err(|error| snapshot_failure("leveldb_open", error.code))?;
     Ok((snapshot, db))
 }
 
@@ -101,7 +120,9 @@ fn chromium_storage(profile: &Path, origin: &str) -> Result<Storage, ()> {
     let local_source = profile.join("Local Storage/leveldb");
     if local_source.is_dir() {
         let (_snapshot, mut db) = open_chromium_leveldb(&local_source)?;
-        let mut iter = db.new_iter().map_err(|_| ())?;
+        let mut iter = db
+            .new_iter()
+            .map_err(|error| snapshot_failure("leveldb_iterator", error.code))?;
         let prefix = format!("_{origin}\0").into_bytes();
         iter.seek(&prefix);
         loop {
