@@ -99,8 +99,9 @@ for (const entry of selected) {
   delete tarEnv.TAR_OPTIONS;
   const archiveHandle = await fs.open(archive, 'r');
   try {
-    run('tar', ['-xzf', '-', '-C', unpacked, '--strip-components=1'], {
-      stdio: [archiveHandle.fd, 'pipe', 'pipe'], env: tarEnv
+    // Let Node set the native cwd; Git Bash tar cannot resolve Windows drive paths in -C.
+    run('tar', ['-xzf', '-', '--strip-components=1'], {
+      cwd: unpacked, stdio: [archiveHandle.fd, 'pipe', 'pipe'], env: tarEnv
     });
   } finally {
     await archiveHandle.close();
