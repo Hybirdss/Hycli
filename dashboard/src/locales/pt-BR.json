@@ -56,6 +56,8 @@
   "sites.emptyStep1": "Conecte sua IA",
   "sites.emptyStep2": "Adicione um site",
   "sites.emptyStep3": "Use as ações dele",
+  "sites.needHelp": "Stuck while preparing a website?",
+  "sites.needHelpCta": "Ask in Discussions",
   "sites.noResults": "Nenhum site encontrado",
   "sites.noResultsDescription": "Tente outro nome ou endereço.",
   "sites.yourAICan": "Sua IA pode",

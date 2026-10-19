@@ -56,6 +56,8 @@
   "sites.emptyStep1": "Kết nối AI",
   "sites.emptyStep2": "Thêm trang web",
   "sites.emptyStep3": "Thực hiện thao tác",
+  "sites.needHelp": "Stuck while preparing a website?",
+  "sites.needHelpCta": "Ask in Discussions",
   "sites.noResults": "Không tìm thấy trang web",
   "sites.noResultsDescription": "Thử tìm bằng tên hoặc địa chỉ khác.",
   "sites.yourAICan": "AI có thể",
