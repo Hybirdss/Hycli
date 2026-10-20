@@ -1,0 +1,29 @@
+{
+  "base_url": "https://www.reddit.com",
+  "identity_recipe": {
+    "identity_url": "https://www.reddit.com/api/me.json?raw_json=1",
+    "headers": [],
+    "identity": {
+      "user_id": "/data/id",
+      "email": "",
+      "name": "/data/name"
+    },
+    "evidence": "observed GET /api/me.json returns the signed-in user's data.id and data.name with the browser session cookie"
+  },
+  "params": {
+    "limit": 100,
+    "after": "",
+    "raw_json": 1
+  },
+  "timelines": {
+    "home": {
+      "title": "Reddit 홈 피드",
+      "path": "/.json",
+      "endless": true
+    },
+    "saved": {
+      "title": "Reddit 저장한 글",
+      "path": "/user/{name}/saved.json"
+    }
+  }
+}
