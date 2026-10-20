@@ -38,6 +38,226 @@ fn ok(out: Output) -> Value {
 }
 
 #[tokio::test]
+async fn session_cli_inspects_observes_and_verifies_without_exposing_secrets() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let router = Router::new()
+        .route(
+            "/current-context",
+            get(|headers: HeaderMap| async move {
+                if headers
+                    .get("cookie")
+                    .and_then(|v| v.to_str().ok())
+                    .is_some_and(|v| v.contains("sid=synthetic-session-secret"))
+                {
+                    (
+                        StatusCode::OK,
+                        Json(json!({"id":"person-one","name":"Private Person"})),
+                    )
+                } else {
+                    (StatusCode::UNAUTHORIZED, Json(json!({"error":"sign in"})))
+                }
+            }),
+        )
+        .route(
+            "/public-profile",
+            get(|| async { Json(json!({"id":"person-one","name":"Private Person"})) }),
+        );
+    let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join(".cache/cli-tests")
+        .join(util::id());
+    let core = Runtime::open(&root, None, None, false, true, false).unwrap();
+    let cookies = hycli::accounts::parse_cookies(
+        &json!([{"name":"sid","value":"synthetic-session-secret","domain":"127.0.0.1","path":"/"}])
+            .to_string(),
+        &url,
+    )
+    .unwrap();
+    let account = core
+        .connect_account("", &url, cookies, "Fixture", "Manual session", "")
+        .unwrap();
+    let inspect = ok(cli(&root, &["accounts", "inspect", &account.id]).await);
+    assert_eq!(inspect["cookie_names"], json!(["sid"]));
+    assert!(!inspect.to_string().contains("synthetic-session-secret"));
+    assert!(
+        !core
+            .state
+            .account(&account.id)
+            .unwrap()
+            .unwrap()
+            .verified_identity
+    );
+
+    let unauthenticated = cli(
+        &root,
+        &[
+            "--allow-local",
+            "accounts",
+            "read",
+            &account.id,
+            &format!("{url}/current-context"),
+        ],
+    )
+    .await;
+    assert!(!unauthenticated.status.success());
+    assert!(String::from_utf8_lossy(&unauthenticated.stderr).contains("auth_required"));
+
+    let recipe_path = root.join("recipe.json");
+    let recipe = json!({"identity_url":format!("{url}/current-context"),"identity":{"user_id":"/id","name":"/name"},"evidence":"observed_browser_request"});
+    std::fs::write(&recipe_path, recipe.to_string()).unwrap();
+    let recipe_file = recipe_path.to_str().unwrap();
+    let unobserved = cli(
+        &root,
+        &[
+            "--allow-local",
+            "accounts",
+            "verify",
+            &account.id,
+            "--recipe",
+            recipe_file,
+        ],
+    )
+    .await;
+    assert!(!unobserved.status.success());
+    assert!(String::from_utf8_lossy(&unobserved.stderr).contains("unsupported_evidence"));
+
+    let observe = ok(cli(
+        &root,
+        &[
+            "--allow-local",
+            "accounts",
+            "observe",
+            &account.id,
+            &format!("{url}/current-context"),
+        ],
+    )
+    .await);
+    assert_eq!(observe["observation"]["status"], 200);
+    assert_eq!(observe["observation"]["response_shape"]["id"], "string");
+    assert!(!observe.to_string().contains("person-one"));
+    assert!(!observe.to_string().contains("Private Person"));
+    assert!(!observe.to_string().contains("synthetic-session-secret"));
+    assert!(
+        !core
+            .state
+            .account(&account.id)
+            .unwrap()
+            .unwrap()
+            .verified_identity
+    );
+    let verified = ok(cli(
+        &root,
+        &[
+            "--allow-local",
+            "accounts",
+            "verify",
+            &account.id,
+            "--recipe",
+            recipe_file,
+        ],
+    )
+    .await);
+    assert_eq!(verified["verified_identity"], true);
+    assert_eq!(verified["user_id"], "person-one");
+    assert!(!verified.to_string().contains("synthetic-session-secret"));
+    let private = ok(cli(
+        &root,
+        &[
+            "--allow-local",
+            "accounts",
+            "read",
+            &account.id,
+            &format!("{url}/current-context"),
+        ],
+    )
+    .await);
+    assert_eq!(private["id"], "person-one");
+    assert!(!private.to_string().contains("synthetic-session-secret"));
+    let unobserved_read = cli(
+        &root,
+        &[
+            "--allow-local",
+            "accounts",
+            "read",
+            &account.id,
+            &format!("{url}/unobserved"),
+        ],
+    )
+    .await;
+    assert!(!unobserved_read.status.success());
+    assert!(String::from_utf8_lossy(&unobserved_read.stderr).contains("unsupported_evidence"));
+    let change = cli(
+        &root,
+        &[
+            "--allow-local",
+            "accounts",
+            "observe",
+            &account.id,
+            &format!("{url}/current-context?variables=%7B%22action%22%3A%22delete%22%7D"),
+        ],
+    )
+    .await;
+    assert!(!change.status.success());
+    assert!(String::from_utf8_lossy(&change.stderr).contains("unsafe_target"));
+
+    let other_origin = cli(
+        &root,
+        &[
+            "--allow-local",
+            "accounts",
+            "observe",
+            &account.id,
+            "https://example.com/current-context",
+        ],
+    )
+    .await;
+    assert!(!other_origin.status.success());
+    assert!(String::from_utf8_lossy(&other_origin.stderr).contains("unsafe_target"));
+    ok(cli(
+        &root,
+        &[
+            "--allow-local",
+            "accounts",
+            "observe",
+            &account.id,
+            &format!("{url}/public-profile"),
+        ],
+    )
+    .await);
+    let mut public = recipe.clone();
+    public["identity_url"] = json!(format!("{url}/public-profile"));
+    std::fs::write(&recipe_path, public.to_string()).unwrap();
+    let rejected = cli(
+        &root,
+        &[
+            "--allow-local",
+            "accounts",
+            "verify",
+            &account.id,
+            "--recipe",
+            recipe_file,
+        ],
+    )
+    .await;
+    assert!(!rejected.status.success());
+    assert!(String::from_utf8_lossy(&rejected.stderr).contains("identity_unavailable"));
+    assert_eq!(
+        ok(cli(&root, &["accounts", "inspect", &account.id]).await)["saved_recipe"]["identity_url"],
+        recipe["identity_url"]
+    );
+    let refreshed = ok(cli(
+        &root,
+        &["--allow-local", "accounts", "refresh", &account.id],
+    )
+    .await);
+    assert_eq!(refreshed["verified_identity"], true);
+    server.abort();
+    drop(core);
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[tokio::test]
 async fn installed_cli_help_inputs_accounts_and_failures_are_real_command_contracts() {
     let reads = Arc::new(AtomicUsize::new(0));
     let read_count = reads.clone();

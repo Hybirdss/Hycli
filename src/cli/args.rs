@@ -128,6 +128,8 @@ pub enum Cmd {
     Accounts {
         #[arg(long)]
         site: Option<String>,
+        #[command(subcommand)]
+        cmd: Option<AccountsCmd>,
     },
     /// Discover existing browser profiles. Never returns sign-in values.
     Browsers {
@@ -264,6 +266,31 @@ pub enum AuthCmd {
     Rm {
         r#ref: String,
     },
+}
+
+#[derive(Subcommand)]
+pub enum AccountsCmd {
+    /// Inspect cookie/header names and storage structure, never sign-in values.
+    Inspect { account: String },
+    /// Read JSON from a successful observed GET with a verified session.
+    Read { account: String, url: String },
+    /// Observe one same-site GET before identity verification; private values stay local.
+    Observe {
+        account: String,
+        url: String,
+        /// Render the entry and retain captured authentication headers in the local vault.
+        #[arg(long)]
+        browser: bool,
+    },
+    /// Verify an observed current-account GET against an anonymous baseline.
+    Verify {
+        account: String,
+        /// JSON connection recipe containing local key references, never secret values.
+        #[arg(long)]
+        recipe: String,
+    },
+    /// Recheck a saved account using its verified connection recipe.
+    Refresh { account: String },
 }
 
 pub struct Deps {

@@ -57,6 +57,23 @@ For websites, Hycli inventories the current environment and gives the AI scoped 
 
 The browser companion remains an optional fallback for browsers whose protected sign-ins cannot be read locally. Companion archives and setup instructions are available in **Accounts**. Store publication/signing is separate from local unpacked or temporary installation.
 
+### Verify a browser session from the CLI
+
+`hycli accounts` still lists saved accounts. When automatic current-account discovery is insufficient, the CLI can inspect and verify an evidence-backed connection without an AI preparation loop:
+
+```sh
+hycli accounts inspect ACCOUNT_ID
+hycli accounts observe ACCOUNT_ID https://website.example/app --browser
+hycli accounts observe ACCOUNT_ID https://website.example/current-context
+hycli accounts verify ACCOUNT_ID --recipe connection.json
+hycli accounts refresh ACCOUNT_ID
+hycli accounts read ACCOUNT_ID https://website.example/current-context
+```
+
+Inspection and observation return key names, request shapes and response types, never cookies, authentication headers or private response values. The optional browser observation retains captured authentication headers in the local vault. Observation alone does not verify identity. The JSON connection recipe uses the same `identity_url`, local `headers` references, `identity` or `identity_html` mapping, and `evidence` fields used during preparation; it must not contain secret values. Verification requires a GET path already observed for this account's website, enforces its credential origin and read-only URL policy, and rejects identities also returned without authentication. Use an actual current-account response, not a public profile. A failed recipe preserves the previously verified recipe.
+
+`accounts read` returns JSON only after identity verification and a successful GET observation with the same path and query keys. It shares the bounded session GET transport with preparation, rejects change intents and mutation documents, and redacts credential values. It can read observed persisted GraphQL GETs without presenting them as generated actions. It does not change the classification or write permissions of installed website actions.
+
 ## Reproducible verification
 
 ```sh
