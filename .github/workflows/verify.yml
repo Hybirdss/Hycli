@@ -127,8 +127,7 @@ jobs:
           mkdir -p "$proof"
           ln -s "$GITHUB_WORKSPACE/web" "$baseline/web"
           cp src/integration_tests/execution_tests.rs "$baseline/src/integration_tests/execution_tests.rs"
-          export CARGO_TARGET_DIR="$GITHUB_WORKSPACE/target"
-          if cargo test --manifest-path "$baseline/Cargo.toml" --locked --lib "$test_name" -- --exact --nocapture > "$proof/baseline.log" 2>&1; then
+          if CARGO_TARGET_DIR="$proof/baseline-target" cargo test --manifest-path "$baseline/Cargo.toml" --locked --lib "$test_name" -- --exact --nocapture > "$proof/baseline.log" 2>&1; then
             cat "$proof/baseline.log"
             echo "Expected the pinned baseline to fail the ordinary-output assertion."
             exit 1
@@ -137,7 +136,7 @@ jobs:
           grep -F "test $test_name ... FAILED" "$proof/baseline.log"
           grep -F 'assertion `left == right` failed' "$proof/baseline.log"
           grep -F 'Page [private] is available in [private].' "$proof/baseline.log"
-          cargo test --locked --lib "$test_name" -- --exact --nocapture > "$proof/candidate.log" 2>&1 || { cat "$proof/candidate.log"; exit 1; }
+          CARGO_TARGET_DIR="$GITHUB_WORKSPACE/target" cargo test --locked --lib "$test_name" -- --exact --nocapture > "$proof/candidate.log" 2>&1 || { cat "$proof/candidate.log"; exit 1; }
           cat "$proof/candidate.log"
           grep -F "test $test_name ... ok" "$proof/candidate.log"
       - name: Retain synthetic preference output red and green proof
