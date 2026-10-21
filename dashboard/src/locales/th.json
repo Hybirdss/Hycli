@@ -98,7 +98,7 @@
   "actions.search": "ค้นหาคำสั่ง…",
   "actions.read": "ดูข้อมูล",
   "actions.write": "เปลี่ยนแปลงเว็บไซต์",
-  "actions.unverified": "ยังไม่ได้ลองใช้",
+  "actions.unverified": "ไม่ได้รับการยืนยัน",
   "actions.verified": "ตรวจสอบแล้ว",
   "actions.review": "ตรวจสอบคำสั่ง",
   "actions.run": "เรียกใช้คำสั่ง",

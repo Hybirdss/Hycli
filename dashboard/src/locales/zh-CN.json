@@ -98,7 +98,7 @@
   "actions.search": "搜索操作…",
   "actions.read": "查看信息",
   "actions.write": "修改网站",
-  "actions.unverified": "尚未执行",
+  "actions.unverified": "未经验证",
   "actions.verified": "已检查",
   "actions.review": "检查操作",
   "actions.run": "执行操作",

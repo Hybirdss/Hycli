@@ -98,7 +98,7 @@
   "actions.search": "작업 검색…",
   "actions.read": "정보 조회",
   "actions.write": "웹사이트 변경",
-  "actions.unverified": "아직 실행하지 않음",
+  "actions.unverified": "확인되지 않음",
   "actions.verified": "확인됨",
   "actions.review": "작업 검토",
   "actions.run": "작업 실행",

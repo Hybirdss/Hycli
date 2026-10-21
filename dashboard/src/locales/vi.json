@@ -98,7 +98,7 @@
   "actions.search": "Tìm thao tác…",
   "actions.read": "Xem thông tin",
   "actions.write": "Thay đổi trang web",
-  "actions.unverified": "Chưa chạy thử",
+  "actions.unverified": "Không được xác minh",
   "actions.verified": "Đã kiểm tra",
   "actions.review": "Kiểm tra thao tác",
   "actions.run": "Chạy thao tác",

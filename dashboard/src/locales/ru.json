@@ -98,7 +98,7 @@
   "actions.search": "Поиск действий…",
   "actions.read": "Читает информацию",
   "actions.write": "Изменяет этот сайт",
-  "actions.unverified": "Ещё не опробовано",
+  "actions.unverified": "Не проверено",
   "actions.verified": "Проверено",
   "actions.review": "Проверить действие",
   "actions.run": "Запустить действие",

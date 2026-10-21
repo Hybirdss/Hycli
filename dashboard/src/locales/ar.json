@@ -98,7 +98,7 @@
   "actions.search": "البحث في العمليات…",
   "actions.read": "يعرض المعلومات",
   "actions.write": "يغيّر هذا الموقع",
-  "actions.unverified": "لم تُجرّب بعد",
+  "actions.unverified": "غير متحقق منها",
   "actions.verified": "تم التحقق",
   "actions.review": "مراجعة العملية",
   "actions.run": "تنفيذ العملية",
