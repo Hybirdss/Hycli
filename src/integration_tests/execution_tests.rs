@@ -1009,7 +1009,8 @@ async fn successful_operation_preserves_account_identity_proof_and_selection() {
         core.select_account("fixture", &account.id, &url).unwrap();
         let before = core.state.read().unwrap();
         assert_eq!(before.accounts[&account.id].verified_identity, verified);
-        let before_credential = serde_json::to_value(core.credential(&account.id).unwrap()).unwrap();
+        let before_credential =
+            serde_json::to_value(core.credential(&account.id).unwrap()).unwrap();
         let mut inputs = BTreeMap::new();
         for page in 0..2 {
             let result = core.run_op(&sp, "read-account", &inputs).await.unwrap().0;
