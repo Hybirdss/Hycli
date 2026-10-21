@@ -88,6 +88,12 @@ pub struct Credential {
     #[serde(default)]
     pub recipe: Option<crate::session_recipe::ConnectionRecipe>,
 }
+#[derive(Clone, Copy)]
+enum RedactionScope {
+    Full,
+    CrossAccount,
+}
+
 impl Credential {
     pub fn cookie_header(&self, raw_url: &str) -> AppResult<String> {
         let url = net::validate_url(raw_url)?;
@@ -146,9 +152,37 @@ impl Credential {
     }
 
     pub fn redaction_values(&self) -> Vec<String> {
+        self.collect_redaction_values(RedactionScope::Full)
+    }
+
+    // Global output matching omits only short cookies without an authentication signal.
+    // Selected accounts still use the full collection.
+    fn cross_account_redaction_values(&self) -> Vec<String> {
+        self.collect_redaction_values(RedactionScope::CrossAccount)
+    }
+
+    fn collect_redaction_values(&self, scope: RedactionScope) -> Vec<String> {
         let mut values: Vec<_> = self
             .cookies
             .iter()
+            .filter(|cookie| {
+                if matches!(scope, RedactionScope::Full) {
+                    return true;
+                }
+                let name = cookie.name.to_ascii_lowercase();
+                cookie.value.chars().count() >= 8
+                    || util::secret_field(&name)
+                    || name.contains("session")
+                    || name.contains("auth")
+                    || name.contains("token")
+                    || matches!(name.as_str(), "sid" | "ssid")
+                    || self.recipe.as_ref().is_some_and(|recipe| {
+                        recipe.headers.iter().any(|rule| {
+                            rule.source == "cookie" && rule.key == cookie.name
+                        })
+                    })
+                    || util::redact_text(&cookie.value) != cookie.value
+            })
             .map(|c| c.value.clone())
             .chain(self.headers.values().cloned())
             .filter(|v| !v.is_empty())
@@ -304,13 +338,13 @@ pub(crate) fn collect_redaction_secrets(store: &crate::store::Store) -> Vec<Stri
                 if let Ok(candidate) =
                     serde_json::from_value::<Credential>(pending["candidate"].clone())
                 {
-                    values.extend(candidate.redaction_values());
+                    values.extend(candidate.cross_account_redaction_values());
                 }
             }
         }
         if name.starts_with("accounts/") {
             if let Ok(credential) = serde_json::from_str::<Credential>(value) {
-                values.extend(credential.redaction_values());
+                values.extend(credential.cross_account_redaction_values());
             }
         }
     }
@@ -638,4 +672,88 @@ pub struct Observation {
     pub response_pointers: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub auth_headers: Vec<String>,
+}
+
+#[cfg(test)]
+mod redaction_scope_tests {
+    use super::Credential;
+    use serde_json::json;
+
+    fn credential(cookies: serde_json::Value) -> Credential {
+        serde_json::from_value(json!({
+            "origin": "https://example.test",
+            "cookies": cookies
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn full_scope_keeps_short_preferences_and_cross_account_scope_is_bounded() {
+        let credential = credential(json!([
+            {"name": "locale", "value": "en", "domain": "example.test"},
+            {"name": "page_size", "value": "1", "domain": "example.test"},
+            {"name": "preference", "value": "1234567", "domain": "example.test"},
+            {"name": "preference", "value": "12345678", "domain": "example.test"},
+            {"name": "user_id", "value": "public-person", "domain": "example.test"}
+        ]));
+        let full = credential.redaction_values();
+        let cross_account = credential.cross_account_redaction_values();
+        for value in ["en", "1", "1234567"] {
+            assert!(full.iter().any(|item| item == value));
+            assert!(!cross_account.iter().any(|item| item == value));
+        }
+        for value in ["12345678", "public-person"] {
+            assert!(cross_account.iter().any(|item| item == value));
+        }
+    }
+
+    #[test]
+    fn cross_account_collection_preserves_non_cookie_sources() {
+        let mut credential = credential(json!([
+            {"name": "locale", "value": "en", "domain": "example.test"},
+            {"name": "page_size", "value": "1", "domain": "example.test"},
+            {"name": "theme", "value": "dark", "domain": "example.test"}
+        ]));
+        credential.headers.insert("x-fixture".into(), "en".into());
+        credential.recipe = Some(crate::session_recipe::ConnectionRecipe {
+            identity_url: "https://example.test/me".into(),
+            headers: vec![crate::session_recipe::HeaderSource {
+                header: "x-fixture-theme".into(),
+                source: "cookie".into(),
+                key: "theme".into(),
+                prefix: "Fixture ".into(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        });
+        credential
+            .local_storage
+            .insert("token".into(), "\"1\"".into());
+        let cross_account = credential.cross_account_redaction_values();
+        for value in ["en", "1", "dark", "Fixture dark"] {
+            assert!(cross_account.iter().any(|item| item == value));
+        }
+    }
+
+    #[test]
+    fn cross_account_collection_keeps_existing_authentication_name_signals() {
+        for name in [
+            "sid",
+            "SSID",
+            "session_hint",
+            "auth_state",
+            "token_hint",
+            "csrf",
+            "x-api-key",
+        ] {
+            let credential = credential(json!([
+                {"name": name, "value": "x", "domain": "example.test"}
+            ]));
+            assert!(
+                credential
+                    .cross_account_redaction_values()
+                    .contains(&"x".into())
+            );
+        }
+    }
 }
