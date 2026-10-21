@@ -938,6 +938,144 @@ fn stale_selected_preparation_cannot_publish_or_overwrite_new_selection() {
     );
 }
 
+#[tokio::test]
+async fn successful_operation_preserves_account_identity_proof_and_selection() {
+    use axum::extract::Query;
+
+    let (url, server) = host(Router::new().route(
+        "/account",
+        get(|Query(query): Query<BTreeMap<String, String>>| async move {
+            Json(json!({
+                "id": "operation-person",
+                "name": "Operation Person",
+                "items": ["result"],
+                "next": if query.contains_key("pageToken") {
+                    Value::Null
+                } else {
+                    json!("synthetic-next-page")
+                },
+                "cursor_echo": query.get("pageToken")
+            }))
+        }),
+    ))
+    .await;
+    let sp = spec::parse(
+        json!({
+            "spec_version": 3,
+            "site": {"name": "fixture", "base_url": url},
+            "operations": [{
+                "name": "read-account", "method": "GET", "path": "/account",
+                "effect": "read", "evidence": "Synthetic operation fixture",
+                "model": "result",
+                "pagination": {"input": "cursor", "query": "pageToken", "next": "/next"}
+            }],
+            "models": {"result": {"person": {"path": "name", "type": "string"}}}
+        })
+        .to_string()
+        .as_bytes(),
+    )
+    .unwrap();
+    for verified in [false, true] {
+        let core = runtime();
+        core.install(&sp).unwrap();
+        let credential = serde_json::from_value(json!({
+            "origin": url,
+            "cookies": [{"name": "sid", "value": "synthetic-operation-session",
+                "domain": "127.0.0.1", "path": "/"}]
+        }))
+        .unwrap();
+        let account = core
+            .register_browser_credential(
+                if verified { "source" } else { "fixture" },
+                credential,
+                "Fixture",
+                "Synthetic",
+            )
+            .unwrap();
+        if verified {
+            let expected = core.credential(&account.id).unwrap();
+            core.publish_verified_identity(
+                &account.id,
+                &expected,
+                expected.clone(),
+                crate::accounts::Identity {
+                    user_id: "verified-person".into(),
+                    name: "Verified Person".into(),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        }
+        core.select_account("fixture", &account.id, &url).unwrap();
+        let before = core.state.read().unwrap();
+        assert_eq!(before.accounts[&account.id].verified_identity, verified);
+        let before_credential = serde_json::to_value(core.credential(&account.id).unwrap()).unwrap();
+        let mut inputs = BTreeMap::new();
+        for page in 0..2 {
+            let result = core.run_op(&sp, "read-account", &inputs).await.unwrap().0;
+            assert_eq!(result.status, 200);
+            assert_eq!(result.body.as_ref().unwrap()["id"], "operation-person");
+            assert_eq!(result.body.as_ref().unwrap()["items"], json!(["result"]));
+            assert_eq!(result.mapped, Some(json!({"person": "Operation Person"})));
+            assert!(result.paginated);
+            assert!(
+                !serde_json::to_string(&result)
+                    .unwrap()
+                    .contains("synthetic-next-page")
+            );
+            assert_eq!(
+                result.clone().output().unwrap(),
+                json!({"data": {"person": "Operation Person"}, "next_cursor": result.next_cursor})
+            );
+            if page == 0 {
+                inputs.insert("cursor".into(), result.next_cursor.unwrap());
+            } else {
+                assert!(result.next_cursor.is_none());
+                assert_eq!(result.body.as_ref().unwrap()["cursor_echo"], "[private]");
+            }
+            let after = core.state.read().unwrap();
+            let mut current_account = after.accounts[&account.id].clone();
+            assert!(!current_account.checked_at.is_empty());
+            current_account.checked_at = before.accounts[&account.id].checked_at.clone();
+            assert_eq!(
+                serde_json::to_value(current_account).unwrap(),
+                serde_json::to_value(&before.accounts[&account.id]).unwrap()
+            );
+            assert_eq!(after.identity_generations, before.identity_generations);
+            assert_eq!(
+                serde_json::to_value(core.credential(&account.id).unwrap()).unwrap(),
+                before_credential
+            );
+            assert_eq!(
+                after.sites["fixture"].account_id,
+                before.sites["fixture"].account_id
+            );
+            assert!(
+                after.sites["fixture"].account_binding == before.sites["fixture"].account_binding
+            );
+            assert_eq!(
+                after.sites["fixture"].account_selection_revision,
+                before.sites["fixture"].account_selection_revision
+            );
+            assert_eq!(
+                core.credential(&account.id)
+                    .unwrap()
+                    .proves_identity(
+                        &after.accounts[&account.id],
+                        after
+                            .identity_generations
+                            .get(&account.id)
+                            .map(String::as_str)
+                            .unwrap_or(""),
+                    )
+                    .unwrap(),
+                verified
+            );
+        }
+    }
+    server.abort();
+}
+
 #[test]
 fn verified_identity_publication_is_bound_to_exact_private_snapshot() {
     let core = runtime();
