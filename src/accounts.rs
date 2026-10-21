@@ -145,6 +145,29 @@ impl Credential {
         metadata.redaction_values()
     }
 
+    /// Values registered while serving a different account. A short cookie value
+    /// under a non-credential name (`mall_type=1`) is a preference, not a secret;
+    /// registering it vault-wide rewrites every matching scalar ("1", "0") in other
+    /// websites' results. The selected account still adds its complete
+    /// `redaction_values()` for its own requests.
+    pub fn cross_account_redaction_values(&self) -> Vec<String> {
+        let preference = |value: &str| {
+            value.chars().count() < 8
+                && self
+                    .cookies
+                    .iter()
+                    .any(|c| c.value == value && !util::secret_field(&c.name))
+                && !self
+                    .cookies
+                    .iter()
+                    .any(|c| c.value == value && util::secret_field(&c.name))
+                && !self.headers.values().any(|h| h == value)
+        };
+        self.redaction_values()
+            .into_iter()
+            .filter(|value| !preference(value))
+            .collect()
+    }
     pub fn redaction_values(&self) -> Vec<String> {
         let mut values: Vec<_> = self
             .cookies
@@ -310,7 +333,7 @@ pub(crate) fn collect_redaction_secrets(store: &crate::store::Store) -> Vec<Stri
         }
         if name.starts_with("accounts/") {
             if let Ok(credential) = serde_json::from_str::<Credential>(value) {
-                values.extend(credential.redaction_values());
+                values.extend(credential.cross_account_redaction_values());
             }
         }
     }
@@ -638,4 +661,47 @@ pub struct Observation {
     pub response_pointers: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub auth_headers: Vec<String>,
+}
+
+#[cfg(test)]
+mod cross_account_redaction_tests {
+    use super::Credential;
+
+    fn credential() -> Credential {
+        serde_json::from_value(serde_json::json!({
+            "origin": "https://shop.example.test",
+            "cookies": [
+                {"name": "mall_type", "value": "1", "domain": "shop.example.test"},
+                {"name": "loginType", "value": "02", "domain": "shop.example.test"},
+                {"name": "JSESSIONID", "value": "0", "domain": "shop.example.test"},
+                {"name": "pref_layout", "value": "grid-compact", "domain": "shop.example.test"}
+            ]
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn own_account_keeps_every_cookie_value() {
+        let values = credential().redaction_values();
+        for value in ["1", "02", "0", "grid-compact"] {
+            assert!(values.contains(&value.to_string()), "{value}");
+        }
+    }
+
+    #[test]
+    fn other_accounts_drop_short_preference_values_only() {
+        let values = credential().cross_account_redaction_values();
+        assert!(!values.contains(&"1".to_string()));
+        assert!(!values.contains(&"02".to_string()));
+        assert!(values.contains(&"0".to_string()));
+        assert!(values.contains(&"grid-compact".to_string()));
+    }
+
+    #[test]
+    fn short_preference_no_longer_rewrites_unrelated_scalars() {
+        let mut result = serde_json::json!({"minQty": "1", "stock": "1,000"});
+        crate::util::redact(&mut result, &credential().cross_account_redaction_values());
+        assert_eq!(result["minQty"], "1");
+        assert_eq!(result["stock"], "1,000");
+    }
 }
