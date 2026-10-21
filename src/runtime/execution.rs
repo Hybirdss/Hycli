@@ -1,5 +1,4 @@
 use crate::{
-    accounts,
     apperr::{AppError, AppResult},
     kb::AttemptInput,
     net::Request,
@@ -945,15 +944,6 @@ impl Runtime {
                 a.checked_at = util::now();
                 if response.status == 401 {
                     a.status = "expired".into();
-                } else if response.successful()
-                    && accounts::identity_endpoint(
-                        &url::Url::parse(&response.url)
-                            .map_err(|_| AppError::api("bad_url", 400))?,
-                    )
-                {
-                    if let Some(identity) = accounts::extract_identity(&raw) {
-                        accounts::apply_identity(a, identity);
-                    }
                 }
             }
             Ok(())
