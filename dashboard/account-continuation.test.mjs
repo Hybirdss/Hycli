@@ -99,3 +99,36 @@ test('native discovery cancellation owns its target lifetime and ignores its own
  assert.equal(signal.aborted,true);assert.ok(!h.states.includes('internal'));
  assert.deepEqual(h.calls.map(c=>c[0]),['/api/browser/find']);
 });
+
+const english = JSON.parse(readFileSync(new URL('./src/locales/en.json', import.meta.url), 'utf8'));
+const summaryExpression = source.slice(source.indexOf("{t('accounts.searchDone'")).match(/<p>\{t\(([\s\S]*?)\)\}<\/p>/)[1];
+function discoverySummary(accounts, { needs_choice = false, selected_account = '' } = {}) {
+  const found = { profiles_checked: 1, profiles_unavailable: 0, accounts, selected_account, needs_choice, login_url: 'https://example.test' };
+  return vm.runInNewContext(`t(${summaryExpression})`, { found, t: key => english[key] });
+}
+test('discovery confirms a selected verified connected account without asking for verification', () => {
+  assert.equal(discoverySummary([account], { selected_account: account.id }), 'Account connected');
+});
+test('discovery retains the account-choice prompt even when accounts are verified', () => {
+  assert.equal(discoverySummary([account, { ...account, id: 'second' }], { needs_choice: true }), 'More than one account was found. Choose the account to use.');
+});
+test('discovery still explains verification for connected unverified sessions', () => {
+  assert.equal(discoverySummary([{ ...account, verified_identity: false }]), 'Browser session found. Your account still needs to be verified.');
+});
+test('discovery does not present expired accounts as usable sessions', () => {
+  for (const verified_identity of [false, true]) {
+    assert.equal(discoverySummary([{ ...account, status: 'expired', verified_identity }], { selected_account: account.id }), 'No usable sign-in was found. Open the website, sign in, then return here.');
+  }
+});
+test('discovery explains how to sign in when no session was found', () => {
+  assert.equal(discoverySummary([]), 'No usable sign-in was found. Open the website, sign in, then return here.');
+});
+test('mixed discovery results confirm one connected account without claiming all are verified', () => {
+  const others = [{ ...account, id: 'unverified', verified_identity: false }, { ...account, id: 'expired', status: 'expired' }];
+  for (const accounts of [[account, ...others], [...others, account]]) {
+    assert.equal(discoverySummary(accounts, { selected_account: account.id }), 'Account connected');
+  }
+});
+test('an expired verified account does not hide a connected session that needs verification', () => {
+  assert.equal(discoverySummary([{ ...account, status: 'expired' }, { ...account, id: 'unverified', verified_identity: false }]), 'Browser session found. Your account still needs to be verified.');
+});
