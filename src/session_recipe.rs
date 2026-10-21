@@ -206,7 +206,7 @@ impl Runtime {
         key: &str,
         offset: usize,
     ) -> AppResult<Value> {
-        let credential = self.credential(account)?;
+        let credential = self.capture_candidate(account, &self.credential(account)?)?;
         Self::inspect_session_snapshot(account, &credential, origin, key, offset)
     }
 
@@ -261,86 +261,26 @@ impl Runtime {
         account: &str,
         recipe: &ConnectionRecipe,
     ) -> AppResult<AccountView> {
-        self.verify_session_recipe_snapshot(account, recipe, self.credential(account)?)
-            .await
+        let expected = self.credential(account)?;
+        let candidate = self.capture_candidate(account, &expected)?;
+        self.verify_session_recipe_candidate(account, recipe, expected, candidate).await
     }
 
-    pub(crate) async fn verify_session_recipe_snapshot(
+    pub(crate) async fn verify_session_recipe_candidate(
         &self,
         account: &str,
         recipe: &ConnectionRecipe,
         expected: Credential,
+        mut candidate: Credential,
     ) -> AppResult<AccountView> {
-        let mut credential = expected.clone();
-        let resolved = recipe.resolve_headers(&credential)?;
-        credential.headers.extend(resolved.clone());
-        // Classify explicit sources from this candidate, without persisting it before verification.
-        credential.recipe = Some(recipe.clone());
-        self.policy
-            .resume_auth(&format!("{}|{account}", credential.origin))?;
-        let response = self
-            .network
-            .fetch(crate::net::Request {
-                url: recipe.identity_url.clone(),
-                method: "GET".into(),
-                headers: credential.request_headers(&recipe.identity_url)?,
-                body: None,
-                account_id: account.into(),
-                limit: 1024 * 1024,
-                timeout: std::time::Duration::from_secs(25),
-                read_only: true,
-                follow_redirects: false,
-                tls_profile: "standard".into(),
-                multipart: None,
-            })
-            .await?;
-        if !response.successful() {
-            return Err(AppError::api(
-                if response.status == 401 {
-                    "auth_required"
-                } else {
-                    "request_failed"
-                },
-                422,
-            ));
-        }
-        let identity = recipe
-            .identity_from_response(&response)
-            .ok_or_else(|| AppError::api("identity_unavailable", 422))?;
-        if !identity_is_safe(&identity, &credential) {
-            return Err(AppError::api("identity_unavailable", 422));
-        }
-        // Do not label an arbitrary public profile endpoint as the signed-in account.
-        let baseline_scope = format!("{account}:identity-baseline");
-        // An unauthenticated 401 is the expected baseline result, not a lost user session.
-        self.policy
-            .resume_auth(&format!("{}|{baseline_scope}", credential.origin))?;
-        let anonymous = self
-            .network
-            .fetch(crate::net::Request {
-                url: recipe.identity_url.clone(),
-                method: "GET".into(),
-                headers: vec![],
-                body: None,
-                account_id: baseline_scope,
-                limit: 1024 * 1024,
-                timeout: std::time::Duration::from_secs(25),
-                read_only: true,
-                follow_redirects: false,
-                tls_profile: "standard".into(),
-                multipart: None,
-            })
-            .await?;
-        if anonymous.successful() {
-            if recipe.identity_from_response(&anonymous).is_some() {
-                return Err(AppError::api("identity_unavailable", 422));
-            }
-        } else if !matches!(anonymous.status, 401 | 403) {
-            // Redirects, rate limits and server failures are not an anonymous identity baseline.
-            return Err(AppError::api("request_failed", 422));
-        }
-        credential.identity_source = recipe.identity_url.clone();
-        self.publish_verified_identity(account, &expected, credential, identity)
+        candidate.recipe = Some(recipe.clone());
+        candidate.identity_source = recipe.identity_url.clone();
+        self.verify_identity_candidate(
+            account,
+            &expected,
+            candidate,
+            crate::runtime::CandidateIdentityProbe::Recipe,
+        ).await
     }
 }
 
