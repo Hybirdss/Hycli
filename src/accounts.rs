@@ -301,7 +301,9 @@ pub(crate) fn collect_redaction_secrets(store: &crate::store::Store) -> Vec<Stri
         }
         if name.starts_with("@capture/") {
             if let Ok(pending) = serde_json::from_str::<serde_json::Value>(value) {
-                if let Ok(candidate) = serde_json::from_value::<Credential>(pending["candidate"].clone()) {
+                if let Ok(candidate) =
+                    serde_json::from_value::<Credential>(pending["candidate"].clone())
+                {
                     values.extend(candidate.redaction_values());
                 }
             }

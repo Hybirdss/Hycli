@@ -263,7 +263,8 @@ impl Runtime {
     ) -> AppResult<AccountView> {
         let expected = self.credential(account)?;
         let candidate = self.capture_candidate(account, &expected)?;
-        self.verify_session_recipe_candidate(account, recipe, expected, candidate).await
+        self.verify_session_recipe_candidate(account, recipe, expected, candidate)
+            .await
     }
 
     pub(crate) async fn verify_session_recipe_candidate(
@@ -280,7 +281,8 @@ impl Runtime {
             &expected,
             candidate,
             crate::runtime::CandidateIdentityProbe::Recipe,
-        ).await
+        )
+        .await
     }
 }
 

@@ -124,7 +124,8 @@ impl Runtime {
     ) -> AppResult<Value> {
         let (account, credential) = self.session_account(id)?;
         let candidate = self.capture_candidate(id, &credential)?;
-        self.verify_observed_snapshot(id, recipe, &account, credential, candidate).await
+        self.verify_observed_snapshot(id, recipe, &account, credential, candidate)
+            .await
     }
 
     async fn verify_observed_snapshot(
@@ -158,7 +159,10 @@ impl Runtime {
         let view = self
             .verify_session_recipe_candidate(id, recipe, credential.clone(), candidate.clone())
             .await?;
-        Self::session_output(&candidate, Self::session_output(&credential, serde_json::to_value(view)?)?)
+        Self::session_output(
+            &candidate,
+            Self::session_output(&credential, serde_json::to_value(view)?)?,
+        )
     }
 
     pub(crate) async fn refresh_account_session(&self, id: &str) -> AppResult<Value> {
@@ -168,7 +172,13 @@ impl Runtime {
             .clone()
             .ok_or_else(|| AppError::api("identity_unavailable", 422))?;
         let result = self
-            .verify_observed_snapshot(id, &recipe, &account, credential.clone(), credential.clone())
+            .verify_observed_snapshot(
+                id,
+                &recipe,
+                &account,
+                credential.clone(),
+                credential.clone(),
+            )
             .await;
         if let Err(error) = &result {
             if matches!(

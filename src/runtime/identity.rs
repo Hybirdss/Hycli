@@ -49,21 +49,33 @@ impl Runtime {
         mut candidate: Credential,
     ) -> AppResult<Credential> {
         let _guard = self.selection_lock()?;
-        let mut vault = self.vault.lock().map_err(|_| AppError::api("internal", 500))?;
+        let mut vault = self
+            .vault
+            .lock()
+            .map_err(|_| AppError::api("internal", 500))?;
         vault.reload()?;
         let current: Credential = serde_json::from_str(
-            vault.get("accounts", account_id).ok_or_else(|| AppError::api("auth_required", 401))?,
+            vault
+                .get("accounts", account_id)
+                .ok_or_else(|| AppError::api("auth_required", 401))?,
         )?;
         if serde_json::to_vec(&current)? != serde_json::to_vec(expected)? {
             return Err(AppError::api("conflict", 409));
         }
         let data = self.state.read()?;
-        let view = data.accounts.get(account_id).ok_or_else(|| AppError::api("not_found", 404))?;
+        let view = data
+            .accounts
+            .get(account_id)
+            .ok_or_else(|| AppError::api("not_found", 404))?;
         if candidate.origin != current.origin || candidate.origin != view.site_url {
             return Err(AppError::api("unsafe_target", 400));
         }
         candidate.identity_proof.clear();
-        let generation = data.identity_generations.get(account_id).map(String::as_str).unwrap_or("");
+        let generation = data
+            .identity_generations
+            .get(account_id)
+            .map(String::as_str)
+            .unwrap_or("");
         if current.proves_identity(view, generation)? {
             let pending = PendingCapture {
                 expected_snapshot: util::hash(&serde_json::to_vec(expected)?),
@@ -83,10 +95,15 @@ impl Runtime {
         expected: &Credential,
     ) -> AppResult<Credential> {
         let _guard = self.selection_lock()?;
-        let mut vault = self.vault.lock().map_err(|_| AppError::api("internal", 500))?;
+        let mut vault = self
+            .vault
+            .lock()
+            .map_err(|_| AppError::api("internal", 500))?;
         vault.reload()?;
         let current: Credential = serde_json::from_str(
-            vault.get("accounts", account_id).ok_or_else(|| AppError::api("auth_required", 401))?,
+            vault
+                .get("accounts", account_id)
+                .ok_or_else(|| AppError::api("auth_required", 401))?,
         )?;
         if serde_json::to_vec(&current)? != serde_json::to_vec(expected)? {
             return Err(AppError::api("conflict", 409));

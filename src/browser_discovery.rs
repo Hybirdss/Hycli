@@ -620,7 +620,8 @@ impl Runtime {
                     )
                     .await
                     {
-                        self.retain_browser_capture(&id, &credential, capture).await?;
+                        self.retain_browser_capture(&id, &credential, capture)
+                            .await?;
                     }
                 }
             }
@@ -657,11 +658,18 @@ impl Runtime {
         expected: &crate::accounts::Credential,
         capture: crate::browser_session::Capture,
     ) -> AppResult<()> {
-        let account = self.state.account(id)?.ok_or_else(|| AppError::api("not_found", 404))?;
+        let account = self
+            .state
+            .account(id)?
+            .ok_or_else(|| AppError::api("not_found", 404))?;
         self.state.update(|data| {
             let meta = data.sites.entry(account.site_id.clone()).or_default();
             for observation in capture.observations {
-                if !meta.observations.iter().any(|old| old.method == observation.method && old.path == observation.path) {
+                if !meta
+                    .observations
+                    .iter()
+                    .any(|old| old.method == observation.method && old.path == observation.path)
+                {
                     meta.observations.push(observation);
                 }
             }
@@ -678,11 +686,17 @@ impl Runtime {
         }
         let expected = self.stage_captured_credential(id, expected, candidate.clone())?;
         if has_identity {
-            let _ = self.verify_identity_candidate(id, &expected, candidate, crate::runtime::CandidateIdentityProbe::Capture).await;
+            let _ = self
+                .verify_identity_candidate(
+                    id,
+                    &expected,
+                    candidate,
+                    crate::runtime::CandidateIdentityProbe::Capture,
+                )
+                .await;
         }
         Ok(())
     }
-
 }
 pub fn login_url(target: &url::Url) -> String {
     target.to_string()
@@ -792,8 +806,15 @@ mod tests {
 
     impl CaptureFixture {
         async fn new(proven: bool) -> Self {
-            use axum::{Json, Router, http::{HeaderMap, StatusCode}, routing::get};
-            use std::sync::{Arc, atomic::{AtomicU16, Ordering}};
+            use axum::{
+                Json, Router,
+                http::{HeaderMap, StatusCode},
+                routing::get,
+            };
+            use std::sync::{
+                Arc,
+                atomic::{AtomicU16, Ordering},
+            };
             let saved_status = Arc::new(AtomicU16::new(200));
             let candidate_status = Arc::new(AtomicU16::new(200));
             let anonymous_status = Arc::new(AtomicU16::new(401));
@@ -809,12 +830,19 @@ mod tests {
                     _ => anonymous.load(Ordering::SeqCst),
                 };
                 async move {
-                    (StatusCode::from_u16(status).unwrap(), Json(serde_json::json!({"id":"person", "name":"Person"})))
+                    (
+                        StatusCode::from_u16(status).unwrap(),
+                        Json(serde_json::json!({"id":"person", "name":"Person"})),
+                    )
                 }
             };
-            let router = Router::new().route("/api/me", get(handler.clone())).route("/read", get(handler));
+            let router = Router::new()
+                .route("/api/me", get(handler.clone()))
+                .route("/read", get(handler));
             let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
-            let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(".cache/tests").join(util::id());
+            let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join(".cache/tests")
+                .join(util::id());
             let core = Runtime::open(&root, None, None, false, true, false).unwrap();
             let credential = crate::accounts::Credential {
                 origin: origin.clone(),
@@ -822,19 +850,40 @@ mod tests {
                 headers: [("authorization".into(), "synthetic-saved".into())].into(),
                 ..Default::default()
             };
-            let account = core.register_browser_credential("fixture", credential.clone(), "Fixture", "Synthetic").unwrap();
+            let account = core
+                .register_browser_credential("fixture", credential.clone(), "Fixture", "Synthetic")
+                .unwrap();
             if proven {
-                core.publish_verified_identity(&account.id, &credential, credential.clone(), crate::accounts::Identity {
-                    user_id: "person".into(), name: "Person".into(), ..Default::default()
-                }).unwrap();
+                core.publish_verified_identity(
+                    &account.id,
+                    &credential,
+                    credential.clone(),
+                    crate::accounts::Identity {
+                        user_id: "person".into(),
+                        name: "Person".into(),
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
             }
-            Self { core, id: account.id, origin, saved_status, candidate_status, anonymous_status, server }
+            Self {
+                core,
+                id: account.id,
+                origin,
+                saved_status,
+                candidate_status,
+                anonymous_status,
+                server,
+            }
         }
 
         fn capture(&self, identity: bool) -> crate::browser_session::Capture {
             crate::browser_session::Capture {
                 headers: [("authorization".into(), "synthetic-candidate".into())].into(),
-                identity: identity.then(|| crate::accounts::Identity { user_id: "untrusted-browser-person".into(), ..Default::default() }),
+                identity: identity.then(|| crate::accounts::Identity {
+                    user_id: "untrusted-browser-person".into(),
+                    ..Default::default()
+                }),
                 identity_url: format!("{}/api/me", self.origin),
                 ..Default::default()
             }
@@ -851,8 +900,19 @@ mod tests {
         }
 
         async fn assert_usable(&self) {
-            assert_eq!(self.core.browser_account_for("fixture", &self.origin).unwrap(), self.id);
-            assert!(self.core.read_page(&format!("{}/read", self.origin), &self.id).await.unwrap().successful());
+            assert_eq!(
+                self.core
+                    .browser_account_for("fixture", &self.origin)
+                    .unwrap(),
+                self.id
+            );
+            assert!(
+                self.core
+                    .read_page(&format!("{}/read", self.origin), &self.id)
+                    .await
+                    .unwrap()
+                    .successful()
+            );
         }
     }
 
@@ -875,7 +935,11 @@ mod tests {
         for status in [503, 401] {
             fixture.candidate_status.store(status, Ordering::SeqCst);
             let expected = fixture.core.credential(&fixture.id).unwrap();
-            fixture.core.retain_browser_capture(&fixture.id, &expected, fixture.capture(true)).await.unwrap();
+            fixture
+                .core
+                .retain_browser_capture(&fixture.id, &expected, fixture.capture(true))
+                .await
+                .unwrap();
             assert_eq!(fixture.snapshot(), before);
             fixture.assert_usable().await;
         }
@@ -883,7 +947,14 @@ mod tests {
         let expired = fixture.core.refresh_account(&fixture.id).await.unwrap();
         assert_eq!(expired.status, "expired");
         assert!(!expired.verified_identity);
-        assert!(fixture.core.credential(&fixture.id).unwrap().identity_proof.is_empty());
+        assert!(
+            fixture
+                .core
+                .credential(&fixture.id)
+                .unwrap()
+                .identity_proof
+                .is_empty()
+        );
     }
 
     #[tokio::test]
@@ -892,35 +963,73 @@ mod tests {
         let before = fixture.snapshot();
         let expected = fixture.core.credential(&fixture.id).unwrap();
         let mut capture = fixture.capture(false);
-        capture.headers.insert("x-session".into(), "synthetic-private-pending".into());
-        fixture.core.retain_browser_capture(&fixture.id, &expected, capture).await.unwrap();
+        capture
+            .headers
+            .insert("x-session".into(), "synthetic-private-pending".into());
+        fixture
+            .core
+            .retain_browser_capture(&fixture.id, &expected, capture)
+            .await
+            .unwrap();
         assert_eq!(fixture.snapshot(), before);
         fixture.assert_usable().await;
         let inspected = fixture.core.inspect_account_session(&fixture.id).unwrap();
-        assert!(inspected["captured_headers"].as_array().unwrap().iter().any(|name| name == "x-session"));
+        assert!(
+            inspected["captured_headers"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|name| name == "x-session")
+        );
         assert!(!inspected.to_string().contains("synthetic-private-pending"));
         {
             let vault = fixture.core.vault.lock().unwrap();
             assert!(!vault.keys().iter().any(|key| key.starts_with("@capture/")));
-            assert!(crate::accounts::collect_redaction_secrets(&vault).contains(&"synthetic-private-pending".into()));
+            assert!(
+                crate::accounts::collect_redaction_secrets(&vault)
+                    .contains(&"synthetic-private-pending".into())
+            );
         }
         let recipe = crate::session_recipe::ConnectionRecipe {
             identity_url: format!("{}/api/me", fixture.origin),
             headers: vec![crate::session_recipe::HeaderSource {
-                header: "authorization".into(), source: "captured_header".into(), key: "authorization".into(), ..Default::default()
+                header: "authorization".into(),
+                source: "captured_header".into(),
+                key: "authorization".into(),
+                ..Default::default()
             }],
-            identity: crate::session_recipe::IdentityMapping { user_id: "/id".into(), name: "/name".into(), ..Default::default() },
+            identity: crate::session_recipe::IdentityMapping {
+                user_id: "/id".into(),
+                name: "/name".into(),
+                ..Default::default()
+            },
             evidence: "observed_browser_request".into(),
             ..Default::default()
         };
-        let published = fixture.core.verify_session_recipe(&fixture.id, &recipe).await.unwrap();
+        let published = fixture
+            .core
+            .verify_session_recipe(&fixture.id, &recipe)
+            .await
+            .unwrap();
         assert!(published.verified_identity);
         let credential = fixture.core.credential(&fixture.id).unwrap();
         assert_eq!(credential.headers["authorization"], "synthetic-candidate");
         assert_ne!(credential.identity_proof, expected.identity_proof);
         let state = fixture.core.state.read().unwrap();
-        assert!(credential.proves_identity(&published, &state.identity_generations[&fixture.id]).unwrap());
-        assert!(fixture.core.vault.lock().unwrap().get("@capture", &fixture.id).is_none());
+        assert!(
+            credential
+                .proves_identity(&published, &state.identity_generations[&fixture.id])
+                .unwrap()
+        );
+        assert!(
+            fixture
+                .core
+                .vault
+                .lock()
+                .unwrap()
+                .get("@capture", &fixture.id)
+                .is_none()
+        );
     }
 
     #[tokio::test]
@@ -930,27 +1039,77 @@ mod tests {
         let recipe = crate::session_recipe::ConnectionRecipe {
             identity_url: format!("{}/api/me", fixture.origin),
             headers: vec![crate::session_recipe::HeaderSource {
-                header: "authorization".into(), source: "captured_header".into(), key: "authorization".into(), ..Default::default()
+                header: "authorization".into(),
+                source: "captured_header".into(),
+                key: "authorization".into(),
+                ..Default::default()
             }],
-            identity: crate::session_recipe::IdentityMapping { user_id: "/id".into(), name: "/name".into(), ..Default::default() },
+            identity: crate::session_recipe::IdentityMapping {
+                user_id: "/id".into(),
+                name: "/name".into(),
+                ..Default::default()
+            },
             evidence: "observed_browser_request".into(),
             ..Default::default()
         };
-        fixture.core.verify_session_recipe(&fixture.id, &recipe).await.unwrap();
+        fixture
+            .core
+            .verify_session_recipe(&fixture.id, &recipe)
+            .await
+            .unwrap();
         let expected = fixture.core.credential(&fixture.id).unwrap();
         let mut capture = fixture.capture(false);
-        capture.observations.push(crate::accounts::Observation { method: "GET".into(), path: "/api/me".into(), ..Default::default() });
-        fixture.core.retain_browser_capture(&fixture.id, &expected, capture).await.unwrap();
+        capture.observations.push(crate::accounts::Observation {
+            method: "GET".into(),
+            path: "/api/me".into(),
+            ..Default::default()
+        });
+        fixture
+            .core
+            .retain_browser_capture(&fixture.id, &expected, capture)
+            .await
+            .unwrap();
         fixture.candidate_status.store(401, Ordering::SeqCst);
         let before = fixture.snapshot();
-        assert_eq!(fixture.core.verify_observed_session(&fixture.id, &recipe).await.unwrap_err().public_code, "auth_required");
+        assert_eq!(
+            fixture
+                .core
+                .verify_observed_session(&fixture.id, &recipe)
+                .await
+                .unwrap_err()
+                .public_code,
+            "auth_required"
+        );
         assert_eq!(fixture.snapshot(), before);
         fixture.assert_usable().await;
-        fixture.core.refresh_account_session(&fixture.id).await.unwrap();
-        assert_eq!(fixture.core.credential(&fixture.id).unwrap().headers["authorization"], "synthetic-saved");
+        fixture
+            .core
+            .refresh_account_session(&fixture.id)
+            .await
+            .unwrap();
+        assert_eq!(
+            fixture.core.credential(&fixture.id).unwrap().headers["authorization"],
+            "synthetic-saved"
+        );
         fixture.saved_status.store(401, Ordering::SeqCst);
-        assert_eq!(fixture.core.refresh_account_session(&fixture.id).await.unwrap_err().public_code, "auth_required");
-        assert!(!fixture.core.state.account(&fixture.id).unwrap().unwrap().verified_identity);
+        assert_eq!(
+            fixture
+                .core
+                .refresh_account_session(&fixture.id)
+                .await
+                .unwrap_err()
+                .public_code,
+            "auth_required"
+        );
+        assert!(
+            !fixture
+                .core
+                .state
+                .account(&fixture.id)
+                .unwrap()
+                .unwrap()
+                .verified_identity
+        );
     }
 
     #[tokio::test]
@@ -958,15 +1117,32 @@ mod tests {
         use std::sync::atomic::Ordering;
         let fixture = CaptureFixture::new(true).await;
         fixture.saved_status.store(401, Ordering::SeqCst);
-        let denied = fixture.core.read_page(&format!("{}/read", fixture.origin), &fixture.id).await.unwrap();
+        let denied = fixture
+            .core
+            .read_page(&format!("{}/read", fixture.origin), &fixture.id)
+            .await
+            .unwrap();
         assert_eq!(denied.status, 401);
         fixture.saved_status.store(200, Ordering::SeqCst);
         let expected = fixture.core.credential(&fixture.id).unwrap();
-        fixture.core.retain_browser_capture(&fixture.id, &expected, fixture.capture(true)).await.unwrap();
+        fixture
+            .core
+            .retain_browser_capture(&fixture.id, &expected, fixture.capture(true))
+            .await
+            .unwrap();
         let current = fixture.core.credential(&fixture.id).unwrap();
         assert_eq!(current.headers["authorization"], "synthetic-candidate");
         assert_ne!(current.identity_proof, expected.identity_proof);
-        assert_eq!(fixture.core.state.account(&fixture.id).unwrap().unwrap().user_id, "person");
+        assert_eq!(
+            fixture
+                .core
+                .state
+                .account(&fixture.id)
+                .unwrap()
+                .unwrap()
+                .user_id,
+            "person"
+        );
         fixture.assert_usable().await;
     }
 
@@ -974,7 +1150,11 @@ mod tests {
     async fn header_only_capture_for_unverified_account_retains_headers_without_identity() {
         let fixture = CaptureFixture::new(false).await;
         let expected = fixture.core.credential(&fixture.id).unwrap();
-        fixture.core.retain_browser_capture(&fixture.id, &expected, fixture.capture(false)).await.unwrap();
+        fixture
+            .core
+            .retain_browser_capture(&fixture.id, &expected, fixture.capture(false))
+            .await
+            .unwrap();
         let credential = fixture.core.credential(&fixture.id).unwrap();
         assert_eq!(credential.headers["authorization"], "synthetic-candidate");
         assert!(credential.identity_proof.is_empty());
@@ -991,25 +1171,50 @@ mod tests {
         let expected = fixture.core.credential(&fixture.id).unwrap();
         for status in [503, 302, 429] {
             fixture.anonymous_status.store(status, Ordering::SeqCst);
-            fixture.core.retain_browser_capture(&fixture.id, &expected, fixture.capture(true)).await.unwrap();
+            fixture
+                .core
+                .retain_browser_capture(&fixture.id, &expected, fixture.capture(true))
+                .await
+                .unwrap();
             assert_eq!(fixture.snapshot(), before);
             if status != 429 {
                 fixture.assert_usable().await;
             }
         }
-        fixture.core.retain_browser_capture(&fixture.id, &expected, crate::browser_session::Capture {
-            observations: vec![crate::accounts::Observation { method: "GET".into(), path: "/observed".into(), ..Default::default() }],
-            ..Default::default()
-        }).await.unwrap();
+        fixture
+            .core
+            .retain_browser_capture(
+                &fixture.id,
+                &expected,
+                crate::browser_session::Capture {
+                    observations: vec![crate::accounts::Observation {
+                        method: "GET".into(),
+                        path: "/observed".into(),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
         assert_eq!(fixture.snapshot(), before);
-        assert!(fixture.core.state.read().unwrap().sites["fixture"].observations.iter().any(|o| o.path == "/observed"));
+        assert!(
+            fixture.core.state.read().unwrap().sites["fixture"]
+                .observations
+                .iter()
+                .any(|o| o.path == "/observed")
+        );
     }
 
     #[tokio::test]
     async fn removing_account_credentials_removes_private_pending_capture() {
         let fixture = CaptureFixture::new(true).await;
         let expected = fixture.core.credential(&fixture.id).unwrap();
-        fixture.core.retain_browser_capture(&fixture.id, &expected, fixture.capture(false)).await.unwrap();
+        fixture
+            .core
+            .retain_browser_capture(&fixture.id, &expected, fixture.capture(false))
+            .await
+            .unwrap();
         let mut vault = fixture.core.vault.lock().unwrap();
         assert!(vault.get("@capture", &fixture.id).is_some());
         vault.delete("accounts", &fixture.id).unwrap();
@@ -1021,14 +1226,49 @@ mod tests {
     async fn stale_capture_cannot_replace_newer_proof_or_supply_recipe_headers() {
         let fixture = CaptureFixture::new(true).await;
         let expected = fixture.core.credential(&fixture.id).unwrap();
-        fixture.core.retain_browser_capture(&fixture.id, &expected, fixture.capture(false)).await.unwrap();
-        let candidate = fixture.core.capture_candidate(&fixture.id, &expected).unwrap();
+        fixture
+            .core
+            .retain_browser_capture(&fixture.id, &expected, fixture.capture(false))
+            .await
+            .unwrap();
+        let candidate = fixture
+            .core
+            .capture_candidate(&fixture.id, &expected)
+            .unwrap();
         fixture.core.refresh_account(&fixture.id).await.unwrap();
         let before = fixture.snapshot();
         let current = fixture.core.credential(&fixture.id).unwrap();
-        assert_eq!(fixture.core.capture_candidate(&fixture.id, &current).unwrap().headers["authorization"], "synthetic-saved");
-        assert_eq!(fixture.core.retain_browser_capture(&fixture.id, &expected, fixture.capture(false)).await.unwrap_err().public_code, "conflict");
-        assert_eq!(fixture.core.verify_identity_candidate(&fixture.id, &expected, candidate, crate::runtime::CandidateIdentityProbe::Capture).await.unwrap_err().public_code, "conflict");
+        assert_eq!(
+            fixture
+                .core
+                .capture_candidate(&fixture.id, &current)
+                .unwrap()
+                .headers["authorization"],
+            "synthetic-saved"
+        );
+        assert_eq!(
+            fixture
+                .core
+                .retain_browser_capture(&fixture.id, &expected, fixture.capture(false))
+                .await
+                .unwrap_err()
+                .public_code,
+            "conflict"
+        );
+        assert_eq!(
+            fixture
+                .core
+                .verify_identity_candidate(
+                    &fixture.id,
+                    &expected,
+                    candidate,
+                    crate::runtime::CandidateIdentityProbe::Capture
+                )
+                .await
+                .unwrap_err()
+                .public_code,
+            "conflict"
+        );
         assert_eq!(fixture.snapshot(), before);
         fixture.assert_usable().await;
     }

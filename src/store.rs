@@ -226,7 +226,10 @@ impl Store {
             .filter_map(|(key, value)| {
                 if key.starts_with("@oauth/") {
                     crate::runtime::oauth::credential_ref(value)
-                } else if key.starts_with("@pagination/") || key.starts_with("@read-observation/") || key.starts_with("@capture/") {
+                } else if key.starts_with("@pagination/")
+                    || key.starts_with("@read-observation/")
+                    || key.starts_with("@capture/")
+                {
                     None
                 } else {
                     Some(key.clone())
