@@ -13,7 +13,7 @@ The root has `spec_version` (`1`, `2`, or `3` for private pagination), `site` (`
 | Field | Meaning |
 | --- | --- |
 | `params` | Named `{variables}` in the path, escaped as individual segments. |
-| `preflight` | Optional `spec_version: 2` read-only GET steps (`name`, `path`, `extract`) that extract dynamic tokens, CSRF nonces, or `buildId` values (`json:/pointer`, `ssr:<key>#<pointer>`, `css:selector@attr`, `header:name`, `cookie:name`) for `{{step.<name>.<var>}}` interpolation across `path`, `query`, `headers`, and `body`. |
+| `preflight` | Optional `spec_version: 2` read-only GET steps (`name`, `path`, `extract`) that extract dynamic tokens, CSRF nonces, or `buildId` values (`json:/pointer`, `ssr:<key>#<pointer>`, `css:selector@attr`, `header:name`, `cookie:name`) for `{{step.<name>.<var>}}` interpolation across `path`, `query`, `headers`, and `body`. A credential header such as `authorization` must be exactly one step template, optionally preceded by one alphabetic auth scheme (`Bearer {{step.session.accessToken}}`); static secrets are rejected. |
 | `query` | URL query parameters (supports `{{step.<name>.<var>}}` and `{{<input>}}` interpolation in `spec_version: 2`). |
 | `body.json` | Fields serialized in a JSON object. |
 | `body.json_template` | Optional `spec_version: 2` nested JSON structure interpolating `{{<input>}}` and `{{step.<name>.<var>}}` values. |

@@ -1146,8 +1146,7 @@ pub fn validate_spec(sp: &Spec) -> AppResult<()> {
             return Err(AppError::api("data_invalid", 400));
         }
         for (key, value) in sp.defaults.headers.iter().chain(op.headers.iter()) {
-            let is_step_template =
-                value.trim().starts_with("{{step.") && value.trim().ends_with("}}");
+            let is_step_template = step_template_with_scheme(value);
             if (util::secret_field(key) && !is_step_template)
                 || [
                     "host",
@@ -1310,6 +1309,45 @@ pub(crate) fn safe_session_request(url: &url::Url, origin: &url::Url, method: &s
     url.origin() == origin.origin()
         && ["GET", "HEAD", "OPTIONS"].contains(&method)
         && safe_session_read_url(url)
+}
+
+/// A credential header value is acceptable only when it is one preflight step
+/// template, optionally preceded by a single alphabetic auth scheme such as
+/// `Bearer `. The scheme is public protocol text, never a secret.
+fn step_template_with_scheme(value: &str) -> bool {
+    let value = value.trim();
+    let bare = |t: &str| t.starts_with("{{step.") && t.ends_with("}}");
+    if bare(value) {
+        return true;
+    }
+    value.split_once(' ').is_some_and(|(scheme, rest)| {
+        !scheme.is_empty()
+            && scheme.chars().all(|c| c.is_ascii_alphabetic())
+            && bare(rest)
+            && rest.matches("{{").count() == 1
+    })
+}
+
+#[cfg(test)]
+mod step_template_scheme_tests {
+    use super::step_template_with_scheme;
+
+    #[test]
+    fn accepts_bare_or_scheme_prefixed_step_template() {
+        assert!(step_template_with_scheme("{{step.s.accessToken}}"));
+        assert!(step_template_with_scheme("Bearer {{step.s.accessToken}}"));
+    }
+
+    #[test]
+    fn rejects_static_or_mixed_values() {
+        assert!(!step_template_with_scheme("Bearer abc123"));
+        assert!(!step_template_with_scheme("Bearer abc{{step.s.t}}"));
+        assert!(!step_template_with_scheme("Bear3r {{step.s.t}}"));
+        assert!(!step_template_with_scheme(
+            "Bearer {{step.s.a}}x{{step.s.b}}"
+        ));
+        assert!(!step_template_with_scheme("Bearer {{input}}"));
+    }
 }
 
 #[cfg(test)]

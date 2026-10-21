@@ -8,6 +8,7 @@ Automate any website, with changes only where you allow them.
 
 - Every website starts read-only. Its change actions are hidden from MCP and refused by the CLI with `writes_disabled` until you turn on **Allow changes** for that website in the dashboard. Turning it off cancels pending approvals.
 - The dashboard grants its session only to the address `hycli dashboard` opens. A plain local request can no longer obtain the session that approves changes. The session persists in the private data directory, so an open dashboard still reconnects after a restart.
+- A credential header can put one alphabetic auth scheme before a single `preflight` template, such as `authorization: "Bearer {{step.session.accessToken}}"`, for short-lived tokens read from a session endpoint. Static values, mixed literals and input templates in credential headers are still rejected.
 - Credentials resolved by `derived` authentication or secret-classified `preflight` steps (`cookie:*`, `header:*`, or token/CSRF fields) are automatically registered for output redaction (`[private]`), while non-secret page identifiers (`buildId`, workspace IDs, cursors) remain intact and can be interpolated into URL paths, query strings, headers and bodies with strict path-segment URL encoding and origin pinning.
 
 ### Deterministic Recon & SiteSpec v2
