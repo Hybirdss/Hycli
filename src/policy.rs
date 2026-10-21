@@ -1006,6 +1006,32 @@ impl Policy {
     }
 }
 
+fn is_step_credential_header(name: &str, value: &str) -> bool {
+    let value = value.trim();
+    let template = if name.eq_ignore_ascii_case("authorization") {
+        match value.split_once(' ') {
+            Some((scheme, template)) if scheme.eq_ignore_ascii_case("bearer") => template.trim(),
+            _ => value,
+        }
+    } else {
+        value
+    };
+    let Some(reference) = template.strip_prefix("{{") else {
+        return false;
+    };
+    let Some(end) = reference.find("}}") else {
+        return false;
+    };
+    if end + 2 != reference.len() {
+        return false;
+    }
+    let Some(key) = reference[..end].trim().strip_prefix("step.") else {
+        return false;
+    };
+    key.split_once('.')
+        .is_some_and(|(step, field)| !step.is_empty() && !field.is_empty())
+}
+
 pub fn validate_spec(sp: &Spec) -> AppResult<()> {
     if !util::valid_id(&sp.site.name) || !sp.validate().is_empty() || sp.operations.len() > 200 {
         return Err(AppError::api("data_invalid", 400));
@@ -1146,9 +1172,7 @@ pub fn validate_spec(sp: &Spec) -> AppResult<()> {
             return Err(AppError::api("data_invalid", 400));
         }
         for (key, value) in sp.defaults.headers.iter().chain(op.headers.iter()) {
-            let is_step_template =
-                value.trim().starts_with("{{step.") && value.trim().ends_with("}}");
-            if (util::secret_field(key) && !is_step_template)
+            if (util::secret_field(key) && !is_step_credential_header(key, value))
                 || [
                     "host",
                     "content-length",

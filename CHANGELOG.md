@@ -12,6 +12,8 @@ Automate any website, with changes only where you allow them.
 
 ### Deterministic Recon & SiteSpec v2
 
+- Credential-header templates retain bare preflight references and now accept `Authorization: Bearer {{step.session.accessToken}}` (case-insensitive header name and Bearer scheme). Complete references preserve camelCase and dotted extraction keys; account-credential precedence, origin restrictions and output redaction are unchanged.
+
 - `hycli recon <URL>` and MCP `hycli_recon` deterministically inspect SSR state payloads (`__NEXT_DATA__`, `__NUXT_DATA__`, Remix, Apollo, JSON-LD), HTML `<form>` structures, and up to 24 JavaScript bundles (prioritizing app/page chunks over vendor/runtime bundles and fetching cross-site CDN bundles anonymously without cookies), and can emit a starter `SiteSpec v2` draft without requiring a built-in LLM key.
 - `SiteSpec v2` adds `derived` authentication (`cookie:<name>`, `storage:<key>`, `header:<name>`), `preflight` step extraction (`json:/pointer`, `ssr:<key>#<pointer>`, `css:selector@attr`, `header:name`, `cookie:name`), `body.json_template`, and response preprocessing (`strip_prefix`, `ssr_json`, `extract_pointer`).
 - Dashboard preparation (`Runtime::prepare`) has full parity with coding-agent workflows: Round 0 automatically reads prioritized `<script src>` bundles without stripping JS syntax, surfaces `ssr_keys` and structural `<form>` descriptors, exposes `web.recon` to preparation workers, prompts and merges `SiteSpec v2` definitions (`derived` auth, `preflight` steps, `{{step.*}}` path/query/header/body templates, and `ssr_json`), and matches parameterized routes during verification.

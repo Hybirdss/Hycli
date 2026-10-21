@@ -147,6 +147,44 @@ jobs:
           path: .cache/preference-output-proof/*.log
           if-no-files-found: error
           retention-days: 7
+      - name: Exact pre-fix source for preflight Bearer compatibility
+        if: matrix.browser_tests
+        uses: actions/checkout@v7
+        with:
+          ref: 24a5e6b9c55cd154456e4218f5299ad3bfe4e686
+          path: .cache/preflight-bearer-baseline
+          persist-credentials: false
+      - name: Preflight Bearer admission fails before fix and runtime succeeds after
+        if: matrix.browser_tests
+        run: |
+          baseline="$GITHUB_WORKSPACE/.cache/preflight-bearer-baseline"
+          proof="$GITHUB_WORKSPACE/.cache/preflight-bearer-proof"
+          test_name=integration_tests::preflight_header_tests::preflight_bearer_reaches_local_service_without_overriding_account_or_leaking_output
+          test "$(git -C "$baseline" rev-parse HEAD)" = 24a5e6b9c55cd154456e4218f5299ad3bfe4e686
+          cmp Cargo.lock "$baseline/Cargo.lock"
+          mkdir -p "$proof"
+          ln -s "$GITHUB_WORKSPACE/web" "$baseline/web"
+          cp src/integration_tests/preflight_header_tests.rs "$baseline/src/integration_tests/preflight_header_tests.rs"
+          printf '\nmod preflight_header_tests;\n' >> "$baseline/src/integration_tests/mod.rs"
+          if CARGO_TARGET_DIR="$proof/baseline-target" cargo test --manifest-path "$baseline/Cargo.toml" --locked --lib "$test_name" -- --exact --nocapture > "$proof/baseline.log" 2>&1; then
+            cat "$proof/baseline.log"
+            echo "Expected the pinned baseline to reject the standard preflight Bearer declaration."
+            exit 1
+          fi
+          cat "$proof/baseline.log"
+          grep -F "test $test_name ... FAILED" "$proof/baseline.log"
+          grep -F 'standard preflight Authorization Bearer declaration must be admitted' "$proof/baseline.log"
+          CARGO_TARGET_DIR="$proof/candidate-target" cargo test --locked --lib "$test_name" -- --exact --nocapture > "$proof/candidate.log" 2>&1 || { cat "$proof/candidate.log"; exit 1; }
+          cat "$proof/candidate.log"
+          grep -F "test $test_name ... ok" "$proof/candidate.log"
+      - name: Retain synthetic preflight Bearer red and green proof
+        if: always() && matrix.browser_tests
+        uses: actions/upload-artifact@v7
+        with:
+          name: preflight-bearer-regression-proof
+          path: .cache/preflight-bearer-proof/*.log
+          if-no-files-found: error
+          retention-days: 7
       - name: Active file transfer across timeout and lease boundaries
         if: matrix.platform == 'linux-x64'
         timeout-minutes: 8
