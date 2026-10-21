@@ -1295,6 +1295,87 @@ async fn refresh_identity_proof_requires_private_snapshot_and_anonymous_baseline
 }
 
 #[tokio::test]
+async fn plural_logins_candidate_requires_private_identity_and_conclusive_baseline() {
+    for (anonymous_status, expected_error) in [
+        (StatusCode::UNAUTHORIZED, None),
+        (StatusCode::OK, Some("identity_unavailable")),
+        (StatusCode::SERVICE_UNAVAILABLE, Some("request_failed")),
+    ] {
+        let authenticated_requests = Arc::new(AtomicUsize::new(0));
+        let anonymous_requests = Arc::new(AtomicUsize::new(0));
+        let authenticated = authenticated_requests.clone();
+        let anonymous = anonymous_requests.clone();
+        let (url, server) = host(Router::new().route(
+            "/api/logins",
+            get(move |headers: HeaderMap| {
+                let authenticated = authenticated.clone();
+                let anonymous = anonymous.clone();
+                async move {
+                    if headers
+                        .get("cookie")
+                        .is_some_and(|value| value == "sid=synthetic-session")
+                    {
+                        authenticated.fetch_add(1, Ordering::SeqCst);
+                        (StatusCode::OK, Json(json!({"username":"fixture-person"})))
+                    } else {
+                        anonymous.fetch_add(1, Ordering::SeqCst);
+                        (anonymous_status, Json(json!({"username":"fixture-person"})))
+                    }
+                }
+            }),
+        ))
+        .await;
+        let core = runtime();
+        let credential: crate::accounts::Credential = serde_json::from_value(json!({
+            "origin": url,
+            "cookies": [{
+                "name": "sid", "value": "synthetic-session",
+                "domain": "127.0.0.1", "path": "/"
+            }]
+        }))
+        .unwrap();
+        let account = core
+            .register_browser_credential("fixture", credential, "Fixture", "Synthetic")
+            .unwrap();
+        let expected = core.credential(&account.id).unwrap();
+        let mut candidate = expected.clone();
+        candidate.identity_source = format!("{url}/api/logins");
+        let result = core
+            .verify_identity_candidate(
+                &account.id,
+                &expected,
+                candidate,
+                crate::runtime::CandidateIdentityProbe::Capture,
+            )
+            .await;
+        assert_eq!(authenticated_requests.load(Ordering::SeqCst), 1);
+        assert_eq!(anonymous_requests.load(Ordering::SeqCst), 1);
+        let data = core.state.read().unwrap();
+        let view = &data.accounts[&account.id];
+        let saved = core.credential(&account.id).unwrap();
+        if let Some(code) = expected_error {
+            assert_eq!(result.err().unwrap().public_code, code);
+            assert!(!view.verified_identity);
+            assert!(!data.identity_generations.contains_key(&account.id));
+            assert_eq!(
+                serde_json::to_value(&saved).unwrap(),
+                serde_json::to_value(&expected).unwrap()
+            );
+        } else {
+            assert!(result.unwrap().verified_identity);
+            assert_eq!(view.user_id, "fixture-person");
+            assert_eq!(saved.identity_source, format!("{url}/api/logins"));
+            assert!(
+                saved
+                    .proves_identity(view, &data.identity_generations[&account.id])
+                    .unwrap()
+            );
+        }
+        server.abort();
+    }
+}
+
+#[tokio::test]
 async fn stale_dashboard_refresh_cannot_relabel_reconnected_identity() {
     let entered = Arc::new(tokio::sync::Notify::new());
     let release = Arc::new(tokio::sync::Notify::new());
