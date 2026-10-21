@@ -2304,7 +2304,11 @@ async fn unrelated_preferences_preserve_raw_and_mapped_read_results() {
                 .unwrap();
             assert_eq!(
                 request.account_id,
-                if account == Some("") { "" } else { &selected.id }
+                if account == Some("") {
+                    ""
+                } else {
+                    &selected.id
+                }
             );
             let result = core
                 .run_op_for_account(&sp, "read-items", &BTreeMap::new(), account)

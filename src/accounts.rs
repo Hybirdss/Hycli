@@ -177,9 +177,10 @@ impl Credential {
                     || name.contains("token")
                     || matches!(name.as_str(), "sid" | "ssid")
                     || self.recipe.as_ref().is_some_and(|recipe| {
-                        recipe.headers.iter().any(|rule| {
-                            rule.source == "cookie" && rule.key == cookie.name
-                        })
+                        recipe
+                            .headers
+                            .iter()
+                            .any(|rule| rule.source == "cookie" && rule.key == cookie.name)
                     })
                     || util::redact_text(&cookie.value) != cookie.value
             })
