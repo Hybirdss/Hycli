@@ -795,7 +795,7 @@ fn identity_key(account: &crate::accounts::AccountView) -> String {
 mod tests {
     use super::*;
     struct CaptureFixture {
-        core: Runtime,
+        core: std::sync::Arc<Runtime>,
         id: String,
         origin: String,
         saved_status: std::sync::Arc<std::sync::atomic::AtomicU16>,
@@ -1265,7 +1265,8 @@ mod tests {
                     crate::runtime::CandidateIdentityProbe::Capture
                 )
                 .await
-                .unwrap_err()
+                .err()
+                .unwrap()
                 .public_code,
             "conflict"
         );
