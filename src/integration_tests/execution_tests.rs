@@ -1296,10 +1296,10 @@ async fn refresh_identity_proof_requires_private_snapshot_and_anonymous_baseline
 
 #[tokio::test]
 async fn plural_logins_candidate_requires_private_identity_and_conclusive_baseline() {
-    for (anonymous_status, expected_error) in [
-        (StatusCode::UNAUTHORIZED, None),
-        (StatusCode::OK, Some("identity_unavailable")),
-        (StatusCode::SERVICE_UNAVAILABLE, Some("request_failed")),
+    for (anonymous_status, expected_error, expected_anonymous_requests) in [
+        (StatusCode::UNAUTHORIZED, None, 1),
+        (StatusCode::OK, Some("identity_unavailable"), 1),
+        (StatusCode::SERVICE_UNAVAILABLE, Some("request_failed"), 2),
     ] {
         let authenticated_requests = Arc::new(AtomicUsize::new(0));
         let anonymous_requests = Arc::new(AtomicUsize::new(0));
@@ -1349,7 +1349,11 @@ async fn plural_logins_candidate_requires_private_identity_and_conclusive_baseli
             )
             .await;
         assert_eq!(authenticated_requests.load(Ordering::SeqCst), 1);
-        assert_eq!(anonymous_requests.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            anonymous_requests.load(Ordering::SeqCst),
+            expected_anonymous_requests,
+            "anonymous baseline status {anonymous_status}"
+        );
         let data = core.state.read().unwrap();
         let view = &data.accounts[&account.id];
         let saved = core.credential(&account.id).unwrap();
