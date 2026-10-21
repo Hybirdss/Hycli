@@ -165,3 +165,61 @@ impl Operation {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{net::Response, spec};
+
+    fn response(status: u16, body: serde_json::Value) -> Response {
+        Response {
+            url: "https://example.test/api/report/revenue".into(),
+            status,
+            headers: vec![("content-type".into(), "application/json".into())],
+            bytes: serde_json::to_vec(&body).unwrap(),
+            duration_ms: 1,
+            defense: "none".into(),
+        }
+    }
+
+    fn daily_revenue_operation() -> Operation {
+        spec::parse(
+            serde_json::json!({
+                "spec_version": 2,
+                "site": {"name": "fixture", "base_url": "https://example.test"},
+                "operations": [{
+                    "name": "read-daily-revenue",
+                    "method": "GET",
+                    "path": "/api/report/revenue",
+                    "effect": "read",
+                    "evidence": "Synthetic daily revenue contract",
+                    "response": {
+                        "format": "json",
+                        "required_pointers": ["/0/date", "/0/revenueAmount"]
+                    }
+                }]
+            })
+            .to_string()
+            .as_bytes(),
+        )
+        .unwrap()
+        .operations
+        .remove(0)
+    }
+
+    #[test]
+    fn daily_revenue_never_turns_auth_failure_or_missing_date_into_zero() {
+        let operation = daily_revenue_operation();
+        assert!(
+            !operation.matches_response(&response(401, serde_json::json!({"revenueAmount": 0})))
+        );
+        assert!(!operation.matches_response(&response(200, serde_json::json!([]))));
+        assert!(
+            !operation.matches_response(&response(200, serde_json::json!([{"revenueAmount": 0}])))
+        );
+        assert!(operation.matches_response(&response(
+            200,
+            serde_json::json!([{"date": "20261017", "revenueAmount": 0}])
+        )));
+    }
+}

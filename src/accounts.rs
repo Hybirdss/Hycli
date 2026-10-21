@@ -508,11 +508,34 @@ pub fn identity_endpoint(url: &url::Url) -> bool {
                     "profile",
                     "account",
                     "session",
+                    // Some sites expose the current authenticated publisher through a
+                    // plural session-introspection route (for example `/api/logins`).
+                    // The normal anonymous-baseline check still prevents a public list
+                    // endpoint from being accepted as identity evidence.
+                    "logins",
                     "current-user",
                     "current_user",
                 ]
                 .contains(&segment)
             })
+}
+
+#[cfg(test)]
+mod identity_endpoint_tests {
+    use super::identity_endpoint;
+
+    #[test]
+    fn accepts_plural_login_session_introspection_without_broadening_queries() {
+        assert!(identity_endpoint(
+            &url::Url::parse("https://example.test/api/logins").unwrap()
+        ));
+        assert!(!identity_endpoint(
+            &url::Url::parse("https://example.test/api/logins?user=other").unwrap()
+        ));
+        assert!(!identity_endpoint(
+            &url::Url::parse("https://example.test/api/users").unwrap()
+        ));
+    }
 }
 pub fn extract_identity(value: &Value) -> Option<Identity> {
     // Only known current-account containers; never infer identity from lists of people.
