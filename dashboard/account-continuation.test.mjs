@@ -132,3 +132,15 @@ test('mixed discovery results confirm one connected account without claiming all
 test('an expired verified account does not hide a connected session that needs verification', () => {
   assert.equal(discoverySummary([{ ...account, status: 'expired' }, { ...account, id: 'unverified', verified_identity: false }]), 'Browser session found. Your account still needs to be verified.');
 });
+
+const actionDialog = source.slice(source.indexOf('export function ActionDialog('), source.indexOf('export function ApprovalDialog('));
+const verificationLabel = actionDialog.match(/\{([^{}]+) && <span>\{(t\('actions\.unverified'\))\}<\/span>\}/);
+assert.ok(verificationLabel, 'the action dialog exposes its unverified status label');
+for (const [state, verified] of [['never attempted', false], ['attempted with an unverified response', false], ['verified response', true]]) {
+  test(`action verification label is truthful for ${state}`, () => {
+    const label = vm.runInNewContext(`${verificationLabel[1]} && ${verificationLabel[2]}`, {
+      action: { verified }, t: key => english[key],
+    });
+    assert.equal(label, verified ? false : 'Not verified');
+  });
+}

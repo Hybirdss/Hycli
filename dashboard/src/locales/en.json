@@ -98,7 +98,7 @@
   "actions.search": "Search actions…",
   "actions.read": "View information",
   "actions.write": "Changes this website",
-  "actions.unverified": "Not tried yet",
+  "actions.unverified": "Not verified",
   "actions.verified": "Checked",
   "actions.review": "Review action",
   "actions.run": "Run action",

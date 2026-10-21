@@ -98,7 +98,7 @@
   "actions.search": "Пошук дій…",
   "actions.read": "Читає інформацію",
   "actions.write": "Змінює цей сайт",
-  "actions.unverified": "Ще не випробувано",
+  "actions.unverified": "Не перевірено",
   "actions.verified": "Перевірено",
   "actions.review": "Переглянути дію",
   "actions.run": "Запустити дію",

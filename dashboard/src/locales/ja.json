@@ -98,7 +98,7 @@
   "actions.search": "操作を検索…",
   "actions.read": "情報を表示",
   "actions.write": "ウェブサイトを変更",
-  "actions.unverified": "未実行",
+  "actions.unverified": "未検証",
   "actions.verified": "確認済み",
   "actions.review": "操作を確認",
   "actions.run": "操作を実行",
