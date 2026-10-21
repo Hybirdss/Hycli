@@ -109,6 +109,44 @@ jobs:
           cargo fmt --all --check
           cargo test --all-targets --locked
           cargo build --locked --bin hycli --example dashboard_fixture --example binding_dashboard_fixture
+      - name: Exact pre-fix source for preference output regression
+        if: matrix.browser_tests
+        uses: actions/checkout@v7
+        with:
+          ref: d88f051cfa78ac91b648ab0990cb5f197746da8b
+          path: .cache/preference-output-baseline
+          persist-credentials: false
+      - name: Preference output regression fails before fix and passes after
+        if: matrix.browser_tests
+        run: |
+          baseline="$GITHUB_WORKSPACE/.cache/preference-output-baseline"
+          proof="$GITHUB_WORKSPACE/.cache/preference-output-proof"
+          test_name=integration_tests::execution_tests::unrelated_preferences_preserve_raw_and_mapped_read_results
+          test "$(git -C "$baseline" rev-parse HEAD)" = d88f051cfa78ac91b648ab0990cb5f197746da8b
+          cmp Cargo.lock "$baseline/Cargo.lock"
+          mkdir -p "$proof"
+          ln -s "$GITHUB_WORKSPACE/web" "$baseline/web"
+          cp src/integration_tests/execution_tests.rs "$baseline/src/integration_tests/execution_tests.rs"
+          if CARGO_TARGET_DIR="$proof/baseline-target" cargo test --manifest-path "$baseline/Cargo.toml" --locked --lib "$test_name" -- --exact --nocapture > "$proof/baseline.log" 2>&1; then
+            cat "$proof/baseline.log"
+            echo "Expected the pinned baseline to fail the ordinary-output assertion."
+            exit 1
+          fi
+          cat "$proof/baseline.log"
+          grep -F "test $test_name ... FAILED" "$proof/baseline.log"
+          grep -F 'assertion `left == right` failed' "$proof/baseline.log"
+          grep -F 'Page [private] is available in [private].' "$proof/baseline.log"
+          CARGO_TARGET_DIR="$GITHUB_WORKSPACE/target" cargo test --locked --lib "$test_name" -- --exact --nocapture > "$proof/candidate.log" 2>&1 || { cat "$proof/candidate.log"; exit 1; }
+          cat "$proof/candidate.log"
+          grep -F "test $test_name ... ok" "$proof/candidate.log"
+      - name: Retain synthetic preference output red and green proof
+        if: always() && matrix.browser_tests
+        uses: actions/upload-artifact@v6
+        with:
+          name: preference-output-regression-proof
+          path: .cache/preference-output-proof/*.log
+          if-no-files-found: error
+          retention-days: 7
       - name: Active file transfer across timeout and lease boundaries
         if: matrix.platform == 'linux-x64'
         timeout-minutes: 8

@@ -2216,3 +2216,119 @@ async fn derived_target_allows_cross_origin_upload_but_a_plain_op_is_blocked() {
     upload_server.abort();
     lease_server.abort();
 }
+
+#[tokio::test]
+async fn unrelated_preferences_preserve_raw_and_mapped_read_results() {
+    let expected = json!({
+        "count": 1,
+        "enabled": true,
+        "count_text": "1",
+        "formatted_quantity": "1,000",
+        "locale": "en",
+        "message": "Page 1 is available in en.",
+        "items": ["1", "en", 1, true]
+    });
+    let served = expected.clone();
+    let (url, server) = host(Router::new().route(
+        "/items",
+        get(move || {
+            let body = served.clone();
+            async move { Json(body) }
+        }),
+    ))
+    .await;
+    let sp = spec::parse(
+        json!({
+            "spec_version": 3,
+            "site": {"name": "fixture", "base_url": url},
+            "operations": [{
+                "name": "read-items", "method": "GET", "path": "/items",
+                "effect": "read", "evidence": "Synthetic output fidelity fixture",
+                "model": "result"
+            }],
+            "models": {"result": {
+                "count": {"path": "count", "type": "int"},
+                "enabled": {"path": "enabled", "type": "bool"},
+                "count_text": {"path": "count_text", "type": "string"},
+                "formatted_quantity": {"path": "formatted_quantity", "type": "string"},
+                "locale": {"path": "locale", "type": "string"},
+                "message": {"path": "message", "type": "string"}
+            }}
+        })
+        .to_string()
+        .as_bytes(),
+    )
+    .unwrap();
+    for (saved, pending) in [(false, false), (true, false), (false, true), (true, true)] {
+        let core = runtime();
+        core.install(&sp).unwrap();
+        let selected_credential = serde_json::from_value(json!({
+            "origin": url,
+            "cookies": [{
+                "name": "sid", "value": "synthetic-selected-session",
+                "domain": "127.0.0.1", "path": "/"
+            }]
+        }))
+        .unwrap();
+        let selected = core
+            .register_browser_credential("fixture", selected_credential, "Fixture", "Synthetic")
+            .unwrap();
+        core.select_account("fixture", &selected.id, &url).unwrap();
+        let credential = json!({
+            "origin": url,
+            "cookies": [
+                {"name": "page_size", "value": "1", "domain": "127.0.0.1"},
+                {"name": "locale", "value": "en", "domain": "127.0.0.1"}
+            ]
+        });
+        {
+            let mut vault = core.vault.lock().unwrap();
+            if saved {
+                vault
+                    .set("accounts", "unrelated", &credential.to_string())
+                    .unwrap();
+            }
+            if pending {
+                vault
+                    .set(
+                        "@capture",
+                        "unrelated",
+                        &json!({"candidate": credential}).to_string(),
+                    )
+                    .unwrap();
+            }
+        }
+        for account in [Some(""), Some(selected.id.as_str()), None] {
+            let request = core
+                .request(&sp, "read-items", BTreeMap::new(), account)
+                .unwrap();
+            assert_eq!(
+                request.account_id,
+                if account == Some("") {
+                    ""
+                } else {
+                    &selected.id
+                }
+            );
+            let result = core
+                .run_op_for_account(&sp, "read-items", &BTreeMap::new(), account)
+                .await
+                .unwrap()
+                .0;
+            assert_eq!(result.status, 200);
+            assert_eq!(result.body, Some(expected.clone()));
+            assert_eq!(
+                result.mapped,
+                Some(json!({
+                    "count": 1,
+                    "enabled": true,
+                    "count_text": "1",
+                    "formatted_quantity": "1,000",
+                    "locale": "en",
+                    "message": "Page 1 is available in en."
+                }))
+            );
+        }
+    }
+    server.abort();
+}
