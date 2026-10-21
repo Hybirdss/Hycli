@@ -1,5 +1,5 @@
 use crate::{
-    accounts::{self, AccountView, Credential},
+    accounts::{self, AccountView, Credential, Identity},
     apperr::{AppError, AppResult},
     spec::{Operation, Spec},
     util,
@@ -7,6 +7,37 @@ use crate::{
 use std::collections::BTreeMap;
 
 use super::{Runtime, origin, site_id_for};
+
+#[derive(Clone, Copy, PartialEq)]
+pub(crate) enum CandidateIdentityProbe {
+    Capture,
+    Recipe,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum IdentityProbe {
+    SavedRefresh,
+    Candidate(CandidateIdentityProbe),
+}
+
+impl IdentityProbe {
+    fn accepts_origin(self, source: &url::Url, origin: &str) -> AppResult<bool> {
+        Ok(if self == Self::Candidate(CandidateIdentityProbe::Recipe) {
+            crate::net::same_site_origin(source, &crate::net::validate_url(origin)?)
+        } else {
+            source.origin().ascii_serialization() == origin
+        })
+    }
+}
+
+enum IdentityCheck {
+    Verified {
+        credential: Credential,
+        identity: Identity,
+    },
+    SignedOut,
+    Unproven,
+}
 
 impl Runtime {
     pub(crate) fn headers(
@@ -306,11 +337,6 @@ impl Runtime {
             .ok_or_else(|| AppError::api("not_found", 404))?;
         let expected = self.credential(id)?;
         let mut candidate = expected.clone();
-        if let Some(recipe) = &candidate.recipe {
-            candidate
-                .headers
-                .extend(recipe.resolve_headers(&candidate)?);
-        }
         let source = if !candidate.identity_source.is_empty() {
             candidate.identity_source.clone()
         } else {
@@ -323,37 +349,79 @@ impl Runtime {
         if source.is_empty() {
             return Err(AppError::api("identity_unavailable", 422));
         }
-        let parsed = crate::net::validate_url(&source)?;
-        if parsed.origin().ascii_serialization() != candidate.origin
+        candidate.identity_source = source;
+        match self
+            .check_identity(view, candidate, id, IdentityProbe::SavedRefresh)
+            .await?
+        {
+            IdentityCheck::Verified {
+                credential,
+                identity,
+            } => self.publish_verified_identity(id, &expected, credential, identity),
+            IdentityCheck::SignedOut => {
+                self.invalidate_identity_if_current(id, &expected, true)?;
+                self.state
+                    .account(id)?
+                    .ok_or_else(|| AppError::api("not_found", 404))
+            }
+            IdentityCheck::Unproven => {
+                self.invalidate_identity_if_current(id, &expected, false)?;
+                Err(AppError::api("identity_unavailable", 422))
+            }
+        }
+    }
+
+    async fn check_identity(
+        &self,
+        view: &AccountView,
+        mut candidate: Credential,
+        scope: &str,
+        probe: IdentityProbe,
+    ) -> AppResult<IdentityCheck> {
+        if let Some(recipe) = &candidate.recipe {
+            candidate
+                .headers
+                .extend(recipe.resolve_headers(&candidate)?);
+        }
+        let source = &candidate.identity_source;
+        let parsed = crate::net::validate_url(source)?;
+        if !probe.accepts_origin(&parsed, &candidate.origin)?
             || view.site_url != candidate.origin
             || !crate::policy::safe_read_url(&parsed)
             || (candidate.recipe.is_none() && !accounts::identity_endpoint(&parsed))
         {
             return Err(AppError::api("data_invalid", 400));
         }
-        self.policy
-            .resume_auth(&format!("{}|{id}", candidate.origin))?;
+        self.policy.resume_auth(&format!(
+            "{}|{scope}",
+            parsed.origin().ascii_serialization()
+        ))?;
         let request = crate::net::Request {
             url: source.clone(),
             method: "GET".into(),
-            headers: candidate.request_headers(&source)?,
+            headers: candidate.request_headers(source)?,
             body: None,
-            account_id: id.into(),
-            limit: 2 * 1024 * 1024,
-            timeout: std::time::Duration::from_secs(30),
+            account_id: scope.into(),
+            limit: if probe == IdentityProbe::Candidate(CandidateIdentityProbe::Recipe) {
+                1024 * 1024
+            } else {
+                2 * 1024 * 1024
+            },
+            timeout: std::time::Duration::from_secs(
+                if probe == IdentityProbe::Candidate(CandidateIdentityProbe::Recipe) {
+                    25
+                } else {
+                    30
+                },
+            ),
             read_only: true,
             follow_redirects: false,
             tls_profile: "standard".into(),
             multipart: None,
         };
         let response = self.network.fetch(request.clone()).await?;
-        // A permission/challenge response does not prove this session signed out.
         if response.status == 401 {
-            self.invalidate_identity_if_current(id, &expected, true)?;
-            return self
-                .state
-                .account(id)?
-                .ok_or_else(|| AppError::api("not_found", 404));
+            return Ok(IdentityCheck::SignedOut);
         }
         if !response.successful() {
             return Err(AppError::api("request_failed", 422));
@@ -369,13 +437,13 @@ impl Runtime {
             }
         };
         let Some(identity) = extract(&response) else {
-            self.invalidate_identity_if_current(id, &expected, false)?;
-            return Err(AppError::api("identity_unavailable", 422));
+            return Ok(IdentityCheck::Unproven);
         };
-        // A public profile, redirect or failed anonymous probe is not proof of a signed-in identity.
-        let baseline_scope = format!("{id}:identity-baseline");
-        self.policy
-            .resume_auth(&format!("{}|{baseline_scope}", candidate.origin))?;
+        let baseline_scope = format!("{scope}:identity-baseline");
+        self.policy.resume_auth(&format!(
+            "{}|{baseline_scope}",
+            parsed.origin().ascii_serialization()
+        ))?;
         let anonymous = self
             .network
             .fetch(crate::net::Request {
@@ -385,17 +453,94 @@ impl Runtime {
             })
             .await?;
         if !anonymous.successful() && anonymous.status != 401 && anonymous.status != 403 {
-            return Err(AppError::api("identity_unavailable", 422));
+            return Err(AppError::api(
+                if probe == IdentityProbe::SavedRefresh {
+                    "identity_unavailable"
+                } else {
+                    "request_failed"
+                },
+                422,
+            ));
         }
-        if anonymous.successful() && extract(&anonymous).is_some() {
-            self.invalidate_identity_if_current(id, &expected, false)?;
-            return Err(AppError::api("identity_unavailable", 422));
+        if anonymous.successful() && extract(&anonymous).is_some()
+            || !crate::session_recipe::identity_is_safe(&identity, &candidate)
+        {
+            return Ok(IdentityCheck::Unproven);
         }
-        if !crate::session_recipe::identity_is_safe(&identity, &candidate) {
-            self.invalidate_identity_if_current(id, &expected, false)?;
-            return Err(AppError::api("identity_unavailable", 422));
+        Ok(IdentityCheck::Verified {
+            credential: candidate,
+            identity,
+        })
+    }
+
+    pub(crate) async fn verify_identity_candidate(
+        &self,
+        id: &str,
+        expected: &Credential,
+        candidate: Credential,
+        probe: CandidateIdentityProbe,
+    ) -> AppResult<AccountView> {
+        let view = self
+            .state
+            .account(id)?
+            .ok_or_else(|| AppError::api("not_found", 404))?;
+        let scope = format!("{id}:identity-candidate");
+        match self
+            .check_identity(&view, candidate, &scope, IdentityProbe::Candidate(probe))
+            .await?
+        {
+            IdentityCheck::Verified {
+                credential,
+                identity,
+            } => {
+                let origin = credential.origin.clone();
+                let identity_origin = crate::net::validate_url(&credential.identity_source)?
+                    .origin()
+                    .ascii_serialization();
+                let view = self.publish_verified_identity(id, expected, credential, identity)?;
+                self.policy.resume_auth(&format!("{origin}|{id}"))?;
+                if identity_origin != origin {
+                    self.policy
+                        .resume_auth(&format!("{identity_origin}|{id}"))?;
+                }
+                Ok(view)
+            }
+            IdentityCheck::SignedOut => Err(AppError::api("auth_required", 422)),
+            IdentityCheck::Unproven => Err(AppError::api("identity_unavailable", 422)),
         }
-        candidate.identity_source = source;
-        self.publish_verified_identity(id, &expected, candidate, identity)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CandidateIdentityProbe, IdentityProbe};
+
+    #[test]
+    fn identity_probe_preserves_each_callers_existing_origin_boundary() {
+        let same = url::Url::parse("https://app.example.com/api/me").unwrap();
+        let sibling = url::Url::parse("https://api.example.com/api/me").unwrap();
+        let unrelated = url::Url::parse("https://unrelated.test/api/me").unwrap();
+        for probe in [
+            IdentityProbe::SavedRefresh,
+            IdentityProbe::Candidate(CandidateIdentityProbe::Capture),
+            IdentityProbe::Candidate(CandidateIdentityProbe::Recipe),
+        ] {
+            assert!(
+                probe
+                    .accepts_origin(&same, "https://app.example.com")
+                    .unwrap()
+            );
+            assert!(
+                !probe
+                    .accepts_origin(&unrelated, "https://app.example.com")
+                    .unwrap()
+            );
+            assert_eq!(
+                probe
+                    .accepts_origin(&sibling, "https://app.example.com")
+                    .unwrap(),
+                probe == IdentityProbe::Candidate(CandidateIdentityProbe::Recipe)
+            );
+        }
     }
 }

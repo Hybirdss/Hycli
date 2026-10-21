@@ -1,6 +1,7 @@
 //! The single execution boundary used by the dashboard, CLI and MCP.
 mod account_read;
 mod accounts;
+pub(crate) use accounts::CandidateIdentityProbe;
 pub(crate) mod oauth;
 mod selection;
 pub(crate) use selection::SelectionSnapshot;

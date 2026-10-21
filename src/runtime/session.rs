@@ -10,6 +10,7 @@ use serde_json::{Value, json};
 impl Runtime {
     pub(crate) fn inspect_account_session(&self, id: &str) -> AppResult<Value> {
         let (account, credential) = self.session_account(id)?;
+        let credential = self.capture_candidate(id, &credential)?;
         Self::session_output(
             &credential,
             Self::inspect_session_snapshot(
@@ -122,7 +123,8 @@ impl Runtime {
         recipe: &ConnectionRecipe,
     ) -> AppResult<Value> {
         let (account, credential) = self.session_account(id)?;
-        self.verify_observed_snapshot(id, recipe, &account, credential)
+        let candidate = self.capture_candidate(id, &credential)?;
+        self.verify_observed_snapshot(id, recipe, &account, credential, candidate)
             .await
     }
 
@@ -132,6 +134,7 @@ impl Runtime {
         recipe: &ConnectionRecipe,
         account: &AccountView,
         credential: Credential,
+        candidate: Credential,
     ) -> AppResult<Value> {
         let target = session_get_target(account, &recipe.identity_url)?;
         let query_keys: std::collections::BTreeSet<_> = target
@@ -154,9 +157,12 @@ impl Runtime {
             return Err(AppError::api("unsupported_evidence", 422));
         }
         let view = self
-            .verify_session_recipe_snapshot(id, recipe, credential.clone())
+            .verify_session_recipe_candidate(id, recipe, credential.clone(), candidate.clone())
             .await?;
-        Self::session_output(&credential, serde_json::to_value(view)?)
+        Self::session_output(
+            &candidate,
+            Self::session_output(&credential, serde_json::to_value(view)?)?,
+        )
     }
 
     pub(crate) async fn refresh_account_session(&self, id: &str) -> AppResult<Value> {
@@ -166,7 +172,13 @@ impl Runtime {
             .clone()
             .ok_or_else(|| AppError::api("identity_unavailable", 422))?;
         let result = self
-            .verify_observed_snapshot(id, &recipe, &account, credential.clone())
+            .verify_observed_snapshot(
+                id,
+                &recipe,
+                &account,
+                credential.clone(),
+                credential.clone(),
+            )
             .await;
         if let Err(error) = &result {
             if matches!(

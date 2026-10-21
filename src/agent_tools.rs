@@ -187,6 +187,7 @@ impl Runtime {
             "session.inspect" => {
                 let account = argument(call, "account_id");
                 let credential = self.job_credential(context.job, account, &context.job.url)?;
+                let credential = self.capture_candidate(account, &credential)?;
                 outcome.content = Self::inspect_session_snapshot(
                     account,
                     &credential,

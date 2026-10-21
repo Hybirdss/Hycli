@@ -226,7 +226,10 @@ impl Store {
             .filter_map(|(key, value)| {
                 if key.starts_with("@oauth/") {
                     crate::runtime::oauth::credential_ref(value)
-                } else if key.starts_with("@pagination/") || key.starts_with("@read-observation/") {
+                } else if key.starts_with("@pagination/")
+                    || key.starts_with("@read-observation/")
+                    || key.starts_with("@capture/")
+                {
                     None
                 } else {
                     Some(key.clone())
@@ -246,6 +249,9 @@ impl Store {
         let snapshot = self.data.clone();
         if self.data.get(&name).map(String::as_str) != Some(value) {
             self.invalidate_pagination(site, key);
+            if site == "accounts" {
+                self.data.remove(&format!("@capture/{key}"));
+            }
         }
         self.data.insert(name.clone(), value.into());
         if let Err(error) = self.save() {
@@ -275,6 +281,7 @@ impl Store {
         let legacy_name = legacy_key.map(|key| format!("{site}/{key}"));
         self.data.retain(|stored_key, value| {
             stored_key != &name
+                && !(site == "accounts" && stored_key == &format!("@capture/{key}"))
                 && legacy_name.as_ref() != Some(stored_key)
                 && !(current_oauth_name.as_ref() == Some(stored_key)
                     && crate::runtime::oauth::credential_ref(value).is_none())
