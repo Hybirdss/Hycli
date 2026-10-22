@@ -1,3 +1,4 @@
+import {installFixtureSession} from './scripts/fixture-session.mjs';
 import {fileURLToPath} from 'node:url';
 import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
@@ -24,7 +25,8 @@ try {
   page.setDefaultTimeout(60000);
   page.on('pageerror', error => errors.push(error.message));
   console.log('Checking separate Z.ai connections against the Rust fixture.');
-  await page.goto(ports.dashboard+'/?launch='+ports.launch, { waitUntil: 'domcontentloaded' });
+  await installFixtureSession(context, ports);
+ await page.goto(ports.dashboard, { waitUntil: 'domcontentloaded' });
   await button(page, 'nav.connections').click();
   assert.equal(await page.locator('.provider-card').count(), 5);
   await button(page.locator('.provider-card--zai'), 'connections.connect').click();

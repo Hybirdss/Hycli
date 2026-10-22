@@ -1,3 +1,4 @@
+import {fixtureSession} from './scripts/fixture-session.mjs';
 // Native CI proof only. Never point this at an installed browser or user profile.
 import {chromium} from 'playwright';
 import fs from 'node:fs/promises';
@@ -28,8 +29,7 @@ try{
   fixtureClosed=new Promise(resolve=>fixture.once('close',resolve));
   fixture.on('error',error=>{report.fixtureLaunchError=String(error);});
   const ports=await until(async()=>{panic.check();if(fixtureExited||report.fixtureLaunchError)throw Error('Fixture failed before readiness');try{return JSON.parse(await fs.readFile(portsFile,'utf8'));}catch{return null;}},'fixture',120000);
-  const session=await fetch(ports.dashboard+'/api/session?launch='+ports.launch);
-  assert.equal(session.status,200);const sessionCookie=session.headers.get('set-cookie').split(';')[0];const csrf=(await session.json()).csrf;
+  const {cookie:sessionCookie,csrf}=fixtureSession(ports);
   const api=async(route,body)=>{const response=await fetch(ports.dashboard+route,{method:body?'POST':'GET',headers:{cookie:sessionCookie,'x-hycli-csrf':csrf,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});return{status:response.status,body:await response.json()};};
   const downloaded=await fetch(ports.dashboard+'/api/browser/extension',{headers:{cookie:sessionCookie}});assert.equal(downloaded.status,200);
   const zip=path.join(temporary,'companion.zip'),extension=path.join(temporary,'extension');await fs.writeFile(zip,Buffer.from(await downloaded.arrayBuffer()));

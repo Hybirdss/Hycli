@@ -347,3 +347,11 @@ syncBuiltinESMExports();
     });
   });
 });
+
+// Source-level documentation contract, not native bootstrap transport evidence.
+test('generated package guidance uses a private opening file, never public URL authentication', async () => {
+  const source = await fs.readFile(path.join(root, 'scripts/build.mjs'), 'utf8');
+  assert.match(source, /open the printed private HTML file within two minutes/);
+  assert.match(source, /The public dashboard address alone does not authorize a browser window/);
+  assert.doesNotMatch(source, /Open the printed local address if your browser does not open automatically/);
+});

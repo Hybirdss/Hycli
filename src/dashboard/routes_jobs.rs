@@ -243,13 +243,27 @@ mod tests {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
         let web = Web::new(core.clone(), port).unwrap();
-        let cookie = format!("hycli_session={}", web.session);
+        let ticket = web.test_bootstrap_ticket();
         let server = tokio::spawn(async move {
             axum::serve(listener, super::super::router(web))
                 .await
                 .unwrap();
         });
         let client = reqwest::Client::builder().no_proxy().build().unwrap();
+        let session = client
+            .post(format!("http://127.0.0.1:{port}/api/bootstrap"))
+            .json(&serde_json::json!({"ticket": ticket}))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(session.status(), 200);
+        let cookie = session.headers()["set-cookie"]
+            .to_str()
+            .unwrap()
+            .split(';')
+            .next()
+            .unwrap()
+            .to_owned();
         let endpoint = format!(
             "http://127.0.0.1:{port}/api/jobs/{}/artifacts/{}",
             job.id, file.artifact_id

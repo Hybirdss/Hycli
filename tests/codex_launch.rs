@@ -383,22 +383,50 @@ impl DashboardFixture {
             .unwrap();
         let port = listener.local_addr().unwrap().port();
         let web = hycli::dashboard::Web::new(core.clone(), port).unwrap();
-        let mut headers = reqwest::header::HeaderMap::new();
-        headers.insert(
-            reqwest::header::COOKIE,
-            format!("hycli_session={}", web.session).parse().unwrap(),
-        );
-        headers.insert("x-hycli-csrf", web.csrf.parse().unwrap());
-        let client = reqwest::Client::builder()
-            .default_headers(headers)
-            .timeout(Duration::from_secs(20))
-            .build()
-            .unwrap();
+        #[cfg(feature = "dashboard-test-support")]
+        let ticket = web.test_bootstrap_ticket();
+        // The identical historical harness uses the baseline's public API.
+        // Current fixtures must redeem a test-issued ticket through the real route.
+        #[cfg(not(feature = "dashboard-test-support"))]
+        let (cookie, csrf) = (format!("hycli_session={}", web.session), web.csrf.clone());
         let server = tokio::spawn(async move {
             axum::serve(listener, hycli::dashboard::router(web))
                 .await
                 .unwrap();
         });
+        #[cfg(feature = "dashboard-test-support")]
+        let (cookie, csrf) = {
+            let response = reqwest::Client::builder()
+                .no_proxy()
+                .build()
+                .unwrap()
+                .post(format!("http://127.0.0.1:{port}/api/bootstrap"))
+                .json(&json!({"ticket": ticket}))
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(response.status(), 200);
+            let cookie = response.headers()["set-cookie"]
+                .to_str()
+                .unwrap()
+                .split(';')
+                .next()
+                .unwrap()
+                .to_owned();
+            let csrf = response.json::<Value>().await.unwrap()["csrf"]
+                .as_str()
+                .unwrap()
+                .to_owned();
+            (cookie, csrf)
+        };
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(reqwest::header::COOKIE, cookie.parse().unwrap());
+        headers.insert("x-hycli-csrf", csrf.parse().unwrap());
+        let client = reqwest::Client::builder()
+            .default_headers(headers)
+            .timeout(Duration::from_secs(20))
+            .build()
+            .unwrap();
         Self {
             core,
             workspace,

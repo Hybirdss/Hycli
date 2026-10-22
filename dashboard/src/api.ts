@@ -16,14 +16,12 @@ export function setApiLocale(value: string) { locale = value; }
 export function session(): Promise<void> {
   if (renewing) return renewing;
   renewing = (async () => {
-    const launch = new URLSearchParams(location.search).get('launch');
     let response: Response;
-    try { response = await fetch(launch ? `/api/session?launch=${encodeURIComponent(launch)}` : '/api/session', { cache: 'no-store', credentials: 'same-origin' }); }
+    try { response = await fetch('/api/session', { cache: 'no-store', credentials: 'same-origin' }); }
     catch { throw new ApiError('connection_lost', 0); }
     if (response.status === 401) throw new ApiError('launch_required', 401);
     if (!response.ok) throw new ApiError('connection_lost', response.status);
     csrf = ((await response.json()) as { csrf: string }).csrf;
-    if (launch) history.replaceState(null, '', location.pathname + location.hash);
   })().finally(() => { renewing = null; });
   return renewing;
 }
