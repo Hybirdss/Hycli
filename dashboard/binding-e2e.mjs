@@ -1,3 +1,4 @@
+import {installFixtureSession} from './scripts/fixture-session.mjs';
 // Production Rust dashboard + production UI. Only the remote website and
 // browser-reconnect timing are synthetic. No mocked dashboard endpoints.
 import {chromium} from 'playwright';
@@ -27,7 +28,8 @@ try {
  context=await browser.newContext({viewport:{width:1440,height:1000}});
  const allowed=new Set([ports.dashboard,ports.website]);await context.route('**/*',route=>allowed.has(new URL(route.request().url()).origin)?route.continue():route.abort());
  const errors=[];const page=await context.newPage();page.on('pageerror',error=>errors.push(error.message));page.setDefaultTimeout(60000);
- await page.goto(ports.dashboard+'/?launch='+ports.launch);await page.getByRole('heading',{name:en['sites.title'],exact:true}).waitFor();
+ await installFixtureSession(context, ports);
+ await page.goto(ports.dashboard);await page.getByRole('heading',{name:en['sites.title'],exact:true}).waitFor();
  const button=(scope,key)=>scope.getByRole('button',{name:en[key],exact:true});const dialog=()=>page.getByRole('dialog');
  const open=async()=>{await button(page,'nav.websites').click();await button(page.locator('.site-card').filter({hasText:'Named workspace'}),'sites.openActions').click();};
  const close=()=>button(dialog(),'common.close').click();

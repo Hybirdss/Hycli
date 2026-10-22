@@ -17,6 +17,8 @@ const INSTANCE: &str = "dashboard-instance.json";
 pub struct Instance {
     pub port: u16,
     pub id: String,
+    #[serde(default)]
+    pub control_file: PathBuf,
 }
 
 impl Instance {
@@ -65,61 +67,104 @@ fn client() -> AppResult<reqwest::Client> {
         .map_err(|e| apperr::runtime(e, "Cannot connect to Hycli", "Try opening Hycli again."))
 }
 
-fn read_launch(root: &Path) -> Option<String> {
-    let value: serde_json::Value = serde_json::from_slice(
-        &util::read_bounded(&root.join("dashboard-session.json"), 4096).ok()?,
-    )
-    .ok()?;
-    let launch = value.get("launch")?.as_str()?;
-    (!launch.is_empty()).then(|| launch.to_owned())
+struct VerifiedControl {
+    port: u16,
+    instance_id: String,
+    credential: String,
 }
-
-pub fn launch_url(root: &Path, instance: &Instance) -> String {
-    match read_launch(root) {
-        Some(launch) => format!("{}/?launch={launch}", instance.url()),
-        None => instance.url(),
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ControlRecord {
+    version: u8,
+    port: u16,
+    instance_id: String,
+    credential: String,
+    root: PathBuf,
+}
+fn control(root: &Path, instance: &Instance) -> AppResult<VerifiedControl> {
+    let bytes = crate::dashboard::private_file::read_private(&instance.control_file)?;
+    validate_control(&bytes, &std::fs::canonicalize(root)?, instance)
+}
+fn validate_control(bytes: &[u8], root: &Path, instance: &Instance) -> AppResult<VerifiedControl> {
+    let record: ControlRecord = serde_json::from_slice(bytes)?;
+    if record.version != 1
+        || record.root != root
+        || record.port != instance.port
+        || record.instance_id != instance.id
+        || record.credential.len() != 64
+        || !record.credential.bytes().all(|b| b.is_ascii_hexdigit())
+    {
+        return Err(apperr::runtime_msg(
+            "Invalid dashboard control record",
+            "Open Hycli again.",
+        ));
     }
+    Ok(VerifiedControl {
+        port: record.port,
+        instance_id: record.instance_id,
+        credential: record.credential,
+    })
 }
-
-async fn session(root: &Path, instance: &Instance) -> Option<(String, String)> {
-    let launch = read_launch(root)?;
-    let response = client()
+fn control_request(
+    root: &Path,
+    instance: &Instance,
+    action: &str,
+) -> AppResult<reqwest::RequestBuilder> {
+    let record = control(root, instance)?;
+    Ok(client()?
+        .post(format!("http://127.0.0.1:{}/control/{action}", record.port))
+        .header("x-hycli-control", record.credential)
+        .header("x-hycli-instance", record.instance_id))
+}
+pub async fn running(root: &Path) -> Option<Instance> {
+    let instance = read_instance(&root.join(INSTANCE))?;
+    let response = control_request(root, &instance, "probe")
         .ok()?
-        .get(format!("{}/api/session?launch={launch}", instance.url()))
         .send()
         .await
         .ok()?;
     if !response.status().is_success() {
         return None;
     }
-    let cookie = response
-        .headers()
-        .get(reqwest::header::SET_COOKIE)?
-        .to_str()
-        .ok()?
-        .split(';')
-        .next()?
-        .to_owned();
     let value: serde_json::Value = response.json().await.ok()?;
     if value["instance_id"].as_str()? != instance.id {
         return None;
     }
-    Some((cookie, value["csrf"].as_str()?.to_owned()))
-}
-
-pub async fn running(root: &Path) -> Option<Instance> {
-    let instance = read_instance(&root.join(INSTANCE))?;
-    session(root, &instance).await?;
     Some(instance)
 }
-
-fn open_browser(root: &Path, instance: &Instance) -> AppResult<()> {
-    let url = launch_url(root, instance);
-    crate::dashboard::open_url(&url).map_err(|error| {
-        apperr::runtime(
-            error,
+pub async fn prepare_opening(root: &Path, instance: &Instance) -> AppResult<PathBuf> {
+    let response = control_request(root, instance, "open")?
+        .send()
+        .await
+        .map_err(|_| {
+            apperr::runtime_msg("Cannot prepare a dashboard opening", "Open Hycli again.")
+        })?;
+    if !response.status().is_success() {
+        return Err(apperr::runtime_msg(
+            "Cannot prepare a dashboard opening",
+            "Wait a moment and open Hycli again.",
+        ));
+    }
+    let value: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|_| apperr::runtime_msg("Invalid dashboard opening", "Open Hycli again."))?;
+    let path = value["path"]
+        .as_str()
+        .map(PathBuf::from)
+        .ok_or_else(|| apperr::runtime_msg("Invalid dashboard opening", "Open Hycli again."))?;
+    crate::dashboard::validate_opening(&path, instance.port, &instance.id)?;
+    Ok(path)
+}
+async fn open_browser(root: &Path, instance: &Instance) -> AppResult<()> {
+    let path = prepare_opening(root, instance).await?;
+    crate::dashboard::open_path(&path).map_err(|_| {
+        apperr::runtime_msg(
             "Hycli is running, but the browser could not be opened",
-            format!("Open {url} in your browser."),
+            format!(
+                "Open {} in your browser within two minutes.",
+                path.display()
+            ),
         )
     })
 }
@@ -151,7 +196,7 @@ pub async fn open(
         loop {
             if let Some(instance) = running(&root).await {
                 if browser {
-                    open_browser(&root, &instance)?;
+                    open_browser(&root, &instance).await?;
                 }
                 return Ok(instance);
             }
@@ -262,7 +307,7 @@ pub async fn open(
         }
     };
     if browser {
-        open_browser(&root, &instance)?;
+        open_browser(&root, &instance).await?;
     }
     Ok(instance)
 }
@@ -271,16 +316,10 @@ pub async fn stop(root: &Path) -> AppResult<()> {
     let Some(instance) = running(root).await else {
         return Ok(());
     };
-    let (cookie, csrf) = session(root, &instance)
-        .await
-        .ok_or_else(|| apperr::runtime_msg("Hycli stopped responding", "Try again."))?;
-    let response = client()?
-        .post(format!("{}/api/shutdown", instance.url()))
-        .header(reqwest::header::COOKIE, cookie)
-        .header("x-hycli-csrf", csrf)
+    let response = control_request(root, &instance, "shutdown")?
         .send()
         .await
-        .map_err(|e| apperr::runtime(e, "Cannot stop Hycli", "Try again."))?;
+        .map_err(|_| apperr::runtime_msg("Cannot stop Hycli", "Try again."))?;
     if response.status() == reqwest::StatusCode::CONFLICT {
         return Err(apperr::usage(
             "Hycli still has active work",
@@ -304,4 +343,27 @@ pub async fn stop(root: &Path) -> AppResult<()> {
         "Hycli is still shutting down",
         "Wait a moment and run hycli status.",
     ))
+}
+
+#[cfg(test)]
+mod control_record_tests {
+    use super::*;
+    #[test]
+    fn private_control_record_binds_root_port_and_instance_before_request() {
+        let root = PathBuf::from("synthetic-root");
+        let mut instance = Instance {
+            port: 4318,
+            id: "synthetic-instance".into(),
+            control_file: PathBuf::new(),
+        };
+        let bytes = serde_json::to_vec(&serde_json::json!({"version":1,"port":4318,"instance_id":"synthetic-instance","root":root,"credential":"a".repeat(64)})).unwrap();
+        let record = validate_control(&bytes, &root, &instance).unwrap();
+        assert_eq!(record.port, 4318);
+        assert!(validate_control(&bytes, Path::new("different-root"), &instance).is_err());
+        instance.port = 4319;
+        assert!(validate_control(&bytes, &root, &instance).is_err());
+        instance.port = 4318;
+        instance.id = "different-instance".into();
+        assert!(validate_control(&bytes, &root, &instance).is_err());
+    }
 }

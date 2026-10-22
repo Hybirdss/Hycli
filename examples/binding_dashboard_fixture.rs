@@ -92,14 +92,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let port = listener.local_addr()?.port();
     let web = hycli::dashboard::Web::new(core, port)?;
+    let ticket = web.test_bootstrap_ticket();
+    let server =
+        tokio::spawn(async move { axum::serve(listener, hycli::dashboard::router(web)).await });
+    // Test-only issuance, normal production redemption; not file-handoff coverage.
+    let response = reqwest::Client::builder()
+        .no_proxy()
+        .build()?
+        .post(format!("http://127.0.0.1:{port}/api/bootstrap"))
+        .json(&json!({"ticket": ticket}))
+        .send()
+        .await?
+        .error_for_status()?;
+    let cookie = response.headers()["set-cookie"]
+        .to_str()?
+        .split(';')
+        .next()
+        .ok_or("fixture session cookie missing")?
+        .to_owned();
+    let session: Value = response.json().await?;
     let output = std::env::var_os("HYCLI_FIXTURE_OUTPUT").ok_or("HYCLI_FIXTURE_OUTPUT required")?;
     util::atomic_file(
         std::path::Path::new(&output),
         &serde_json::to_vec(
-            &json!({"dashboard":format!("http://127.0.0.1:{port}"),"website":website,"launch":web.launch,"account_id":account_id.lock().unwrap().clone()}),
+            &json!({"dashboard":format!("http://127.0.0.1:{port}"),"website":website,"session":{"cookie":cookie,"csrf":session["csrf"]},"account_id":account_id.lock().unwrap().clone()}),
         )?,
     )?;
-    axum::serve(listener, hycli::dashboard::router(web)).await?;
+    server.await??;
     Ok(())
 }
 fn person(headers: &HeaderMap) -> &'static str {

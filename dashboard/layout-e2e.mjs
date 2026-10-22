@@ -1,3 +1,4 @@
+import {installFixtureSession} from './scripts/fixture-session.mjs';
 import {selectPersistedLocale} from './e2e-settings.mjs';
 import {documentationScreenshot} from './e2e-screenshots.mjs';
 import {fileURLToPath} from 'node:url';
@@ -10,7 +11,8 @@ const locales=(await fs.readdir('dashboard/src/locales')).filter(f=>f.endsWith('
 const browser=process.env.TEST_CDP?await chromium.connectOverCDP(process.env.TEST_CDP):await chromium.launch({headless:true,executablePath:process.env.BROWSER_BIN,args:['--no-sandbox','--disable-gpu','--disable-dev-shm-usage'],timeout:120000});
 const context=await browser.newContext({viewport:{width:1536,height:1024}});const page=await context.newPage();page.setDefaultTimeout(120000);const errors=[];page.on('pageerror',e=>errors.push(e.message));
 try {
- await page.goto(ports.dashboard+'/?launch='+ports.launch,{waitUntil:'domcontentloaded',timeout:120000});await page.locator('.site-card').first().waitFor();
+ await installFixtureSession(context, ports);
+ await page.goto(ports.dashboard,{waitUntil:'domcontentloaded',timeout:120000});await page.locator('.site-card').first().waitFor();
  for(const locale of locales){const dictionary=JSON.parse(await fs.readFile(`dashboard/src/locales/${locale}.json`,'utf8'));if(await page.locator('.topbar select').inputValue()===locale){console.log('Layout:',locale);continue;}await selectPersistedLocale(page,page.locator('.topbar select'),locale);await page.getByRole('heading',{name:dictionary['sites.title'],exact:true}).waitFor();assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true,`${locale}: desktop overflow`);assert.equal(await page.locator('html').getAttribute('dir'),locale==='ar'?'rtl':'ltr');console.log('Layout:',locale);}
  await selectPersistedLocale(page,page.locator('.topbar select'),'en');const en=JSON.parse(await fs.readFile('dashboard/src/locales/en.json','utf8'));
  await page.getByRole('button',{name:en['nav.settings'],exact:true}).click();await page.getByRole('button',{name:en['settings.themeDark'],exact:true}).click();await page.waitForFunction(()=>document.documentElement.dataset.theme==='dark');await documentationScreenshot(page,async()=>{const storage=await page.locator('.settings-section').nth(4).boundingBox();return {path:'docs/design/settings-dark.png',clip:{x:0,y:0,width:1536,height:Math.min(1024,Math.floor(storage.y)-16)},timeout:120000};});

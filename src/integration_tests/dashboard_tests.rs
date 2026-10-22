@@ -78,7 +78,7 @@ async fn browser_pairing_is_single_use_origin_bound_and_verifies_actual_identity
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
     let web = crate::dashboard::Web::new(core.clone(), port).unwrap();
-    let launch = web.launch.clone();
+    let ticket = web.test_bootstrap_ticket();
     let router = crate::dashboard::router(web);
     let server = tokio::spawn(async move {
         axum::serve(listener, router).await.unwrap();
@@ -86,7 +86,8 @@ async fn browser_pairing_is_single_use_origin_bound_and_verifies_actual_identity
     let base = format!("http://127.0.0.1:{port}");
     let client = reqwest::Client::new();
     let session = client
-        .get(format!("{base}/api/session?launch={launch}"))
+        .post(format!("{base}/api/bootstrap"))
+        .json(&json!({"ticket": ticket}))
         .send()
         .await
         .unwrap();
@@ -669,7 +670,7 @@ async fn anthropic_registration_normalizes_inputs_and_preserves_saved_connection
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
     let web = crate::dashboard::Web::new(core.clone(), port).unwrap();
-    let launch = web.launch.clone();
+    let ticket = web.test_bootstrap_ticket();
     let server = tokio::spawn(async move {
         axum::serve(listener, crate::dashboard::router(web))
             .await
@@ -678,7 +679,8 @@ async fn anthropic_registration_normalizes_inputs_and_preserves_saved_connection
     let base = format!("http://127.0.0.1:{port}");
     let client = reqwest::Client::new();
     let response = client
-        .get(format!("{base}/api/session?launch={launch}"))
+        .post(format!("{base}/api/bootstrap"))
+        .json(&json!({"ticket": ticket}))
         .send()
         .await
         .unwrap();
@@ -790,7 +792,7 @@ async fn explicit_same_origin_selection_binds_destination_without_moving_source(
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
     let web = crate::dashboard::Web::new(core.clone(), port).unwrap();
-    let launch = web.launch.clone();
+    let ticket = web.test_bootstrap_ticket();
     let server = tokio::spawn(async move {
         axum::serve(listener, crate::dashboard::router(web))
             .await
@@ -799,7 +801,8 @@ async fn explicit_same_origin_selection_binds_destination_without_moving_source(
     let base = format!("http://127.0.0.1:{port}");
     let client = reqwest::Client::new();
     let session = client
-        .get(format!("{base}/api/session?launch={launch}"))
+        .post(format!("{base}/api/bootstrap"))
+        .json(&json!({"ticket": ticket}))
         .send()
         .await
         .unwrap();
