@@ -40,7 +40,10 @@ fn path_precedes_documented_macos_fallback_and_returns_absolute_path() {
         resolve_binary(None, Some(&fixture.0), &[], Some(&bundled), false),
         Some(bundled)
     );
-    assert_eq!(resolve_binary(None, Some(&fixture.0), &[], None, false), None);
+    assert_eq!(
+        resolve_binary(None, Some(&fixture.0), &[], None, false),
+        None
+    );
 }
 
 #[test]
@@ -50,7 +53,13 @@ fn explicit_binary_is_strict_and_relative_to_construction_directory() {
     let fallback = fixture.executable("fallback/codex");
     for request in [selected.clone(), PathBuf::from("tools 한 글/provider")] {
         assert_eq!(
-            resolve_binary(Some(&request), Some(&fixture.0), &[], Some(&fallback), false),
+            resolve_binary(
+                Some(&request),
+                Some(&fixture.0),
+                &[],
+                Some(&fallback),
+                false
+            ),
             Some(selected.clone())
         );
     }
@@ -82,7 +91,13 @@ fn windows_resolves_native_exe_without_shell_shims_or_double_extension() {
         );
     }
     assert_eq!(
-        resolve_binary(Some(Path::new("codex.cmd")), Some(&fixture.0), &paths, None, true),
+        resolve_binary(
+            Some(Path::new("codex.cmd")),
+            Some(&fixture.0),
+            &paths,
+            None,
+            true
+        ),
         None
     );
     assert_eq!(
@@ -95,13 +110,19 @@ fn windows_resolves_native_exe_without_shell_shims_or_double_extension() {
 fn directories_and_unix_non_executable_files_are_not_available() {
     let fixture = Fixture::new();
     std::fs::create_dir(fixture.0.join("codex")).unwrap();
-    assert_eq!(resolve_binary(None, Some(&fixture.0), &[fixture.0.clone()], None, false), None);
+    assert_eq!(
+        resolve_binary(None, Some(&fixture.0), &[fixture.0.clone()], None, false),
+        None
+    );
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         let file = fixture.executable("tools/codex");
         std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o600)).unwrap();
-        assert_eq!(resolve_binary(Some(&file), Some(&fixture.0), &[], None, false), None);
+        assert_eq!(
+            resolve_binary(Some(&file), Some(&fixture.0), &[], None, false),
+            None
+        );
     }
 }
 
@@ -147,11 +168,7 @@ fn concurrent_discovery_selects_one_binary_for_all_connections() {
 #[test]
 fn removed_selected_executable_is_unavailable_without_forgetting_selection() {
     let fixture = Fixture::new();
-    let relative = if cfg!(windows) {
-        "codex.exe"
-    } else {
-        "codex"
-    };
+    let relative = if cfg!(windows) { "codex.exe" } else { "codex" };
     let executable = fixture.executable(relative);
     let adapter = Codex::with_binary(fixture.0.join("workspace"), executable.clone());
     assert!(adapter.available());

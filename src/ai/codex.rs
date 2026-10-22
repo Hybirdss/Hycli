@@ -46,7 +46,9 @@ impl BinarySelection {
                 .map(|value| std::env::split_paths(&value).collect::<Vec<_>>())
                 .unwrap_or_default();
             let fallback = if cfg!(target_os = "macos") {
-                Some(Path::new("/Applications/Codex.app/Contents/Resources/codex"))
+                Some(Path::new(
+                    "/Applications/Codex.app/Contents/Resources/codex",
+                ))
             } else {
                 None
             };

@@ -40,10 +40,8 @@ fn app_server() {
     let args: Vec<_> = std::env::args().skip(1).collect();
     std::fs::write(
         format!("child-{pid}.json"),
-        serde_json::to_vec(
-            &json!({"pid":pid,"args":args,"exe":std::env::current_exe().unwrap()}),
-        )
-        .unwrap(),
+        serde_json::to_vec(&json!({"pid":pid,"args":args,"exe":std::env::current_exe().unwrap()}))
+            .unwrap(),
     )
     .unwrap();
     let mut initialized = false;
@@ -75,8 +73,12 @@ fn app_server() {
         };
         send(json!({"id":request["id"],"result":result}));
         if method == "turn/start" {
-            send(json!({"method":"item/completed","params":{"threadId":"synthetic-thread","turnId":"synthetic-turn","item":{"type":"agentMessage","phase":"final_answer","text":request["params"]["input"][0]["text"]}}}));
-            send(json!({"method":"turn/completed","params":{"threadId":"synthetic-thread","turn":{"id":"synthetic-turn","status":"completed"}}}));
+            send(
+                json!({"method":"item/completed","params":{"threadId":"synthetic-thread","turnId":"synthetic-turn","item":{"type":"agentMessage","phase":"final_answer","text":request["params"]["input"][0]["text"]}}}),
+            );
+            send(
+                json!({"method":"turn/completed","params":{"threadId":"synthetic-thread","turn":{"id":"synthetic-turn","status":"completed"}}}),
+            );
         }
     }
 }
@@ -164,7 +166,10 @@ async fn run() {
             "notify=[]",
             "tools.view_image=false",
         ] {
-            assert!(args.windows(2).any(|pair| pair[0] == "-c" && pair[1] == value));
+            assert!(
+                args.windows(2)
+                    .any(|pair| pair[0] == "-c" && pair[1] == value)
+            );
         }
         assert!(
             args.windows(2)
@@ -193,11 +198,7 @@ async fn run() {
 
     let path_dir = fixture.0.join("PATH 한 글 with spaces");
     std::fs::create_dir(&path_dir).unwrap();
-    let path_binary = path_dir.join(if cfg!(windows) {
-        "codex.exe"
-    } else {
-        "codex"
-    });
+    let path_binary = path_dir.join(if cfg!(windows) { "codex.exe" } else { "codex" });
     std::fs::copy(&binary, &path_binary).unwrap();
     let auto_workspace = fixture.0.join("automatic-workspace");
     let status = tokio::process::Command::new(std::env::current_exe().unwrap())
