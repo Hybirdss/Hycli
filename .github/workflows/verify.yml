@@ -57,7 +57,7 @@ jobs:
           cache-dependency-path: dashboard/package-lock.json
       - name: Registry, fixture and companion boundary tests
         shell: bash
-        run: node --test scripts/check-baseline-lock.test.mjs scripts/registry.test.mjs scripts/fixture-panic.test.mjs browser-companion/site-scope.test.cjs dashboard/e2e-screenshots.test.mjs dashboard/snapshot.test.mjs dashboard/accepted-command.test.mjs dashboard/account-continuation.test.mjs dashboard/native-discovery.test.mjs dashboard/provider-login.test.mjs dashboard/provider-status.test.mjs
+        run: node --test scripts/check-baseline-lock.test.mjs scripts/registry.test.mjs scripts/fixture-panic.test.mjs browser-companion/site-scope.test.cjs dashboard/e2e-screenshots.test.mjs dashboard/snapshot.test.mjs dashboard/accepted-command.test.mjs dashboard/account-continuation.test.mjs dashboard/native-discovery.test.mjs dashboard/provider-login.test.mjs dashboard/provider-status.test.mjs dashboard/bootstrap-landing.test.mjs
       - name: Rust toolchain
         run: |
           rustup update stable --no-self-update
@@ -103,12 +103,14 @@ jobs:
           npm --prefix dashboard ci
           npm --prefix dashboard run check
           npm --prefix dashboard run build
-          node --test dashboard/work-notes.test.mjs
+          node --test dashboard/work-notes.test.mjs dashboard/scripts/fixture-session.test.mjs
       - name: Rust checks
         run: |
           cargo fmt --all --check
           cargo test --all-targets --locked
-          cargo build --locked --bin hycli --example dashboard_fixture --example binding_dashboard_fixture
+          cargo test --locked --features dashboard-test-support --test codex_launch
+          cargo build --locked --bin hycli
+          cargo build --locked --features dashboard-test-support --example dashboard_fixture --example binding_dashboard_fixture
       - name: Exact pre-fix source for preference output regression
         if: matrix.browser_tests
         uses: actions/checkout@v7
@@ -123,7 +125,24 @@ jobs:
           proof="$GITHUB_WORKSPACE/.cache/preference-output-proof"
           test_name=integration_tests::execution_tests::unrelated_preferences_preserve_raw_and_mapped_read_results
           test "$(git -C "$baseline" rev-parse HEAD)" = d88f051cfa78ac91b648ab0990cb5f197746da8b
-          cmp Cargo.lock "$baseline/Cargo.lock"
+          python3 - "$baseline" <<'PYLOCK'
+          import hashlib, pathlib, subprocess, sys
+          baseline = pathlib.Path(sys.argv[1])
+          original = subprocess.check_output(["git", "-C", str(baseline), "show", "HEAD:Cargo.lock"])
+          assert (baseline / "Cargo.lock").read_bytes() == original, "Baseline lock was modified"
+          candidate = pathlib.Path("Cargo.lock").read_bytes()
+          def without_expected_edge(data):
+              marker = b'[[package]]\nname = "hycli"\n'
+              assert data.count(marker) == 1, "Expected exactly one root hycli package"
+              start = data.index(marker)
+              end = data.index(b'\n[[package]]', start)
+              root = data[start:end]
+              edge = b' "windows-sys 0.61.2",\n'
+              assert root.count(edge) == 1, "Expected exactly one approved Windows root edge"
+              return data[:start] + root.replace(edge, b'', 1) + data[end:]
+          assert without_expected_edge(candidate) == original, "Unexpected locked dependency drift"
+          print("Pinned baseline Cargo.lock SHA256:", hashlib.sha256(original).hexdigest())
+          PYLOCK
           mkdir -p "$proof"
           ln -s "$GITHUB_WORKSPACE/web" "$baseline/web"
           cp src/integration_tests/execution_tests.rs "$baseline/src/integration_tests/execution_tests.rs"
@@ -161,7 +180,24 @@ jobs:
           proof="$GITHUB_WORKSPACE/.cache/preflight-bearer-proof"
           test_name=integration_tests::preflight_header_tests::preflight_bearer_reaches_local_service_without_overriding_account_or_leaking_output
           test "$(git -C "$baseline" rev-parse HEAD)" = 24a5e6b9c55cd154456e4218f5299ad3bfe4e686
-          cmp Cargo.lock "$baseline/Cargo.lock"
+          python3 - "$baseline" <<'PYLOCK'
+          import hashlib, pathlib, subprocess, sys
+          baseline = pathlib.Path(sys.argv[1])
+          original = subprocess.check_output(["git", "-C", str(baseline), "show", "HEAD:Cargo.lock"])
+          assert (baseline / "Cargo.lock").read_bytes() == original, "Baseline lock was modified"
+          candidate = pathlib.Path("Cargo.lock").read_bytes()
+          def without_expected_edge(data):
+              marker = b'[[package]]\nname = "hycli"\n'
+              assert data.count(marker) == 1, "Expected exactly one root hycli package"
+              start = data.index(marker)
+              end = data.index(b'\n[[package]]', start)
+              root = data[start:end]
+              edge = b' "windows-sys 0.61.2",\n'
+              assert root.count(edge) == 1, "Expected exactly one approved Windows root edge"
+              return data[:start] + root.replace(edge, b'', 1) + data[end:]
+          assert without_expected_edge(candidate) == original, "Unexpected locked dependency drift"
+          print("Pinned baseline Cargo.lock SHA256:", hashlib.sha256(original).hexdigest())
+          PYLOCK
           mkdir -p "$proof"
           ln -s "$GITHUB_WORKSPACE/web" "$baseline/web"
           cp src/integration_tests/preflight_header_tests.rs "$baseline/src/integration_tests/preflight_header_tests.rs"
@@ -198,14 +234,42 @@ jobs:
           baseline="$GITHUB_WORKSPACE/.cache/codex-launch-baseline"
           proof="$GITHUB_WORKSPACE/.cache/codex-launch-proof"
           test "$(git -C "$baseline" rev-parse HEAD)" = 8d422a07d29fdd31a5b956fe96363a00f02470aa
-          cmp Cargo.lock "$baseline/Cargo.lock"
+          python3 - "$baseline" <<'PYLOCK'
+          import hashlib, pathlib, subprocess, sys
+          baseline = pathlib.Path(sys.argv[1])
+          original = subprocess.check_output(["git", "-C", str(baseline), "show", "HEAD:Cargo.lock"])
+          assert (baseline / "Cargo.lock").read_bytes() == original, "Baseline lock was modified"
+          candidate = pathlib.Path("Cargo.lock").read_bytes()
+          def without_expected_edge(data):
+              marker = b'[[package]]\nname = "hycli"\n'
+              assert data.count(marker) == 1, "Expected exactly one root hycli package"
+              start = data.index(marker)
+              end = data.index(b'\n[[package]]', start)
+              root = data[start:end]
+              edge = b' "windows-sys 0.61.2",\n'
+              assert root.count(edge) == 1, "Expected exactly one approved Windows root edge"
+              return data[:start] + root.replace(edge, b'', 1) + data[end:]
+          assert without_expected_edge(candidate) == original, "Unexpected locked dependency drift"
+          print("Pinned baseline Cargo.lock SHA256:", hashlib.sha256(original).hexdigest())
+          PYLOCK
           mkdir -p "$proof" "$baseline/tests"
           ln -s "$GITHUB_WORKSPACE/web" "$baseline/web"
+          git -C "$baseline" diff --exit-code -- src Cargo.toml Cargo.lock
           # Overlay only the identical public-API synthetic native fixture and registration.
           # Do not copy candidate implementation or private unit tests into the baseline.
           cp tests/codex_launch.rs "$baseline/tests/codex_launch.rs"
           printf '\n[[test]]\nname = "codex_launch"\npath = "tests/codex_launch.rs"\nharness = false\n' >> "$baseline/Cargo.toml"
-          cmp Cargo.toml "$baseline/Cargo.toml"
+          python3 - "$baseline" <<'PYMANIFEST'
+          import hashlib, pathlib, subprocess, sys
+          baseline = pathlib.Path(sys.argv[1])
+          original = subprocess.check_output(["git", "-C", str(baseline), "show", "HEAD:Cargo.toml"])
+          registration = b'\n[[test]]\nname = "codex_launch"\npath = "tests/codex_launch.rs"\nharness = false\n'
+          registered = (baseline / "Cargo.toml").read_bytes()
+          assert registered == original + registration, "Unexpected historical manifest edits"
+          expected_suffix = b'required-features = ["dashboard-test-support"]\n\n[target.\'cfg(windows)\'.dependencies]\nwindows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_Storage_FileSystem", "Win32_System_Threading", "Win32_System_Memory", "Win32_System_SystemServices"] }\n\n[features]\ndashboard-test-support = []\n\n[[example]]\nname = "dashboard_fixture"\nrequired-features = ["dashboard-test-support"]\n\n[[example]]\nname = "binding_dashboard_fixture"\nrequired-features = ["dashboard-test-support"]\n'
+          assert pathlib.Path("Cargo.toml").read_bytes() == registered + expected_suffix, "Unexpected candidate manifest drift"
+          print("Pinned baseline Cargo.toml SHA256:", hashlib.sha256(original).hexdigest())
+          PYMANIFEST
           cmp tests/codex_launch.rs "$baseline/tests/codex_launch.rs"
           git -C "$baseline" diff --exit-code -- src Cargo.lock
           sha256sum tests/codex_launch.rs "$baseline/tests/codex_launch.rs" > "$proof/fixture-sha256.log"
@@ -220,8 +284,8 @@ jobs:
           grep -F 'panicked at tests/codex_launch.rs:' "$proof/baseline.log"
           grep -F 'relative executable must launch independently of provider workspace' "$proof/baseline.log"
           # Separate build roots prevent any baseline/candidate artifact reuse.
-          CARGO_TARGET_DIR="$proof/candidate-target" cargo test --locked --test codex_launch --no-run > "$proof/candidate-build.log" 2>&1 || { cat "$proof/candidate-build.log"; exit 1; }
-          CARGO_TARGET_DIR="$proof/candidate-target" cargo test --locked --test codex_launch > "$proof/candidate.log" 2>&1 || { cat "$proof/candidate.log"; exit 1; }
+          CARGO_TARGET_DIR="$proof/candidate-target" cargo test --locked --features dashboard-test-support --test codex_launch --no-run > "$proof/candidate-build.log" 2>&1 || { cat "$proof/candidate-build.log"; exit 1; }
+          CARGO_TARGET_DIR="$proof/candidate-target" cargo test --locked --features dashboard-test-support --test codex_launch > "$proof/candidate.log" 2>&1 || { cat "$proof/candidate.log"; exit 1; }
           cat "$proof/candidate.log"
           grep -Fx 'relative binary with different workspace: PASS' "$proof/candidate.log"
           grep -Fx 'isolated native PATH discovery and launch: PASS' "$proof/candidate.log"

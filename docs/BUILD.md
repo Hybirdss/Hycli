@@ -37,13 +37,15 @@ Windows example: `node scripts/build.mjs --install-dir "$env:LOCALAPPDATA\Hycli\
 
 ## Start and reconnect
 
-Open Hycli from its installed application icon, by running `hycli open`, or by running `hycli` without arguments. The launcher starts the background engine and opens the default browser. It prefers `127.0.0.1:4318`, falls back to a free loopback port if occupied, and reuses a responding instance for the same data directory. The terminal can close immediately. `hycli open --port 4320 --no-open` starts without a browser and prints the actual address; `hycli status` reports it later.
+Open Hycli from its installed application icon, by running `hycli open`, or by running `hycli` without arguments. The launcher starts the background engine and opens the default browser. It prefers `127.0.0.1:4318`, falls back to a free loopback port if occupied, and reuses a responding instance for the same data directory. The terminal can close immediately. `hycli open --port 4320 --no-open` starts without a browser and prints the public address plus an `opening_file` path. Open that private HTML file within two minutes to authorize a browser window; run `hycli open --no-open` again if it expires. `hycli status` reports only the non-secret public address, not a browser sign-in credential.
 
 Closing the browser keeps the engine running. Use **Settings → Quit Hycli** or `hycli stop` to stop it; active work must finish or be cancelled first. No system service or login startup is installed. Startup diagnostics are in `dashboard.log` in the data directory. The `dashboard-instance.json` file is only a discovery record: Hycli verifies a random instance ID over loopback before reusing or stopping it, and never kills a PID read from that file.
 
 For development, `hycli dashboard --port 4320 --no-open` retains foreground operation and fails if its requested port is occupied. SIGINT and SIGTERM (Unix) shut it down. Use the same data directory for the foreground and desktop modes.
 
-An open dashboard reconnects after a server restart. Preparation and descriptions can be retried from Activity. Completed results persist. A change interrupted after authorization may already have reached its website; its activity entry tells you to check the website before running it again. Hycli never replays that change automatically.
+Automatic opening passes only an owner-private temporary file path to the operating system, never a reusable credential or a ticket-bearing URL. Each opening has an independent, single-use ticket. The file is removed after consumption, expiry or shutdown; an opener starting successfully does not consume it. If the operating system cannot establish owner-only file access, opening fails closed. Browser-session state is stored separately in the owner-private `dashboard-auth-v2` directory. The first upgrade invalidates the old launch-derived browser session once; reopen Hycli to reconnect. Accounts, settings and jobs are retained.
+
+An open dashboard using the new browser session reconnects after a server restart. Preparation and descriptions can be retried from Activity. Completed results persist. A change interrupted after authorization may already have reached its website; its activity entry tells you to check the website before running it again. Hycli never replays that change automatically.
 
 Data is stored under `HYCLI_DATA_DIR` when set, otherwise `XDG_DATA_HOME/hycli` when set, then the platform's user data directory: `~/.local/share/hycli` on Linux, `~/Library/Application Support/hycli` on macOS, and `%LOCALAPPDATA%\hycli` on Windows. An existing installation at the earlier `~/.local/share/hycli` location is retained. Use one data directory for the dashboard, CLI and MCP. Back it up while Hycli is stopped; it includes encrypted credentials and their local key fallback when the OS keyring is unavailable.
 
@@ -89,9 +91,13 @@ npm --prefix dashboard ci
 npm --prefix dashboard run check
 npm --prefix dashboard run build
 cargo test --all-targets --locked
-cargo build --locked --bin hycli --example dashboard_fixture
+cargo test --locked --features dashboard-test-support --test codex_launch
+cargo build --locked --bin hycli
+cargo build --locked --features dashboard-test-support --example dashboard_fixture
 node scripts/test-e2e.mjs --full
 ```
+
+The `dashboard-test-support` feature is only for synthetic fixtures; do not enable it for production or package builds. Source archives include the gated fixture helper and test scripts for reproducibility; default native builds do not compile the helper, and native packages do not include fixture executables or session files. Fixture sessions are established by test-only ticket issuance followed by the normal bootstrap endpoint. Browser suites install that synthetic session to test protected UI behavior; they do not verify the private-file/native-browser handoff.
 
 Install the test browser with `cd dashboard && npx playwright install chromium`, or set `BROWSER_BIN` to an installed Chromium executable. When a distribution launcher adds personal graphics/session flags, use the browser binary directly for isolated tests.
 

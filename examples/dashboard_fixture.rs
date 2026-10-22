@@ -164,24 +164,46 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let port = listener.local_addr()?.port();
     let address = format!("http://127.0.0.1:{port}");
-    let launch = hycli::dashboard::Web::new(core.clone(), port)?.launch;
-    util::atomic_file(
-        &std::env::var_os("HYCLI_FIXTURE_OUTPUT")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|| project.join(".cache/e2e-ports.json")),
-        &serde_json::to_vec(
-            &json!({"dashboard":address,"launch":launch,"website":website,"data":root}),
-        )?,
-    )?;
-    println!("Synthetic dashboard fixture: {address}");
     let mut first = Some(listener);
+    let mut publish_session = true;
     loop {
         let listener = match first.take() {
             Some(listener) => listener,
             None => tokio::net::TcpListener::bind(("127.0.0.1", port)).await?,
         };
-        let router = hycli::dashboard::router(hycli::dashboard::Web::new(core.clone(), port)?);
+        let web = hycli::dashboard::Web::new(core.clone(), port)?;
+        let ticket = publish_session.then(|| web.test_bootstrap_ticket());
+        let router = hycli::dashboard::router(web);
         let mut server = tokio::spawn(async move { axum::serve(listener, router).await });
+        if let Some(ticket) = ticket {
+            // Test-only issuance, normal production redemption. This does not
+            // exercise the private-file/browser handoff transport.
+            let response = reqwest::Client::builder()
+                .no_proxy()
+                .build()?
+                .post(format!("{address}/api/bootstrap"))
+                .json(&json!({"ticket": ticket}))
+                .send()
+                .await?
+                .error_for_status()?;
+            let cookie = response.headers()["set-cookie"]
+                .to_str()?
+                .split(';')
+                .next()
+                .ok_or("fixture session cookie missing")?
+                .to_owned();
+            let session: Value = response.json().await?;
+            util::atomic_file(
+                &std::env::var_os("HYCLI_FIXTURE_OUTPUT")
+                    .map(std::path::PathBuf::from)
+                    .unwrap_or_else(|| project.join(".cache/e2e-ports.json")),
+                &serde_json::to_vec(
+                    &json!({"dashboard":address,"session":{"cookie":cookie,"csrf":session["csrf"]},"website":website,"data":root}),
+                )?,
+            )?;
+            println!("Synthetic dashboard fixture: {address}");
+            publish_session = false;
+        }
         tokio::select! {
             result = &mut server => { result??; break; }
             _ = restart_dashboard.notified() => { server.abort(); let _ = server.await; }

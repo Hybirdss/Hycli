@@ -1,3 +1,4 @@
+import {installFixtureSession} from './scripts/fixture-session.mjs';
 import {selectPersistedLocale} from './e2e-settings.mjs';
 import {documentationScreenshot} from './e2e-screenshots.mjs';
 import {fileURLToPath} from 'node:url';
@@ -19,7 +20,8 @@ const openLibrary=()=>button(page.locator('.site-card').filter({hasText:'Researc
 try {
  const baseline=(await fixtureStatus()).writes;
  console.log('Opening the Rust dashboard.');
- await page.goto(ports.dashboard+'/?launch='+ports.launch,{waitUntil:'domcontentloaded',timeout:120000});await page.getByRole('heading',{name:en['sites.title'],exact:true}).waitFor();
+ await installFixtureSession(context, ports);
+ await page.goto(ports.dashboard,{waitUntil:'domcontentloaded',timeout:120000});await page.getByRole('heading',{name:en['sites.title'],exact:true}).waitFor();
  await fs.mkdir('docs/images',{recursive:true});await screenshot({path:'docs/images/dashboard.png',fullPage:true,timeout:120000});
  console.log('Checking the provider settings flow.');
  await button(page,'nav.connections').click();await button(page.locator('.chatgpt-method').filter({hasText:en['connections.apiHint']}),'common.edit').click();await dialog().getByLabel(en['connections.key'],{exact:false}).fill('synthetic-provider-key');await dialog().getByLabel(en['connections.model'],{exact:false}).fill('fixture-model');await button(dialog(),'common.save').click();await dialog().waitFor({state:'hidden'});
