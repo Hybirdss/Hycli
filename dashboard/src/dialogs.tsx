@@ -41,24 +41,122 @@ export function ApprovalDialog({ approval, ops, onClose, onJob, onResolved }: { 
   useEffect(() => { const timer = window.setInterval(() => setExpired(new Date(approval.expires_at).getTime() <= Date.now()), 1000); return () => clearInterval(timer); }, [approval.expires_at]);
   return <Modal title={t('safety.changeTitle')} subtitle={t('safety.changeDescription')} onClose={onClose}><div className="approval-shield"><ShieldCheck size={28} /></div><dl className="review-details"><div><dt>{t('accounts.website')}</dt><dd>{approval.site_title}</dd></div><div><dt>{t('safety.account')}</dt><dd>{approval.account_label || t('sites.publicAccess')}</dd></div><div><dt>{t('safety.action')}</dt><dd>{approval.action_title}</dd></div>{approval.inputs.map((input, i) => <div key={i}><dt>{input.label}</dt><dd>{input.value}</dd></div>)}</dl>{expired && <ErrorNotice code="approval_expired" />}{error && <ErrorNotice code={error} />}<div className="dialog-buttons"><Button variant="secondary" disabled={busy} onClick={() => { setBusy(true); void ops.act(`/api/approvals/${approval.id}/reject`).then(onResolved).catch(e => setError(codeOf(e))).finally(() => setBusy(false)); }}>{t('common.cancel')}</Button><Button disabled={expired} loading={busy} onClick={() => { setBusy(true); void ops.act<{ job: Job }>(`/api/approvals/${approval.id}/approve`).then(r => onJob(r.job)).catch(e => setError(codeOf(e))).finally(() => setBusy(false)); }}>{t('safety.allowOnce')}<ArrowRight size={15} /></Button></div></Modal>;
 }
+// Across dialog lifetimes, a replacement start must not overtake an older submission.
+let codexLoginStart: Promise<void> = Promise.resolve();
 export function ProviderDialog({ provider: initialProvider, data, ops, onClose }: { provider: Provider; data: Snapshot; ops: Operations; onClose: () => void }) {
   const [providerID, setProviderID] = useState(initialProvider.id);
   const provider = data.providers.find(p => p.id === providerID) || initialProvider;
-  const { t } = useI18n(); const [key, setKey] = useState(''); const [model, setModel] = useState(provider.model || provider.default_model); const [defaultProvider, setDefaultProvider] = useState(data.settings.default_provider === provider.id || !data.settings.default_provider); const [error, setError] = useState(''); const [busy, setBusy] = useState(false); const [authURL, setAuthURL] = useState(''); const [loginID, setLoginID] = useState('');
+  const { t } = useI18n(); const [key, setKey] = useState(''); const [model, setModel] = useState(provider.model || provider.default_model); const [defaultProvider, setDefaultProvider] = useState(data.settings.default_provider === provider.id || !data.settings.default_provider); const [error, setError] = useState(''); const [busy, setBusy] = useState<'check' | 'login' | 'save' | 'disconnect' | ''>('');
+  type AccountCheck = { connected: boolean; account?: string; verification: Provider['verification']; verification_error?: string; models_error?: string; login_status?: 'pending' | 'completed' | 'failed' };
+  const [login, setLogin] = useState<{ id: string; url: string } | null>(null);
+  const [account, setAccount] = useState<AccountCheck | null>(null);
+  // This dialog owns a single attempt. Configuration remains owned by the server.
+  const owner = useRef<{ generation: number; loginId: string; timer?: number; request?: AbortController }>({ generation: 0, loginId: '' });
+  const cancelLogin = (id: string) => { if (id) void request('/api/providers/codex/login/cancel', 'POST', { login_id: id }).catch(() => {}); };
+  const invalidate = () => {
+    const current = owner.current; current.generation++;
+    clearTimeout(current.timer); current.timer = undefined;
+    current.request?.abort(); current.request = undefined;
+    const id = current.loginId; current.loginId = ''; cancelLogin(id);
+    return current.generation;
+  };
+  const current = (generation: number) => owner.current.generation === generation;
+  const closeDialog = () => { invalidate(); onClose(); };
+  useEffect(() => () => { invalidate(); }, []);
   const chooseProvider = (id: string) => {
     const next = data.providers.find(p => p.id === id);
-    if (!next) return;
-    setProviderID(id);
-    setKey('');
-    setModel(next.model || next.default_model);
-    setDefaultProvider(data.settings.default_provider === id || !data.settings.default_provider);
-    setError('');
+    if (!next || id === providerID) return;
+    invalidate(); setLogin(null); setAccount(null); setBusy('');
+    setProviderID(id); setKey(''); setModel(next.model || next.default_model);
+    setDefaultProvider(data.settings.default_provider === id || !data.settings.default_provider); setError('');
   };
-  const submit = async (e: React.FormEvent) => { e.preventDefault(); setBusy(true); setError(''); try { await ops.act(`/api/providers/${provider.id}`, 'PUT', { key: key || undefined, model, default: defaultProvider }); setKey(''); ops.toast('connections.testSuccess'); onClose(); } catch (e) { setError(codeOf(e)); } finally { setBusy(false); } };
-  useEffect(() => { if (!loginID) return; const timer = window.setInterval(() => { void request<{ connected: boolean }>('/api/providers/codex/account').then(async r => { if (r.connected) { clearInterval(timer); await ops.refresh(); setLoginID(''); setAuthURL(''); ops.toast('connections.codexReady'); } }).catch(() => {}); }, 2500); return () => clearInterval(timer); }, [loginID, ops]);
-  const signIn = async () => { setBusy(true); setError(''); try { const result = await request<{ auth_url: string; login_id: string }>('/api/providers/codex/login', 'POST'); setAuthURL(result.auth_url); setLoginID(result.login_id); } catch (e) { setError(codeOf(e)); } finally { setBusy(false); } };
-  return <Modal title={['codex', 'openai'].includes(provider.id) ? 'ChatGPT' : provider.id === 'anthropic' ? 'Claude' : provider.name} subtitle={t('connections.subtitle')} onClose={onClose}><form onSubmit={submit} className="dialog-form"><div className="provider-dialog-mark"><ProviderMark id={provider.id} /></div>{['codex', 'openai'].includes(provider.id) && <div className="segmented-control connection-methods" aria-label={t('connections.method')}>{['codex','openai'].map(id => <button type="button" key={id} className={provider.id === id ? 'selected' : ''} aria-pressed={provider.id === id} disabled={busy} onClick={() => chooseProvider(id)}>{id === 'codex' ? <UserRound size={16} /> : <KeyRound size={16} />}{t(id === 'codex' ? 'connections.login' : 'connections.key')}</button>)}</div>}{['zai', 'zai-coding-plan'].includes(provider.id) && <Field label={t('connections.provider')}><Select aria-label={t('connections.provider')} value={provider.id} onChange={e => chooseProvider(e.target.value)} disabled={busy}>{data.providers.filter(p => ['zai', 'zai-coding-plan'].includes(p.id)).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></Field>}{provider.id === 'codex' ? <div className="codex-connect"><div className="connection-illustration"><Bird /><span><UserRound size={26} /></span></div><p>{t('connections.codexDescription')}</p>{provider.connected ? <div className="notice notice--success"><CheckCircle2 size={18} />{provider.account || t('connections.codexReady')}</div> : !provider.available ? <div className="notice">{t('connections.codexMissing')}<a href="https://developers.openai.com/codex/cli" target="_blank" rel="noreferrer">{t('common.learnMore')}<ExternalLink size={12} /></a></div> : <><Button type="button" loading={busy} onClick={() => { void signIn(); }}>{t('connections.codexSignIn')}<ArrowRight size={15} /></Button><Button type="button" variant="ghost" onClick={() => { setBusy(true); void ops.act('/api/providers/codex/check').then(() => ops.toast('connections.testSuccess')).catch(e => setError(codeOf(e))).finally(() => setBusy(false)); }}>{t('connections.codexExisting')}</Button></>}{authURL && <div className="notice notice--signin"><p>{t('connections.codexWaiting')}</p><a className="button button--secondary" href={authURL} target="_blank" rel="noreferrer">{t('connections.codexContinue')}<ExternalLink size={15} /></a></div>}</div> : <><Field label={t('connections.key')} hint={provider.has_key ? t('connections.keySaved') : t('connections.keyHint')}><input type="password" autoComplete="off" value={key} onChange={e => setKey(e.target.value)} required={!provider.has_key} placeholder={provider.has_key ? '••••••••••••••••' : t('connections.keyPlaceholder')} spellCheck={false} /></Field>{provider.key_url && <a className="provider-key-link" href={provider.key_url} target="_blank" rel="noreferrer">{t('connections.openProvider')}<ExternalLink size={13} /></a>}</>}
-    <Field label={t('connections.model')} hint={t('connections.modelHint')}><input value={model} list={`models-${provider.id}`} onChange={e => setModel(e.target.value)} placeholder={provider.default_model || t('connections.customModel')} autoComplete="off" spellCheck={false} /><datalist id={`models-${provider.id}`}>{provider.models.map(name => <option value={name} key={name} />)}</datalist></Field><label className="checkbox-label"><input type="checkbox" checked={defaultProvider} onChange={e => setDefaultProvider(e.target.checked)} /><span>{t('connections.default')}</span></label>{error && <ErrorNotice code={error} />}<p className="subtle-note">{t('connections.usageNote')}</p><div className="dialog-buttons">{provider.connected && <Button type="button" variant="ghost" onClick={() => { setBusy(true); void ops.act(`/api/providers/${provider.id}`, 'DELETE').then(onClose).catch(e => setError(codeOf(e))).finally(() => setBusy(false)); }}>{t('connections.disconnect')}</Button>}<Button type="button" variant="secondary" onClick={onClose}>{t('common.cancel')}</Button><Button type="submit" disabled={provider.id === 'codex' && !provider.connected} loading={busy}>{t('common.save')}</Button></div></form></Modal>;
+  const probe = async (generation: number, explicit: boolean, loginId = '') => {
+    if (!current(generation) || owner.current.request) return;
+    const controller = new AbortController(); owner.current.request = controller;
+    let received = false;
+    try {
+      const result = await request<AccountCheck>(explicit ? '/api/providers/codex/check' : `/api/providers/codex/account${loginId ? `?login_id=${encodeURIComponent(loginId)}` : ''}`, explicit ? 'POST' : 'GET', undefined, controller.signal);
+      if (!current(generation)) return;
+      received = true; setAccount(result); setError(result.verification_error || result.models_error || '');
+      if (loginId && result.login_status === 'failed') { owner.current.loginId = ''; setLogin(null); setError('cancelled'); return 'failed'; }
+      // Account presence alone is not evidence that this particular login finished.
+      if (loginId && result.login_status !== 'completed') return result.verification_error ? 'failed' : 'pending';
+      if (loginId && !result.connected) { setError('auth_required'); return 'failed'; }
+      await ops.refresh();
+      if (!current(generation)) return;
+      if (loginId) { owner.current.loginId = ''; setLogin(null); }
+      if ((explicit || loginId) && result.connected) ops.toast('connections.codexReady');
+    } catch (e) {
+      if (current(generation) && !controller.signal.aborted) {
+        if (loginId && codeOf(e) === 'cancelled') { owner.current.loginId = ''; setLogin(null); }
+        else if (!received) setAccount({ connected: false, verification: codeOf(e) === 'auth_required' ? 'signed_out' : 'check_failed' });
+        setError(codeOf(e));
+      }
+      return 'failed';
+    } finally {
+      if (owner.current.request === controller) owner.current.request = undefined;
+    }
+    return 'done';
+  };
+  const pollLogin = async (generation: number, id: string) => {
+    if (!current(generation) || owner.current.loginId !== id || owner.current.request) return;
+    const result = await probe(generation, false, id);
+    if (!current(generation) || owner.current.loginId !== id) return;
+    // A failed request pauses for an explicit retry. Pending success schedules only
+    // after the previous request settled, never on a repeating interval.
+    if (result === 'pending' && !owner.current.request) owner.current.timer = window.setTimeout(() => { void pollLogin(generation, id); }, 2500);
+  };
+  const checkAccount = async (explicit = true) => {
+    const generation = invalidate(); setLogin(null); setAccount({ connected: false, verification: 'checking' }); setError(''); setBusy('check');
+    await probe(generation, explicit);
+    if (current(generation)) setBusy('');
+  };
+  useEffect(() => { if (providerID === 'codex') void checkAccount(false); }, [providerID]);
+  const retryLogin = () => {
+    if (!login || owner.current.request) return;
+    clearTimeout(owner.current.timer); setError(''); void pollLogin(owner.current.generation, login.id);
+  };
+  const signIn = async () => {
+    const generation = invalidate(); setLogin(null); setBusy('login'); setError('');
+    try {
+      // Do not abort start: a late response supplies the exact ID we must cancel.
+      // Serialize submissions (not polling) across close/reopen and method changes.
+      const pending = codexLoginStart.then(async () => {
+        if (!current(generation)) return null;
+        const controller = new AbortController();
+        const receipt = request<{ auth_url: string; login_id: string }>('/api/providers/codex/login', 'POST', undefined, controller.signal);
+        let timer: number | undefined;
+        try {
+          // Longer than the server's 40s bound; a broken transport cannot block
+          // every later dialog. A replacement start also replaces server ownership.
+          const result = await Promise.race([receipt, new Promise<never>((_, reject) => {
+            timer = window.setTimeout(() => { controller.abort(); reject(new ApiError('timeout', 504)); }, 50000);
+          })]);
+          if (!current(generation)) { cancelLogin(result.login_id); return null; }
+          return result;
+        } catch (e) {
+          if (controller.signal.aborted) {
+            void receipt.then(result => cancelLogin(result.login_id)).catch(() => {});
+            throw new ApiError('timeout', 504);
+          }
+          throw e;
+        } finally { clearTimeout(timer); }
+      });
+      codexLoginStart = pending.then(() => {}, () => {});
+      const result = await pending;
+      if (!result) return;
+      if (!current(generation)) { cancelLogin(result.login_id); return; }
+      owner.current.loginId = result.login_id; setLogin({ id: result.login_id, url: result.auth_url });
+      owner.current.timer = window.setTimeout(() => { void pollLogin(generation, result.login_id); }, 2500);
+    } catch (e) { if (current(generation)) setError(codeOf(e)); }
+    finally { if (current(generation)) setBusy(''); }
+  };
+  const submit = async (e: React.FormEvent) => { e.preventDefault(); const generation = invalidate(); setLogin(null); setBusy('save'); setError(''); try { await ops.act(`/api/providers/${provider.id}`, 'PUT', { key: key || undefined, model, default: defaultProvider }); if (!current(generation)) return; setKey(''); ops.toast('connections.testSuccess'); closeDialog(); } catch (e) { if (current(generation)) setError(codeOf(e)); } finally { if (current(generation)) setBusy(''); } };
+  const disconnect = async () => { const generation = invalidate(); setLogin(null); setBusy('disconnect'); setError(''); try { await ops.act(`/api/providers/${provider.id}`, 'DELETE'); if (current(generation)) closeDialog(); } catch (e) { if (current(generation)) setError(codeOf(e)); } finally { if (current(generation)) setBusy(''); } };
+  const verification = account?.verification || provider.verification || 'unknown';
+  const verified = provider.available && verification === 'verified';
+  return <Modal title={['codex', 'openai'].includes(provider.id) ? 'ChatGPT' : provider.id === 'anthropic' ? 'Claude' : provider.name} subtitle={t('connections.subtitle')} onClose={closeDialog}><form onSubmit={submit} className="dialog-form"><div className="provider-dialog-mark"><ProviderMark id={provider.id} /></div>{['codex', 'openai'].includes(provider.id) && <div className="segmented-control connection-methods" aria-label={t('connections.method')}>{['codex','openai'].map(id => <button type="button" key={id} className={provider.id === id ? 'selected' : ''} aria-pressed={provider.id === id} disabled={busy === 'save' || busy === 'disconnect'} onClick={() => chooseProvider(id)}>{id === 'codex' ? <UserRound size={16} /> : <KeyRound size={16} />}{t(id === 'codex' ? 'connections.login' : 'connections.key')}</button>)}</div>}{['zai', 'zai-coding-plan'].includes(provider.id) && <Field label={t('connections.provider')}><Select aria-label={t('connections.provider')} value={provider.id} onChange={e => chooseProvider(e.target.value)} disabled={!!busy}>{data.providers.filter(p => ['zai', 'zai-coding-plan'].includes(p.id)).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></Field>}{provider.id === 'codex' ? <div className="codex-connect"><div className="connection-illustration"><Bird /><span><UserRound size={26} /></span></div><p>{t('connections.codexDescription')}</p>{!provider.available ? <div className="notice">{t('connections.codexMissing')}<a href="https://developers.openai.com/codex/cli" target="_blank" rel="noreferrer">{t('common.learnMore')}<ExternalLink size={12} /></a></div> : verified ? <div className="notice notice--success"><CheckCircle2 size={18} />{account?.account || provider.account || t('connections.codexReady')}</div> : <p className="subtle-note">{t(busy ? 'connections.testing' : verification === 'signed_out' ? 'connections.notConnected' : 'actions.unverified')}</p>}{provider.available && (!verified || login) && <Button type="button" loading={!!busy} onClick={() => { void signIn(); }}>{t('connections.codexSignIn')}<ArrowRight size={15} /></Button>}<Button type="button" variant="ghost" loading={!!busy} onClick={() => { if (login) retryLogin(); else void checkAccount(); }}>{t(login || provider.connected ? 'connections.codexRefresh' : 'connections.codexExisting')}</Button>{login && <div className="notice notice--signin"><p>{t('connections.codexWaiting')}</p><a className="button button--secondary" href={login.url} target="_blank" rel="noreferrer">{t('connections.codexContinue')}<ExternalLink size={15} /></a></div>}</div> : <><Field label={t('connections.key')} hint={provider.has_key ? t('connections.keySaved') : t('connections.keyHint')}><input type="password" autoComplete="off" value={key} onChange={e => setKey(e.target.value)} required={!provider.has_key} placeholder={provider.has_key ? '••••••••••••••••' : t('connections.keyPlaceholder')} spellCheck={false} /></Field>{provider.key_url && <a className="provider-key-link" href={provider.key_url} target="_blank" rel="noreferrer">{t('connections.openProvider')}<ExternalLink size={13} /></a>}</>}
+    <Field label={t('connections.model')} hint={t('connections.modelHint')}><input value={model} list={`models-${provider.id}`} onChange={e => setModel(e.target.value)} placeholder={provider.default_model || t('connections.customModel')} autoComplete="off" spellCheck={false} /><datalist id={`models-${provider.id}`}>{provider.models.map(name => <option value={name} key={name} />)}</datalist></Field><label className="checkbox-label"><input type="checkbox" checked={defaultProvider} onChange={e => setDefaultProvider(e.target.checked)} /><span>{t('connections.default')}</span></label>{error && <ErrorNotice code={error} />}<p className="subtle-note">{t('connections.usageNote')}</p><div className="dialog-buttons">{provider.connected && <Button type="button" variant="ghost" onClick={() => { void disconnect(); }}>{t('connections.disconnect')}</Button>}<Button type="button" variant="secondary" onClick={closeDialog}>{t('common.cancel')}</Button><Button type="submit" disabled={provider.id === 'codex' && !provider.connected} loading={!!busy}>{t('common.save')}</Button></div></form></Modal>;
 }
 export function AccountDialog({ site, data, ops, onClose, resume }: { site: Site | null; data: Snapshot; ops: Operations; onClose: () => void; resume?: { url: string; provider?: string; intent?: string } | null }) {
   const { t } = useI18n(); const [selected, setSelected] = useState(site?.id || (resume ? '' : data.sites[0]?.id || '')); const [url, setURL] = useState(site?.url || resume?.url || ''); const [pair, setPair] = useState<{ code: string; expires_at: string } | null>(null); const [error, setError] = useState(''); const [busy, setBusy] = useState(false); const [tab, setTab] = useState('auto'); const file = useRef<HTMLInputElement>(null); const before = useRef(new Set(data.accounts.map(a => a.id)));

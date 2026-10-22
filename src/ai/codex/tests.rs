@@ -25,6 +25,40 @@ impl Drop for Fixture {
     }
 }
 
+#[tokio::test]
+async fn stale_queued_login_cannot_replace_or_cancel_newer_ownership() {
+    let fixture = Fixture::new();
+    let adapter = Codex::with_binary(fixture.0.join("workspace"), fixture.0.join("missing"));
+    let gate = adapter.login_gate.lock().await;
+    // An older request captured revision 1, but revision 2 reached admission
+    // first. Reject the old request before any ownership or protocol mutation.
+    *adapter.login.lock().unwrap() = Some(LoginAttempt {
+        id: "newer-owned-login".to_owned(),
+        revision: 2,
+        status: LoginStatus::Pending,
+        activation_pending: true,
+    });
+    let current_revision = 2;
+    let older_revision = 1;
+    let mut queued = Box::pin(adapter.login_with_intent(older_revision, || {
+        if current_revision != older_revision {
+            return Err(AppError::api("cancelled", 409));
+        }
+        Ok(())
+    }));
+    std::future::poll_fn(|cx| {
+        assert!(std::future::Future::poll(queued.as_mut(), cx).is_pending());
+        std::task::Poll::Ready(())
+    })
+    .await;
+    drop(gate);
+    assert_eq!(queued.await.unwrap_err().public_code, "cancelled");
+    assert_eq!(
+        adapter.login_status("newer-owned-login").unwrap(),
+        (LoginStatus::Pending, 2, true)
+    );
+}
+
 #[test]
 fn path_precedes_documented_macos_fallback_and_returns_absolute_path() {
     let fixture = Fixture::new();

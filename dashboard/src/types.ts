@@ -6,7 +6,7 @@ export type FileArtifact = {
   provenance: { site: string; action: string; source_origin: string };
 };
 export type Settings = { locale: string; theme: 'light' | 'dark' | 'system'; reduce_motion: boolean; notifications: boolean; default_provider: string; native_browser_discovery?: boolean; browser_address?: string; engine_path?: string };
-export type Provider = { id: string; name: string; default_model: string; key_url?: string; model: string; connected: boolean; has_key: boolean; models: string[]; available: boolean; account?: string };
+export type Provider = { id: string; name: string; default_model: string; key_url?: string; model: string; connected: boolean; has_key: boolean; models: string[]; available: boolean; verification?: 'unknown' | 'checking' | 'verified' | 'signed_out' | 'check_failed'; verification_error?: string; account?: string };
 export type Field = { id: string; label: string; hint?: string; type: string; required: boolean; default?: unknown };
 export type Action = { id: string; title: string; description: string; output: string; effect: 'read' | 'write' | 'unknown'; verified: boolean; credential_id?: string; accepts_account?: boolean; inputs: Field[] };
 export type Site = { id: string; title: string; url: string; host: string; summary: string; status: string; pinned: boolean; writes: boolean; account_id?: string; actions: Action[]; credentials?: {id: string; label: string; configured: boolean}[]; updated_at: string; last_used?: string; image_url?: string; translation_pending: boolean };

@@ -73,6 +73,10 @@ pub struct ProviderView {
     pub models: Vec<String>,
     pub available: bool,
     pub account: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub verification: Option<codex::Verification>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub verification_error: Option<String>,
 }
 pub struct Client {
     gate: tokio::sync::Semaphore,

@@ -16,6 +16,62 @@ use super::{
 };
 
 impl StateStore {
+    /// Configuration intent metadata is not live account verification. Keep its
+    /// tombstone after removal so work in another process cannot restore a provider.
+    pub(crate) fn provider_revision(&self, id: &str) -> AppResult<u64> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| AppError::api("internal", 500))?;
+        let value: Option<String> = conn
+            .query_row(
+                "SELECT value FROM state_meta WHERE key = ?1",
+                params![format!("provider_revision:{id}")],
+                |row| row.get(0),
+            )
+            .optional()?;
+        value
+            .map(|value| {
+                value
+                    .parse::<u64>()
+                    .map_err(|_| AppError::api("data_invalid", 500))
+            })
+            .transpose()
+            .map(|value| value.unwrap_or_default())
+    }
+    pub(crate) fn advance_provider_revision(&self, id: &str) -> AppResult<u64> {
+        let mut conn = self
+            .conn
+            .lock()
+            .map_err(|_| AppError::api("internal", 500))?;
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let key = format!("provider_revision:{id}");
+        let value: Option<String> = tx
+            .query_row(
+                "SELECT value FROM state_meta WHERE key = ?1",
+                params![key],
+                |row| row.get(0),
+            )
+            .optional()?;
+        let revision = value
+            .map(|value| {
+                value
+                    .parse::<u64>()
+                    .map_err(|_| AppError::api("data_invalid", 500))
+            })
+            .transpose()?
+            .unwrap_or_default()
+            .checked_add(1)
+            .ok_or_else(|| AppError::api("data_invalid", 500))?;
+        tx.execute(
+            "INSERT INTO state_meta (key, value) VALUES (?1, ?2)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            params![key, revision.to_string()],
+        )?;
+        tx.commit()?;
+        Ok(revision)
+    }
+
     pub fn has_job_result(&self, id: &str) -> AppResult<bool> {
         let conn = self
             .conn

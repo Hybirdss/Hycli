@@ -226,6 +226,10 @@ pub fn router(web: Web) -> Router {
             post(routes_accounts::codex_login),
         )
         .route(
+            "/api/providers/codex/login/cancel",
+            post(routes_accounts::codex_cancel_login),
+        )
+        .route(
             "/api/providers/codex/account",
             get(routes_accounts::codex_account),
         )

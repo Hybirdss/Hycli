@@ -25,6 +25,7 @@ pub(super) async fn save_provider(
     if body.model.len() > 160 {
         return Err(AppError::api("bad_request", 400));
     }
+    let revision = web.core.begin_provider_change(&id)?;
     let key = match body.key {
         Some(key) => key,
         None => {
@@ -40,7 +41,7 @@ pub(super) async fn save_provider(
     if key.len() > 8192 {
         return Err(AppError::api("bad_request", 400));
     }
-    if id == "codex" && web.core.ai.codex.refresh_account().await?.is_none() {
+    if id == "codex" && read_codex_account(&web).await?.is_none() {
         return Err(AppError::api("auth_required", 401));
     }
     let model = body.model.trim();
@@ -54,26 +55,29 @@ pub(super) async fn save_provider(
         key: key.trim().to_owned(),
     };
     let models = web.core.ai.check(&config).await?;
-    if id != "codex" {
-        web.core
-            .vault
-            .lock()
-            .map_err(|_| AppError::api("internal", 500))?
-            .set("providers", &id, &config.key)?;
-    }
-    web.core.state.update(|d| {
-        d.providers.insert(
-            id.clone(),
-            ProviderSettings {
-                model: config.model,
-                connected: true,
-                models,
-                checked_at: util::now(),
-            },
-        );
-        if body.default || d.settings.default_provider.is_empty() {
-            d.settings.default_provider = id;
+    web.core.finish_provider_change(&id, revision, || {
+        if id != "codex" {
+            web.core
+                .vault
+                .lock()
+                .map_err(|_| AppError::api("internal", 500))?
+                .set("providers", &id, &config.key)?;
         }
+        web.core.state.update(|d| {
+            d.providers.insert(
+                id.clone(),
+                ProviderSettings {
+                    model: config.model,
+                    connected: true,
+                    models,
+                    checked_at: util::now(),
+                },
+            );
+            if body.default || d.settings.default_provider.is_empty() {
+                d.settings.default_provider = id.clone();
+            }
+            Ok(())
+        })?;
         Ok(())
     })?;
     web.core.changed();
@@ -84,39 +88,34 @@ pub(super) async fn check_provider(
     State(web): State<Web>,
     Path(id): Path<String>,
 ) -> AppResult<Json<Value>> {
+    ai::provider(&id).ok_or_else(|| AppError::api("provider_missing", 400))?;
+    let revision = web.core.begin_provider_change(&id)?;
     if id == "codex" {
-        if web.core.ai.codex.refresh_account().await?.is_none() {
-            web.core.state.update(|d| {
-                if let Some(p) = d.providers.get_mut("codex") {
-                    p.connected = false;
-                }
-                Ok(())
-            })?;
-            web.core.changed();
+        if read_codex_account(&web).await?.is_none() {
             return Err(AppError::api("auth_required", 401));
         }
-        let models = web.core.ai.codex.models().await?;
-        web.core.state.update(|d| {
-            let p = d.providers.entry(id.clone()).or_default();
-            p.models = models;
-            p.connected = true;
-            p.checked_at = util::now();
-            if d.settings.default_provider.is_empty() {
-                d.settings.default_provider = id.clone();
-            }
-            Ok(())
-        })?;
-    } else {
-        let config = web.core.config(&id)?;
-        let models = web.core.ai.check(&config).await?;
+        let models = web.core.ai.codex.models().await;
+        let models_error = models.as_ref().err().map(|error| error.public_code.clone());
+        activate_codex(&web, revision, None, models.ok())?;
+        let mut response = serde_json::to_value(web.core.ai.codex.account_state())?;
+        response["ok"] = json!(true);
+        response["connected"] = json!(true);
+        if let Some(error) = models_error {
+            response["models_error"] = json!(error);
+        }
+        return Ok(Json(response));
+    }
+    let config = web.core.config(&id)?;
+    let models = web.core.ai.check(&config).await?;
+    web.core.finish_provider_change(&id, revision, || {
         web.core.state.update(|d| {
             if let Some(p) = d.providers.get_mut(&id) {
                 p.models = models;
                 p.checked_at = util::now();
             }
             Ok(())
-        })?;
-    }
+        })
+    })?;
     web.core.changed();
     Ok(ok())
 }
@@ -130,35 +129,111 @@ pub(super) async fn delete_provider(
 }
 
 pub(super) async fn codex_login(State(web): State<Web>) -> AppResult<Json<Value>> {
-    Ok(Json(web.core.ai.codex.login().await?))
+    let revision = web.core.begin_provider_change("codex")?;
+    Ok(Json(
+        web.core
+            .ai
+            .codex
+            .login_with_intent(revision, || {
+                web.core
+                    .finish_provider_change("codex", revision, || Ok(()))
+            })
+            .await?,
+    ))
 }
 
-pub(super) async fn codex_account(State(web): State<Web>) -> AppResult<Json<Value>> {
-    let account = web.core.ai.codex.refresh_account().await?;
-    if account.is_some() {
-        let models = web.core.ai.codex.models().await?;
-        web.core.state.update(|d| {
-            let p = d.providers.entry("codex".into()).or_default();
-            p.connected = true;
-            p.models = models;
-            if d.settings.default_provider.is_empty() {
-                d.settings.default_provider = "codex".into();
-            }
-            Ok(())
-        })?;
-        web.core.changed();
-    } else {
-        web.core.state.update(|d| {
-            if let Some(p) = d.providers.get_mut("codex") {
-                p.connected = false;
-            }
-            Ok(())
-        })?;
-        web.core.changed();
+#[derive(Deserialize)]
+pub(super) struct CancelLogin {
+    login_id: String,
+}
+pub(super) async fn codex_cancel_login(
+    State(web): State<Web>,
+    Json(body): Json<CancelLogin>,
+) -> AppResult<Json<Value>> {
+    validate_login_id(&body.login_id)?;
+    web.core.ai.codex.cancel_login(&body.login_id).await?;
+    Ok(ok())
+}
+
+#[derive(Default, Deserialize)]
+pub(super) struct CodexAccountQuery {
+    login_id: Option<String>,
+}
+pub(super) async fn codex_account(
+    State(web): State<Web>,
+    Query(query): Query<CodexAccountQuery>,
+) -> AppResult<Json<Value>> {
+    if let Some(id) = &query.login_id {
+        validate_login_id(id)?;
+        web.core.ai.codex.login_status(id)?;
     }
-    Ok(Json(
-        json!({"connected":account.is_some(),"account":account}),
-    ))
+    let account = read_codex_account(&web).await?;
+    let mut response = serde_json::to_value(web.core.ai.codex.account_state())?;
+    // This endpoint describes official account evidence, not saved configuration.
+    // A passive read never creates a provider or changes its model/default.
+    response["connected"] = json!(account.is_some());
+    response["account"] = json!(account);
+    if let Some(id) = &query.login_id {
+        let (status, revision, activation_pending) = web.core.ai.codex.login_status(id)?;
+        web.core
+            .finish_provider_change("codex", revision, || Ok(()))?;
+        response["login_status"] = json!(status);
+        if status == ai::codex::LoginStatus::Completed && account.is_some() && activation_pending {
+            let models = web.core.ai.codex.models().await;
+            let models_error = models.as_ref().err().map(|error| error.public_code.clone());
+            activate_codex(&web, revision, Some(id), models.ok())?;
+            if let Some(error) = models_error {
+                response["models_error"] = json!(error);
+            }
+        }
+    }
+    Ok(Json(response))
+}
+
+fn validate_login_id(id: &str) -> AppResult<()> {
+    if id.is_empty() || id.len() > 512 {
+        return Err(AppError::api("bad_request", 400));
+    }
+    Ok(())
+}
+
+async fn read_codex_account(web: &Web) -> AppResult<Option<String>> {
+    let result = web.core.ai.codex.refresh_account().await;
+    web.core.changed();
+    result
+}
+
+fn activate_codex(
+    web: &Web,
+    revision: u64,
+    login_id: Option<&str>,
+    models: Option<Vec<String>>,
+) -> AppResult<()> {
+    web.core.finish_provider_change("codex", revision, || {
+        let apply = || {
+            web.core.state.update(|d| {
+                let provider = d.providers.entry("codex".into()).or_default();
+                provider.connected = true;
+                if let Some(models) = models {
+                    provider.models = models;
+                    provider.checked_at = util::now();
+                }
+                // An empty model delegates to Codex's own configured default, as before.
+                // Never overwrite an existing Hycli selection while refreshing evidence.
+                if d.settings.default_provider.is_empty() {
+                    d.settings.default_provider = "codex".into();
+                }
+                Ok(())
+            })
+        };
+        if let Some(id) = login_id {
+            web.core.ai.codex.activate_login(id, revision, apply)
+        } else {
+            apply()
+        }
+    })?;
+    web.core.changed();
+    Ok(())
 }
 
 pub(super) async fn pair(
