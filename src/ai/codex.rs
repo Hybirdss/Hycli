@@ -18,13 +18,122 @@ use tokio::{
 };
 
 pub struct Codex {
-    binary: PathBuf,
+    binary: BinarySelection,
     workspace: PathBuf,
     connection: AsyncMutex<Option<Connection>>,
     inference_pool: AsyncMutex<Vec<Connection>>,
     inference_gate: tokio::sync::Semaphore,
     account: Mutex<Option<String>>,
 }
+struct BinarySelection {
+    requested: Option<PathBuf>,
+    base_dir: Option<PathBuf>,
+    selected: Mutex<Option<PathBuf>>,
+}
+
+impl BinarySelection {
+    fn new(requested: Option<PathBuf>) -> Self {
+        Self {
+            requested,
+            base_dir: std::env::current_dir().ok(),
+            selected: Mutex::new(None),
+        }
+    }
+
+    fn resolve(&self) -> Option<PathBuf> {
+        self.resolve_with(|| {
+            let paths = std::env::var_os("PATH")
+                .map(|value| std::env::split_paths(&value).collect::<Vec<_>>())
+                .unwrap_or_default();
+            let fallback = if cfg!(target_os = "macos") {
+                Some(Path::new(
+                    "/Applications/Codex.app/Contents/Resources/codex",
+                ))
+            } else {
+                None
+            };
+            resolve_binary(
+                self.requested.as_deref(),
+                self.base_dir.as_deref(),
+                &paths,
+                fallback,
+                cfg!(windows),
+            )
+        })
+    }
+
+    fn resolve_with(&self, resolve: impl FnOnce() -> Option<PathBuf>) -> Option<PathBuf> {
+        let mut selected = self.selected.lock().ok()?;
+        if selected.is_none() {
+            *selected = resolve();
+        }
+        selected.clone()
+    }
+}
+
+fn executable_path(candidate: &Path, base_dir: Option<&Path>, windows: bool) -> Option<PathBuf> {
+    let absolute = if candidate.is_absolute() {
+        candidate.to_owned()
+    } else {
+        base_dir?.join(candidate)
+    };
+    if !absolute.is_absolute() {
+        return None;
+    }
+    let metadata = std::fs::metadata(&absolute).ok()?;
+    if !metadata.is_file() {
+        return None;
+    }
+    if windows {
+        if !absolute
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("exe"))
+        {
+            return None;
+        }
+    } else {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if metadata.permissions().mode() & 0o111 == 0 {
+                return None;
+            }
+        }
+    }
+    Some(absolute)
+}
+
+fn resolve_binary(
+    requested: Option<&Path>,
+    base_dir: Option<&Path>,
+    paths: &[PathBuf],
+    macos_fallback: Option<&Path>,
+    windows: bool,
+) -> Option<PathBuf> {
+    let candidate = |path: &Path| {
+        if windows && path.extension().is_none() {
+            executable_path(&path.with_extension("exe"), base_dir, windows)
+        } else {
+            executable_path(path, base_dir, windows)
+        }
+    };
+    let name = requested.unwrap_or_else(|| Path::new("codex"));
+    if name.is_absolute() || name.components().count() > 1 {
+        return candidate(name);
+    }
+    paths
+        .iter()
+        .find_map(|directory| candidate(&directory.join(name)))
+        .or_else(|| {
+            if requested.is_none() {
+                macos_fallback.and_then(candidate)
+            } else {
+                None
+            }
+        })
+}
+
 struct Connection {
     _child: Child,
     input: ChildStdin,
@@ -53,7 +162,7 @@ const DISABLED: &[&str] = &[
 impl Codex {
     pub fn new(workspace: PathBuf) -> Self {
         Self {
-            binary: PathBuf::from("codex"),
+            binary: BinarySelection::new(None),
             workspace,
             connection: AsyncMutex::new(None),
             inference_pool: AsyncMutex::new(vec![]),
@@ -63,7 +172,7 @@ impl Codex {
     }
     pub fn with_binary(workspace: PathBuf, binary: PathBuf) -> Self {
         Self {
-            binary,
+            binary: BinarySelection::new(Some(binary)),
             workspace,
             connection: AsyncMutex::new(None),
             inference_pool: AsyncMutex::new(vec![]),
@@ -71,23 +180,29 @@ impl Codex {
             account: Mutex::new(None),
         }
     }
+    /// Reports an executable candidate, not a signed-in account.
     pub fn available(&self) -> bool {
-        if self.binary.components().count() > 1 {
-            return self.binary.is_file();
-        }
-        std::env::var_os("PATH").is_some_and(|paths| {
-            std::env::split_paths(&paths).any(|dir| {
-                dir.join(&self.binary).is_file()
-                    || cfg!(windows) && dir.join(format!("{}.exe", self.binary.display())).is_file()
-            })
-        })
+        self.binary
+            .resolve()
+            .and_then(|path| executable_path(&path, None, cfg!(windows)))
+            .is_some()
     }
     pub fn cached_account(&self) -> Option<String> {
         self.account.lock().ok().and_then(|a| a.clone())
     }
     async fn connect(&self) -> AppResult<Connection> {
+        tokio::time::timeout(Duration::from_secs(40), self.connect_inner())
+            .await
+            .map_err(|_| AppError::api("timeout", 504))?
+    }
+
+    async fn connect_inner(&self) -> AppResult<Connection> {
+        let binary = self
+            .binary
+            .resolve()
+            .ok_or_else(|| AppError::api("codex_missing", 503))?;
         util::private_dir(&self.workspace)?;
-        let mut command = Command::new(&self.binary);
+        let mut command = Command::new(binary);
         command.arg("app-server");
         for feature in DISABLED {
             command.arg("--disable").arg(feature);
@@ -138,17 +253,19 @@ impl Codex {
     }
     async fn call(&self, method: &str, params: Value) -> AppResult<Value> {
         let mut guard = self.connection.lock().await;
-        let mut connection = match guard.take() {
-            Some(connection) => connection,
-            None => self.connect().await?,
-        };
-        let result = tokio::time::timeout(Duration::from_secs(40), connection.call(method, params))
-            .await
-            .map_err(|_| AppError::api("timeout", 504))?;
-        if result.is_ok() {
-            *guard = Some(connection);
-        }
-        result
+        tokio::time::timeout(Duration::from_secs(40), async {
+            let mut connection = match guard.take() {
+                Some(connection) => connection,
+                None => self.connect().await?,
+            };
+            let result = connection.call(method, params).await;
+            if result.is_ok() {
+                *guard = Some(connection);
+            }
+            result
+        })
+        .await
+        .map_err(|_| AppError::api("timeout", 504))?
     }
     pub async fn refresh_account(&self) -> AppResult<Option<String>> {
         let response = self
@@ -232,20 +349,21 @@ impl Codex {
         // Independent app-server children keep replies and cancellation scoped to one
         // worker. OAuth remains managed by Codex; Hycli never reads its auth files.
         let saved = self.inference_pool.lock().await.pop();
-        let mut connection = match saved {
-            Some(connection) => connection,
-            None => self.connect().await?,
-        };
-        let result = tokio::time::timeout(
-            Duration::from_secs(240),
-            connection.complete(&self.workspace, model, system, prompt),
-        )
+        tokio::time::timeout(Duration::from_secs(240), async {
+            let mut connection = match saved {
+                Some(connection) => connection,
+                None => self.connect().await?,
+            };
+            let result = connection
+                .complete(&self.workspace, model, system, prompt)
+                .await;
+            if result.is_ok() {
+                self.inference_pool.lock().await.push(connection);
+            }
+            result
+        })
         .await
-        .map_err(|_| AppError::api("timeout", 504))?;
-        if result.is_ok() {
-            self.inference_pool.lock().await.push(connection);
-        }
-        result
+        .map_err(|_| AppError::api("timeout", 504))?
     }
 }
 impl Connection {
@@ -459,3 +577,6 @@ impl Connection {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

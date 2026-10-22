@@ -184,6 +184,8 @@ Koneksi login Codex berjalan dalam thread sementara dengan eksekusi berkas, shel
 
 Tambahkan Hycli ke klien MCP Anda (**Agen pemrograman → Lihat pengaturan koneksi** menampilkan jalur tepat untuk OS Anda):
 
+Contoh berikut untuk klien yang menerima JSON `mcpServers`. Untuk ChatGPT dan Claude, lihat [pengaturan desktop](../../README.md#use-hycli-with-your-ai); ini berbeda dari login penyedia AI di Hycli.
+
 ```json
 {
   "mcpServers": {

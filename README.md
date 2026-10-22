@@ -195,7 +195,14 @@ The Codex login connection runs in an ephemeral thread with file, shell, browser
 <a id="use-hycli-with-your-ai"></a>
 ## Use Hycli with your AI
 
-Add Hycli to your MCP client (**Coding agents → View connection settings** shows the exact path for your OS):
+MCP lets an AI app call Hycli tools. It does not connect that app's subscription to Hycli's **AI connections**. Hycli's Claude provider uses an Anthropic API key. Its ChatGPT login provider uses the Codex app-server protocol described above.
+
+Open **Coding agents → View connection settings** in Hycli. For manual setup, preserve the generated executable path, arguments, and `HYCLI_DATA_DIR` so the client uses the same installed sites and accounts.
+
+- In ChatGPT desktop versions with **Settings → MCP servers → Add server**, choose **STDIO** and enter those values in the corresponding fields. Save, then select **Restart**. Follow the [ChatGPT MCP instructions](https://learn.chatgpt.com/docs/extend/mcp) for your version. The JSON below is not ChatGPT's configuration format.
+- In Claude Desktop, use the generated settings with its [manual local MCP configuration](https://modelcontextprotocol.io/docs/develop/connect-local-servers). If you have a Hycli `.mcpb` bundle, install it through **Settings → Extensions → Advanced settings → Install Extension** instead. Choose the bundle that matches both your OS and CPU: `darwin-x64` or `darwin-arm64` for macOS, `win32-x64` or `win32-arm64` for Windows. See [Claude's extension instructions](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop). Managed policies can restrict installation. The bundle does not set `HYCLI_DATA_DIR`. If your dashboard uses a custom data directory, use the manual configuration to preserve it.
+
+For clients that accept `mcpServers` JSON, this is a minimal example. Use the generated settings rather than replacing their path, arguments, or data directory with this example:
 
 ```json
 {

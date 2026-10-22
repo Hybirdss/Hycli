@@ -184,6 +184,8 @@ Codexログイン接続は、ファイル・シェル・ブラウザー・外部
 
 お使いのMCPクライアントにHycliを追加します（**コーディングエージェント → 接続設定を見る** に現在のOS向けの正確なパスが表示されます）:
 
+以下は `mcpServers` 形式の JSON に対応したクライアント向けの例です。ChatGPT と Claude は [デスクトップ設定](../../README.md#use-hycli-with-your-ai)を参照してください。Hycli の AI プロバイダへのログインとは別の設定です。
+
 ```json
 {
   "mcpServers": {

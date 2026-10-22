@@ -184,6 +184,8 @@ Die Codex-Login-Verbindung läuft in einem kurzlebigen Thread, in dem Datei-, Sh
 
 Füge Hycli zu deinem MCP-Client hinzu (**Coding-Agenten → Verbindungseinstellungen anzeigen** zeigt den genauen Pfad für dein Betriebssystem):
 
+Das folgende Beispiel gilt für Clients mit dem JSON-Format `mcpServers`. Für ChatGPT und Claude siehe [Desktop-Einrichtung](../../README.md#use-hycli-with-your-ai); sie ist von der KI-Anbieteranmeldung in Hycli getrennt.
+
 ```json
 {
   "mcpServers": {

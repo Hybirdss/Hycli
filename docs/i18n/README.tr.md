@@ -184,6 +184,8 @@ Codex oturum bağlantısı; dosya, kabuk, tarayıcı ve harici MCP yürütmesi d
 
 Hycli'yi MCP istemcinize ekleyin (**Kodlama ajanları → Bağlantı ayarlarını görüntüle** işletim sisteminiz için tam yolu gösterir):
 
+Aşağıdaki örnek, `mcpServers` JSON biçimini kabul eden istemciler içindir. ChatGPT ve Claude için [masaüstü kurulumuna](../../README.md#use-hycli-with-your-ai) bakın; bu, Hycli’deki yapay zekâ sağlayıcısı oturumundan ayrıdır.
+
 ```json
 {
   "mcpServers": {

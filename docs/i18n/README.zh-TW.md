@@ -184,6 +184,8 @@ Codex 登入連線在停用檔案、Shell、瀏覽器與外部 MCP 執行的臨�
 
 將 Hycli 加入你的 MCP 用戶端（**程式代理 → 查看連線設定** 會顯示目前作業系統的正確路徑）：
 
+以下範例適用於接受 `mcpServers` JSON 格式的用戶端。ChatGPT 和 Claude 請參閱[桌面應用程式設定](../../README.md#use-hycli-with-your-ai)；這與 Hycli 的 AI 供應商登入是不同的設定。
+
 ```json
 {
   "mcpServers": {

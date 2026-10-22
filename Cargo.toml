@@ -49,3 +49,8 @@ debug = 0
 strip = "symbols"
 lto = "thin"
 codegen-units = 1
+
+[[test]]
+name = "codex_launch"
+path = "tests/codex_launch.rs"
+harness = false

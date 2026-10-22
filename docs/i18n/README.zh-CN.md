@@ -184,6 +184,8 @@ Codex 登录连接在禁用文件、Shell、浏览器和外部 MCP 执行的临�
 
 将 Hycli 添加到你的 MCP 客户端（**编程代理 → 查看连接设置** 会显示当前操作系统的准确路径）：
 
+以下示例适用于接受 `mcpServers` JSON 格式的客户端。ChatGPT 和 Claude 请参阅[桌面应用设置](../../README.md#use-hycli-with-your-ai)；这与 Hycli 的 AI 提供商登录是不同的设置。
+
 ```json
 {
   "mcpServers": {

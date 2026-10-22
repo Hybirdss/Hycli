@@ -184,6 +184,8 @@ La connessione di accesso tramite Codex viene eseguita in un thread effimero con
 
 Aggiungi Hycli al tuo client MCP (**Agenti di programmazione → Visualizza impostazioni di connessione** mostra il percorso esatto per il tuo sistema operativo):
 
+L’esempio seguente è per i client che accettano JSON `mcpServers`. Per ChatGPT e Claude, consulta la [configurazione desktop](../../README.md#use-hycli-with-your-ai), distinta dall’accesso al fornitore AI in Hycli.
+
 ```json
 {
   "mcpServers": {

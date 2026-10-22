@@ -185,6 +185,55 @@ jobs:
           path: .cache/preflight-bearer-proof/*.log
           if-no-files-found: error
           retention-days: 7
+      - name: Exact pre-fix source for native Codex launch
+        if: matrix.browser_tests
+        uses: actions/checkout@v7
+        with:
+          ref: 8d422a07d29fdd31a5b956fe96363a00f02470aa
+          path: .cache/codex-launch-baseline
+          persist-credentials: false
+      - name: Native Codex launch fails before fix and full fixture passes after
+        if: matrix.browser_tests
+        run: |
+          baseline="$GITHUB_WORKSPACE/.cache/codex-launch-baseline"
+          proof="$GITHUB_WORKSPACE/.cache/codex-launch-proof"
+          test "$(git -C "$baseline" rev-parse HEAD)" = 8d422a07d29fdd31a5b956fe96363a00f02470aa
+          cmp Cargo.lock "$baseline/Cargo.lock"
+          mkdir -p "$proof" "$baseline/tests"
+          ln -s "$GITHUB_WORKSPACE/web" "$baseline/web"
+          # Overlay only the identical public-API synthetic native fixture and registration.
+          # Do not copy candidate implementation or private unit tests into the baseline.
+          cp tests/codex_launch.rs "$baseline/tests/codex_launch.rs"
+          printf '\n[[test]]\nname = "codex_launch"\npath = "tests/codex_launch.rs"\nharness = false\n' >> "$baseline/Cargo.toml"
+          cmp Cargo.toml "$baseline/Cargo.toml"
+          cmp tests/codex_launch.rs "$baseline/tests/codex_launch.rs"
+          git -C "$baseline" diff --exit-code -- src Cargo.lock
+          sha256sum tests/codex_launch.rs "$baseline/tests/codex_launch.rs" > "$proof/fixture-sha256.log"
+          # A compilation failure is not the expected red behavioral assertion.
+          CARGO_TARGET_DIR="$proof/baseline-target" cargo test --manifest-path "$baseline/Cargo.toml" --locked --test codex_launch --no-run > "$proof/baseline-build.log" 2>&1 || { cat "$proof/baseline-build.log"; exit 1; }
+          if CARGO_TARGET_DIR="$proof/baseline-target" cargo test --manifest-path "$baseline/Cargo.toml" --locked --test codex_launch > "$proof/baseline.log" 2>&1; then
+            cat "$proof/baseline.log"
+            echo "Expected the pinned baseline to fail the relative executable launch assertion."
+            exit 1
+          fi
+          cat "$proof/baseline.log"
+          grep -F 'panicked at tests/codex_launch.rs:' "$proof/baseline.log"
+          grep -F 'relative executable must launch independently of provider workspace' "$proof/baseline.log"
+          # Separate build roots prevent any baseline/candidate artifact reuse.
+          CARGO_TARGET_DIR="$proof/candidate-target" cargo test --locked --test codex_launch --no-run > "$proof/candidate-build.log" 2>&1 || { cat "$proof/candidate-build.log"; exit 1; }
+          CARGO_TARGET_DIR="$proof/candidate-target" cargo test --locked --test codex_launch > "$proof/candidate.log" 2>&1 || { cat "$proof/candidate.log"; exit 1; }
+          cat "$proof/candidate.log"
+          grep -Fx 'relative binary with different workspace: PASS' "$proof/candidate.log"
+          grep -Fx 'isolated native PATH discovery and launch: PASS' "$proof/candidate.log"
+          grep -Fx 'hung control and inference initialize, child cleanup and retry: PASS' "$proof/candidate.log"
+      - name: Retain synthetic native Codex launch red and green proof
+        if: always() && matrix.browser_tests
+        uses: actions/upload-artifact@v7
+        with:
+          name: codex-launch-regression-proof
+          path: .cache/codex-launch-proof/*.log
+          if-no-files-found: error
+          retention-days: 7
       - name: Active file transfer across timeout and lease boundaries
         if: matrix.platform == 'linux-x64'
         timeout-minutes: 8
