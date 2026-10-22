@@ -49,11 +49,14 @@ async fn stale_queued_login_cannot_replace_or_cancel_newer_ownership() {
     std::future::poll_fn(|cx| {
         assert!(std::future::Future::poll(queued.as_mut(), cx).is_pending());
         std::task::Poll::Ready(())
-    }).await;
+    })
+    .await;
     drop(gate);
     assert_eq!(queued.await.unwrap_err().public_code, "cancelled");
-    assert_eq!(adapter.login_status("newer-owned-login").unwrap(),
-        (LoginStatus::Pending, 2, true));
+    assert_eq!(
+        adapter.login_status("newer-owned-login").unwrap(),
+        (LoginStatus::Pending, 2, true)
+    );
 }
 
 #[test]

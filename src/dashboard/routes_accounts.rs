@@ -130,9 +130,16 @@ pub(super) async fn delete_provider(
 
 pub(super) async fn codex_login(State(web): State<Web>) -> AppResult<Json<Value>> {
     let revision = web.core.begin_provider_change("codex")?;
-    Ok(Json(web.core.ai.codex.login_with_intent(revision, || {
-        web.core.finish_provider_change("codex", revision, || Ok(()))
-    }).await?))
+    Ok(Json(
+        web.core
+            .ai
+            .codex
+            .login_with_intent(revision, || {
+                web.core
+                    .finish_provider_change("codex", revision, || Ok(()))
+            })
+            .await?,
+    ))
 }
 
 #[derive(Deserialize)]
@@ -168,7 +175,8 @@ pub(super) async fn codex_account(
     response["account"] = json!(account);
     if let Some(id) = &query.login_id {
         let (status, revision, activation_pending) = web.core.ai.codex.login_status(id)?;
-        web.core.finish_provider_change("codex", revision, || Ok(()))?;
+        web.core
+            .finish_provider_change("codex", revision, || Ok(()))?;
         response["login_status"] = json!(status);
         if status == ai::codex::LoginStatus::Completed && account.is_some() && activation_pending {
             let models = web.core.ai.codex.models().await;
@@ -202,20 +210,22 @@ fn activate_codex(
     models: Option<Vec<String>>,
 ) -> AppResult<()> {
     web.core.finish_provider_change("codex", revision, || {
-        let apply = || web.core.state.update(|d| {
-            let provider = d.providers.entry("codex".into()).or_default();
-            provider.connected = true;
-            if let Some(models) = models {
-                provider.models = models;
-                provider.checked_at = util::now();
-            }
-            // An empty model delegates to Codex's own configured default, as before.
-            // Never overwrite an existing Hycli selection while refreshing evidence.
-            if d.settings.default_provider.is_empty() {
-                d.settings.default_provider = "codex".into();
-            }
-            Ok(())
-        });
+        let apply = || {
+            web.core.state.update(|d| {
+                let provider = d.providers.entry("codex".into()).or_default();
+                provider.connected = true;
+                if let Some(models) = models {
+                    provider.models = models;
+                    provider.checked_at = util::now();
+                }
+                // An empty model delegates to Codex's own configured default, as before.
+                // Never overwrite an existing Hycli selection while refreshing evidence.
+                if d.settings.default_provider.is_empty() {
+                    d.settings.default_provider = "codex".into();
+                }
+                Ok(())
+            })
+        };
         if let Some(id) = login_id {
             web.core.ai.codex.activate_login(id, revision, apply)
         } else {

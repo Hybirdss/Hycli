@@ -324,8 +324,14 @@ impl Codex {
         .await
         .unwrap_or_else(|_| Err(AppError::api("timeout", 504)));
         if result.is_err() {
-            let mut owned = self.login.lock().map_err(|_| AppError::api("internal", 500))?;
-            if owned.as_ref().is_some_and(|attempt| attempt.status == LoginStatus::Pending) {
+            let mut owned = self
+                .login
+                .lock()
+                .map_err(|_| AppError::api("internal", 500))?;
+            if owned
+                .as_ref()
+                .is_some_and(|attempt| attempt.status == LoginStatus::Pending)
+            {
                 // The dropped child owned the callback. Do not silently keep polling
                 // a login whose completion can no longer be observed.
                 *owned = None;
@@ -334,19 +340,28 @@ impl Codex {
         result
     }
     fn observe_login_notifications(&self, backlog: &mut Vec<Value>) -> AppResult<()> {
-        let mut owned = self.login.lock().map_err(|_| AppError::api("internal", 500))?;
+        let mut owned = self
+            .login
+            .lock()
+            .map_err(|_| AppError::api("internal", 500))?;
         for notification in backlog.drain(..) {
-            let Some(attempt) = owned.as_mut() else { continue };
-            if notification.get("method").and_then(Value::as_str)
-                != Some("account/login/completed")
-                || notification.pointer("/params/loginId").and_then(Value::as_str)
+            let Some(attempt) = owned.as_mut() else {
+                continue;
+            };
+            if notification.get("method").and_then(Value::as_str) != Some("account/login/completed")
+                || notification
+                    .pointer("/params/loginId")
+                    .and_then(Value::as_str)
                     != Some(attempt.id.as_str())
                 || attempt.status != LoginStatus::Pending
             {
                 continue;
             }
             // Do not propagate provider error text, which may contain private data.
-            attempt.status = match notification.pointer("/params/success").and_then(Value::as_bool) {
+            attempt.status = match notification
+                .pointer("/params/success")
+                .and_then(Value::as_bool)
+            {
                 Some(true) => LoginStatus::Completed,
                 Some(false) => LoginStatus::Failed,
                 None => continue,
@@ -356,15 +371,23 @@ impl Codex {
     }
     pub async fn refresh_account(&self) -> AppResult<Option<String>> {
         let revision = {
-            let mut state = self.account.lock().map_err(|_| AppError::api("internal", 500))?;
+            let mut state = self
+                .account
+                .lock()
+                .map_err(|_| AppError::api("internal", 500))?;
             state.revision += 1;
             state.verification = Verification::Checking;
             state.verification_error = None;
             state.revision
         };
-        let result = self.call("account/read", json!({"refreshToken":false})).await;
+        let result = self
+            .call("account/read", json!({"refreshToken":false}))
+            .await;
         let result = result.and_then(|response| account_label(&response));
-        let mut state = self.account.lock().map_err(|_| AppError::api("internal", 500))?;
+        let mut state = self
+            .account
+            .lock()
+            .map_err(|_| AppError::api("internal", 500))?;
         if state.revision == revision {
             match &result {
                 Ok(account) => {
@@ -396,30 +419,45 @@ impl Codex {
         // Admission can lag request receipt. A queued stale request must not
         // replace or cancel ownership established by a more recent intent.
         validate_intent()?;
-        let previous = self.login.lock().map_err(|_| AppError::api("internal", 500))?.take();
+        let previous = self
+            .login
+            .lock()
+            .map_err(|_| AppError::api("internal", 500))?
+            .take();
         if let Some(previous) = previous.filter(|a| a.status == LoginStatus::Pending) {
-            self.call("account/login/cancel", json!({"loginId":previous.id})).await?;
+            self.call("account/login/cancel", json!({"loginId":previous.id}))
+                .await?;
         }
-        let response = self.call_with(
-            "account/login/start",
-            json!({"type":"chatgpt"}),
-            |response| {
-                let (_, id) = login_response(response)?;
-                *self.login.lock().map_err(|_| AppError::api("internal", 500))? = Some(LoginAttempt {
-                    id: id.to_owned(),
-                    revision,
-                    status: LoginStatus::Pending,
-                    activation_pending: true,
-                });
-                Ok(())
-            },
-        ).await?;
+        let response = self
+            .call_with(
+                "account/login/start",
+                json!({"type":"chatgpt"}),
+                |response| {
+                    let (_, id) = login_response(response)?;
+                    *self
+                        .login
+                        .lock()
+                        .map_err(|_| AppError::api("internal", 500))? = Some(LoginAttempt {
+                        id: id.to_owned(),
+                        revision,
+                        status: LoginStatus::Pending,
+                        activation_pending: true,
+                    });
+                    Ok(())
+                },
+            )
+            .await?;
         let (url, id) = login_response(&response)?;
         Ok(json!({"auth_url":url,"login_id":id}))
     }
     pub fn login_status(&self, id: &str) -> AppResult<(LoginStatus, u64, bool)> {
-        let owned = self.login.lock().map_err(|_| AppError::api("internal", 500))?;
-        let attempt = owned.as_ref().filter(|a| a.id == id)
+        let owned = self
+            .login
+            .lock()
+            .map_err(|_| AppError::api("internal", 500))?;
+        let attempt = owned
+            .as_ref()
+            .filter(|a| a.id == id)
             .ok_or_else(|| AppError::api("cancelled", 409))?;
         Ok((attempt.status, attempt.revision, attempt.activation_pending))
     }
@@ -430,9 +468,13 @@ impl Codex {
         revision: u64,
         activate: impl FnOnce() -> AppResult<()>,
     ) -> AppResult<()> {
-        let mut owned = self.login.lock().map_err(|_| AppError::api("internal", 500))?;
-        let attempt = owned.as_mut().filter(|a| a.id == id && a.revision == revision
-            && a.status == LoginStatus::Completed)
+        let mut owned = self
+            .login
+            .lock()
+            .map_err(|_| AppError::api("internal", 500))?;
+        let attempt = owned
+            .as_mut()
+            .filter(|a| a.id == id && a.revision == revision && a.status == LoginStatus::Completed)
             .ok_or_else(|| AppError::api("cancelled", 409))?;
         if attempt.activation_pending {
             activate()?;
@@ -443,7 +485,10 @@ impl Codex {
     pub async fn cancel_login(&self, id: &str) -> AppResult<()> {
         let _gate = self.login_gate.lock().await;
         let attempt = {
-            let mut owned = self.login.lock().map_err(|_| AppError::api("internal", 500))?;
+            let mut owned = self
+                .login
+                .lock()
+                .map_err(|_| AppError::api("internal", 500))?;
             if !owned.as_ref().is_some_and(|a| a.id == id) {
                 // A late Close from an older dialog must not cancel a newer login.
                 return Ok(());
@@ -451,7 +496,8 @@ impl Codex {
             owned.take().unwrap()
         };
         if attempt.status == LoginStatus::Pending {
-            self.call("account/login/cancel", json!({"loginId":id})).await?;
+            self.call("account/login/cancel", json!({"loginId":id}))
+                .await?;
         }
         Ok(())
     }
@@ -510,7 +556,8 @@ impl Codex {
     }
 }
 fn account_label(response: &Value) -> AppResult<Option<String>> {
-    let account = response.get("account")
+    let account = response
+        .get("account")
         .ok_or_else(|| AppError::api("ai_response_invalid", 502))?;
     if account.is_null() || account.get("type").and_then(Value::as_str) == Some("apiKey") {
         return Ok(None);
@@ -518,18 +565,33 @@ fn account_label(response: &Value) -> AppResult<Option<String>> {
     if account.get("type").and_then(Value::as_str) != Some("chatgpt") {
         return Err(AppError::api("ai_response_invalid", 502));
     }
-    Ok(Some(account.get("email").and_then(Value::as_str).unwrap_or("ChatGPT").to_owned()))
+    Ok(Some(
+        account
+            .get("email")
+            .and_then(Value::as_str)
+            .unwrap_or("ChatGPT")
+            .to_owned(),
+    ))
 }
 fn login_response(response: &Value) -> AppResult<(&str, &str)> {
-    let url = response.get("authUrl").and_then(Value::as_str)
+    let url = response
+        .get("authUrl")
+        .and_then(Value::as_str)
         .ok_or_else(|| AppError::api("ai_unavailable", 502))?;
-    let id = response.get("loginId").and_then(Value::as_str)
+    let id = response
+        .get("loginId")
+        .and_then(Value::as_str)
         .filter(|id| !id.is_empty() && id.len() <= 512)
         .ok_or_else(|| AppError::api("ai_unavailable", 502))?;
     let parsed = url::Url::parse(url).map_err(|_| AppError::api("ai_unavailable", 502))?;
-    if parsed.scheme() != "https" || !parsed.host_str().is_some_and(|host| {
-        matches!(host, "auth.openai.com" | "auth0.openai.com" | "auth.chatgpt.com" | "chatgpt.com")
-    }) {
+    if parsed.scheme() != "https"
+        || !parsed.host_str().is_some_and(|host| {
+            matches!(
+                host,
+                "auth.openai.com" | "auth0.openai.com" | "auth.chatgpt.com" | "chatgpt.com"
+            )
+        })
+    {
         return Err(AppError::api("ai_unavailable", 502));
     }
     Ok((url, id))
