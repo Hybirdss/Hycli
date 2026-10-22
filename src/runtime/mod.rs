@@ -260,7 +260,34 @@ impl Runtime {
         self.changed();
         Ok(())
     }
+    /// A shared lock and durable revision also fence removals from the CLI process.
+    fn provider_change_lock(&self) -> AppResult<std::fs::File> {
+        util::file_lock(&self.root.join("provider-change.lock"), false)
+    }
+    pub(crate) fn begin_provider_change(&self, id: &str) -> AppResult<u64> {
+        ai::provider(id).ok_or_else(|| AppError::api("provider_missing", 400))?;
+        let _change = self.provider_change_lock()?;
+        self.state.advance_provider_revision(id)
+    }
+    pub(crate) fn finish_provider_change<T>(
+        &self,
+        id: &str,
+        revision: u64,
+        apply: impl FnOnce() -> AppResult<T>,
+    ) -> AppResult<T> {
+        let _change = self.provider_change_lock()?;
+        if self.state.provider_revision(id)? != revision {
+            return Err(AppError::api("cancelled", 409));
+        }
+        // Hold the shared lock through the synchronous state/vault write.
+        // No network work or await occurs while this lock is held.
+        apply()
+    }
     pub fn remove_provider(&self, id: &str) -> AppResult<()> {
+        let _change = self.provider_change_lock()?;
+        if ai::provider(id).is_some() {
+            self.state.advance_provider_revision(id)?;
+        }
         self.vault
             .lock()
             .map_err(|_| AppError::api("internal", 500))?
@@ -434,6 +461,7 @@ impl Runtime {
             .iter()
             .map(|p| {
                 let s = data.providers.get(p.id).cloned().unwrap_or_default();
+                let account = self.ai.codex.account_state();
                 ai::ProviderView {
                     provider: p.clone(),
                     model: s.model,
@@ -443,9 +471,15 @@ impl Runtime {
                     models: s.models,
                     available: p.id != "codex" || self.ai.codex.available(),
                     account: if p.id == "codex" {
-                        self.ai.codex.cached_account().unwrap_or_default()
+                        account.account.unwrap_or_default()
                     } else {
                         String::new()
+                    },
+                    verification: (p.id == "codex").then_some(account.verification),
+                    verification_error: if p.id == "codex" {
+                        account.verification_error
+                    } else {
+                        None
                     },
                 }
             })

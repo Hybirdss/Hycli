@@ -4,6 +4,7 @@ use serde_json::{Value, json};
 use std::{
     io::{BufRead, Write},
     path::{Path, PathBuf},
+    sync::Arc,
     time::Duration,
 };
 
@@ -32,7 +33,10 @@ fn main() {
         });
         return;
     }
-    runtime.block_on(run());
+    runtime.block_on(async {
+        run().await;
+        lifecycle().await;
+    });
 }
 
 fn app_server() {
@@ -45,6 +49,7 @@ fn app_server() {
     )
     .unwrap();
     let mut initialized = false;
+    let mut login_sequence = 0;
     for line in std::io::stdin().lock().lines() {
         let request: Value = serde_json::from_str(&line.unwrap()).unwrap();
         let method = request["method"].as_str().unwrap();
@@ -57,9 +62,48 @@ fn app_server() {
             return;
         }
         assert!(method == "initialize" || initialized);
+        let mut requests = std::fs::OpenOptions::new().create(true).append(true)
+            .open("requests.jsonl").unwrap();
+        writeln!(requests, "{request}").unwrap();
+        let marker = method.replace('/', "_");
+        std::fs::write(format!("observed-{marker}"), b"").unwrap();
+        let deadline = std::time::Instant::now() + Duration::from_secs(15);
+        while Path::new(&format!("hold-{marker}")).exists() {
+            assert!(std::time::Instant::now() < deadline, "Synthetic request was not released");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let scenario: Value = std::fs::read("scenario.json").ok()
+            .map(|bytes| serde_json::from_slice(&bytes).unwrap()).unwrap_or(json!({}));
+        if method == "account/read" {
+            if let Ok(bytes) = std::fs::read("completion.json") {
+                std::fs::remove_file("completion.json").unwrap();
+                let params: Value = serde_json::from_slice(&bytes).unwrap();
+                send(json!({"method":"account/login/completed","params":params}));
+            }
+            if scenario["account"] == "closed" { return; }
+        }
+        if (method == "account/read" && scenario["account"] == "fail")
+            || (method == "model/list" && scenario["models"] == "fail") {
+            send(json!({"id":request["id"],"error":{"code":-32000,"message":"private synthetic provider detail"}}));
+            continue;
+        }
         let result = match method {
             "initialize" => json!({}),
-            "account/read" => json!({"account":null}),
+            "account/read" => match scenario["account"].as_str() {
+                Some("signed_in") => json!({"account":{"type":"chatgpt","email":"fixture@example.invalid"}}),
+                Some("malformed") => json!({}),
+                _ => json!({"account":null}),
+            },
+            "account/login/start" => {
+                login_sequence += 1;
+                let id = format!("synthetic-{pid}-{login_sequence}");
+                if scenario["early_completion"] == true {
+                    send(json!({"method":"account/login/completed","params":{"loginId":id,"success":true}}));
+                }
+                json!({"type":"chatgpt","loginId":id,"authUrl":format!("https://auth.openai.com/authorize?fixture={id}")})
+            }
+            "account/login/cancel" => json!({"status":"canceled"}),
+            "model/list" => json!({"data":[{"model":"fixture-model"}],"nextCursor":null}),
             "config/read" => json!({"config":{"mcp_servers":{}}}),
             "thread/start" => {
                 assert_eq!(request["params"]["sandbox"], "read-only");
@@ -301,4 +345,351 @@ async fn assert_children_exit(children: &[Value]) {
     })
     .await
     .expect("Dropped and timed-out app-server children must exit");
+}
+
+
+struct DashboardFixture {
+    core: Arc<hycli::runtime::Runtime>,
+    workspace: PathBuf,
+    client: reqwest::Client,
+    origin: String,
+    server: tokio::task::JoinHandle<()>,
+}
+impl DashboardFixture {
+    async fn new(root: &Path, binary: &Path) -> Self {
+        let mut core = hycli::runtime::Runtime::open(root, None, None, false, true, false).unwrap();
+        let workspace = root.join("provider-workspace");
+        Arc::get_mut(&mut core).unwrap().ai.codex = Arc::new(Codex::with_binary(workspace.clone(), binary.to_owned()));
+        std::fs::create_dir_all(&workspace).unwrap();
+        let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let web = hycli::dashboard::Web::new(core.clone(), port).unwrap();
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(reqwest::header::COOKIE, format!("hycli_session={}", web.session).parse().unwrap());
+        headers.insert("x-hycli-csrf", web.csrf.parse().unwrap());
+        let client = reqwest::Client::builder().default_headers(headers)
+            .timeout(Duration::from_secs(20)).build().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, hycli::dashboard::router(web)).await.unwrap();
+        });
+        Self { core, workspace, client, origin: format!("http://127.0.0.1:{port}"), server }
+    }
+    fn scenario(&self, value: Value) {
+        hycli::util::atomic_file(&self.workspace.join("scenario.json"), &serde_json::to_vec(&value).unwrap()).unwrap();
+    }
+    fn complete(&self, id: &str, success: bool) {
+        hycli::util::atomic_file(&self.workspace.join("completion.json"),
+            &serde_json::to_vec(&json!({"loginId":id,"success":success,"error":"private synthetic provider detail"})).unwrap()).unwrap();
+    }
+    fn request(&self, method: &str, path: &str) -> reqwest::RequestBuilder {
+        self.client.request(reqwest::Method::from_bytes(method.as_bytes()).unwrap(), format!("{}{path}", self.origin))
+    }
+    async fn send(&self, method: &str, path: &str, body: Value, status: u16) -> Value {
+        response_json(self.request(method, path).json(&body).send().await.unwrap(), status).await
+    }
+    async fn account(&self, id: Option<&str>, status: u16) -> Value {
+        let path = id.map(|id| format!("/api/providers/codex/account?login_id={id}"))
+            .unwrap_or_else(|| "/api/providers/codex/account".to_owned());
+        self.send("GET", &path, Value::Null, status).await
+    }
+    async fn login(&self) -> String {
+        let response = self.send("POST", "/api/providers/codex/login", Value::Null, 200).await;
+        assert!(response["auth_url"].as_str().unwrap().starts_with("https://auth.openai.com/"));
+        response["login_id"].as_str().unwrap().to_owned()
+    }
+    async fn cancel(&self, id: &str) {
+        self.send("POST", "/api/providers/codex/login/cancel", json!({"login_id":id}), 200).await;
+    }
+    async fn disconnect(&self) {
+        self.send("DELETE", "/api/providers/codex", Value::Null, 200).await;
+    }
+    fn configured(&self) -> bool {
+        self.core.state.read().unwrap().providers.get("codex").is_some_and(|p| p.connected)
+    }
+    fn view(&self) -> Value {
+        serde_json::to_value(self.core.providers().unwrap().into_iter()
+            .find(|p| p.provider.id == "codex").unwrap()).unwrap()
+    }
+    fn requests(&self, method: &str) -> Vec<Value> {
+        std::fs::read_to_string(self.workspace.join("requests.jsonl")).unwrap_or_default().lines()
+            .map(|line| serde_json::from_str::<Value>(line).unwrap())
+            .filter(|request| request["method"] == method).collect()
+    }
+    fn hold(&self, method: &str) {
+        let marker = method.replace('/', "_");
+        let _ = std::fs::remove_file(self.workspace.join(format!("observed-{marker}")));
+        std::fs::write(self.workspace.join(format!("hold-{marker}")), b"").unwrap();
+    }
+    async fn observed(&self, method: &str) {
+        let path = self.workspace.join(format!("observed-{}", method.replace('/', "_")));
+        tokio::time::timeout(Duration::from_secs(10), async {
+            while !path.exists() { tokio::time::sleep(Duration::from_millis(10)).await; }
+        }).await.expect("Synthetic provider did not receive the request");
+    }
+    fn login_revision(&self) -> u64 {
+        let conn = rusqlite::Connection::open_with_flags(
+            self.core.state.db_path(), rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+        ).unwrap();
+        let revision: String = conn.query_row(
+            "SELECT value FROM state_meta WHERE key = 'provider_revision:codex'",
+            [], |row| row.get(0),
+        ).unwrap();
+        revision.parse().unwrap()
+    }
+    async fn received_login_intent_after(&self, revision: u64) {
+        // A fixture-only receipt barrier, not a scheduling sleep: the queued
+        // handler must have persisted its intent before Disconnect is issued.
+        tokio::time::timeout(Duration::from_secs(10), async {
+            while self.login_revision() == revision {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        }).await.expect("Queued login did not record its request intent");
+    }
+    fn release(&self, method: &str) {
+        std::fs::remove_file(self.workspace.join(format!("hold-{}", method.replace('/', "_")))).unwrap();
+    }
+    async fn stop(self) {
+        let children = records(&self.workspace);
+        self.server.abort();
+        drop(self.client);
+        let _ = self.server.await;
+        drop(self.core);
+        assert_children_exit(&children).await;
+    }
+}
+async fn response_json(response: reqwest::Response, status: u16) -> Value {
+    let actual = response.status().as_u16();
+    let body: Value = response.json().await.unwrap();
+    assert_eq!(actual, status, "Unexpected response: {body}");
+    assert!(!body.to_string().contains("private synthetic provider detail"));
+    body
+}
+
+async fn lifecycle() {
+    let fixture = Fixture::new();
+    let binary = fixture.binary();
+    let app = DashboardFixture::new(&fixture.0.join("lifecycle"), &binary).await;
+    assert_eq!(app.view()["verification"], "unknown");
+    assert_eq!(app.view()["available"], true);
+    assert!(!app.configured());
+
+    app.scenario(json!({"account":"signed_in"}));
+    let passive = app.account(None, 200).await;
+    assert_eq!(passive["connected"], true);
+    assert_eq!(passive["verification"], "verified");
+    assert!(!app.configured(), "Passive verification must not activate a provider");
+    assert!(app.core.state.read().unwrap().settings.default_provider.is_empty());
+    assert!(app.requests("model/list").is_empty());
+    app.send("POST", "/api/providers/codex/check", Value::Null, 200).await;
+    assert!(app.configured());
+    assert_eq!(app.core.state.read().unwrap().settings.default_provider, "codex");
+
+    app.core.state.update(|data| {
+        let provider = data.providers.get_mut("codex").unwrap();
+        provider.model = "remembered-model".into();
+        provider.models = vec!["remembered-model".into()];
+        data.settings.default_provider = "anthropic".into();
+        Ok(())
+    }).unwrap();
+    let saved = app.core.state.read().unwrap().providers["codex"].clone();
+    app.scenario(json!({"account":"signed_in","models":"fail"}));
+    let checked = app.send("POST", "/api/providers/codex/check", Value::Null, 200).await;
+    assert_eq!(checked["models_error"], "ai_unavailable");
+    assert!(app.core.state.read().unwrap().providers["codex"] == saved);
+    assert_eq!(app.view()["verification"], "verified");
+    assert_eq!(app.core.state.read().unwrap().settings.default_provider, "anthropic");
+
+    for mode in ["fail", "malformed", "closed"] {
+        app.scenario(json!({"account":mode}));
+        app.account(None, 502).await;
+        let view = app.view();
+        assert_eq!(view["connected"], true);
+        assert_eq!(view["verification"], "check_failed");
+        assert_eq!(view["account"], "fixture@example.invalid");
+        assert_eq!(view["verification_error"], if mode == "malformed" { "ai_response_invalid" } else { "ai_unavailable" });
+        assert!(app.core.state.read().unwrap().providers["codex"] == saved);
+        let config = app.core.config("codex").unwrap();
+        assert_eq!(config.model, "remembered-model");
+        assert_eq!(app.core.ai.complete(&config, "synthetic", "still usable").await.unwrap(), "still usable");
+    }
+    app.scenario(json!({"account":"signed_out"}));
+    assert_eq!(app.account(None, 200).await["verification"], "signed_out");
+    app.send("POST", "/api/providers/codex/check", Value::Null, 401).await;
+    assert!(app.core.state.read().unwrap().providers["codex"] == saved);
+    assert_eq!(app.view()["connected"], true);
+    let dismissed = app.login().await;
+    app.cancel(&dismissed).await;
+    assert!(app.core.state.read().unwrap().providers["codex"] == saved);
+    assert_eq!(app.core.state.read().unwrap().settings.default_provider, "anthropic");
+    app.disconnect().await;
+    app.scenario(json!({"account":"signed_in"}));
+    app.account(None, 200).await;
+    assert!(!app.configured(), "Disconnect must survive a later passive verification");
+    println!("passive verification, model-list failure, configured inference and disconnect: PASS");
+
+    let first = app.login().await;
+    let pending = app.account(Some(&first), 200).await;
+    assert_eq!(pending["connected"], true);
+    assert_eq!(pending["login_status"], "pending", "An existing account is not completion evidence");
+    assert!(!app.configured());
+    app.complete("unrelated-login", true);
+    assert_eq!(app.account(Some(&first), 200).await["login_status"], "pending");
+    app.complete(&first, false);
+    assert_eq!(app.account(Some(&first), 200).await["login_status"], "failed");
+    assert!(!app.configured());
+
+    app.scenario(json!({"account":"signed_out","early_completion":true}));
+    let completed = app.login().await;
+    let unverified = app.account(Some(&completed), 200).await;
+    assert_eq!(unverified["login_status"], "completed");
+    assert_eq!(unverified["connected"], false);
+    assert!(!app.configured());
+    app.scenario(json!({"account":"signed_in","models":"fail"}));
+    let verified = app.account(Some(&completed), 200).await;
+    assert_eq!(verified["login_status"], "completed");
+    assert_eq!(verified["models_error"], "ai_unavailable");
+    assert!(app.configured());
+    assert_eq!(app.view()["verification"], "verified");
+    assert_eq!(app.core.state.read().unwrap().settings.default_provider, "anthropic");
+    app.disconnect().await;
+    app.account(Some(&completed), 409).await;
+    assert!(!app.configured());
+
+    app.scenario(json!({"account":"signed_in"}));
+    let older = app.login().await;
+    let newer = app.login().await;
+    let cancelled = app.requests("account/login/cancel");
+    assert_eq!(cancelled.last().unwrap()["params"]["loginId"], older);
+    app.complete(&older, true);
+    assert_eq!(app.account(Some(&newer), 200).await["login_status"], "pending");
+    app.cancel(&older).await;
+    app.cancel("not-owned").await;
+    assert_eq!(app.requests("account/login/cancel").len(), cancelled.len());
+    assert_eq!(app.account(Some(&newer), 200).await["login_status"], "pending");
+    app.cancel(&newer).await;
+    assert_eq!(app.requests("account/login/cancel").last().unwrap()["params"]["loginId"], newer);
+    app.account(Some(&newer), 409).await;
+    assert!(!app.configured());
+
+    app.hold("account/login/start");
+    let request = app.request("POST", "/api/providers/codex/login");
+    let starting = tokio::spawn(async move { request.send().await.unwrap() });
+    app.observed("account/login/start").await;
+    app.disconnect().await;
+    app.release("account/login/start");
+    let started = response_json(starting.await.unwrap(), 200).await;
+    let closed_id = started["login_id"].as_str().unwrap();
+    app.cancel(closed_id).await;
+    assert_eq!(app.requests("account/login/cancel").last().unwrap()["params"]["loginId"], closed_id);
+    app.account(Some(closed_id), 409).await;
+    println!("owned completion evidence, replacement, scoped cancel and late start cleanup: PASS");
+
+    for (method, path, body) in [
+        ("POST", "/api/providers/codex/check", Value::Null),
+        ("PUT", "/api/providers/codex", json!({"model":"new-model","default":true})),
+    ] {
+        app.hold("model/list");
+        let request = app.request(method, path).json(&body);
+        let updating = tokio::spawn(async move { request.send().await.unwrap() });
+        app.observed("model/list").await;
+        app.disconnect().await;
+        app.release("model/list");
+        response_json(updating.await.unwrap(), 409).await;
+        assert!(!app.configured(), "Late Save/Check must not undo Disconnect");
+        assert!(!app.core.vault.lock().unwrap().contains("providers", "codex"));
+        assert_eq!(app.core.state.read().unwrap().settings.default_provider, "anthropic");
+    }
+    for cancel_instead in [true, false] {
+        let id = app.login().await;
+        app.complete(&id, true);
+        app.hold("model/list");
+        let request = app.request("GET", &format!("/api/providers/codex/account?login_id={id}"));
+        let completing = tokio::spawn(async move { request.send().await.unwrap() });
+        app.observed("model/list").await;
+        if cancel_instead {
+            let cancellations = app.requests("account/login/cancel").len();
+            app.cancel(&id).await;
+            assert_eq!(app.requests("account/login/cancel").len(), cancellations,
+                "A completed attempt is invalidated locally, not sent to login/cancel");
+        } else {
+            app.disconnect().await;
+        }
+        app.release("model/list");
+        response_json(completing.await.unwrap(), 409).await;
+        assert!(!app.configured(), "Late login model refresh must not undo Cancel/Disconnect");
+    }
+    // The CLI opens a separate Runtime for auth removal. Its durable intent
+    // must invalidate work already awaiting a model response in the dashboard.
+    let other = hycli::runtime::Runtime::open(&app.core.root, None, None, false, true, false).unwrap();
+    app.hold("account/login/start");
+    let request = app.request("POST", "/api/providers/codex/login");
+    let first_start = tokio::spawn(async move { request.send().await.unwrap() });
+    app.observed("account/login/start").await;
+    let first_revision = app.login_revision();
+    let starts = app.requests("account/login/start").len();
+    let cancellations = app.requests("account/login/cancel").len();
+    let request = app.request("POST", "/api/providers/codex/login");
+    let queued_start = tokio::spawn(async move { request.send().await.unwrap() });
+    app.received_login_intent_after(first_revision).await;
+    other.remove_provider("codex").unwrap();
+    app.release("account/login/start");
+    let first_started = response_json(first_start.await.unwrap(), 200).await;
+    response_json(queued_start.await.unwrap(), 409).await;
+    assert_eq!(app.requests("account/login/start").len(), starts,
+        "A queued pre-Disconnect request must not start a new login");
+    assert_eq!(app.requests("account/login/cancel").len(), cancellations,
+        "Rejected admission must not cancel existing ownership");
+    assert!(!app.configured());
+    let stale_id = first_started["login_id"].as_str().unwrap();
+    app.account(Some(stale_id), 409).await;
+    let fresh_id = app.login().await;
+    let cancellations = app.requests("account/login/cancel").len();
+    app.cancel(stale_id).await;
+    assert_eq!(app.requests("account/login/cancel").len(), cancellations);
+    assert_eq!(app.account(Some(&fresh_id), 200).await["login_status"], "pending");
+    app.cancel(&fresh_id).await;
+    println!("queued login intent remains older than cross-process Disconnect: PASS");
+    for from_login in [false, true] {
+        let path = if from_login {
+            let id = app.login().await;
+            app.complete(&id, true);
+            format!("/api/providers/codex/account?login_id={id}")
+        } else {
+            "/api/providers/codex/check".to_owned()
+        };
+        app.hold("model/list");
+        let request = app.request(if from_login { "GET" } else { "POST" }, &path);
+        let updating = tokio::spawn(async move { request.send().await.unwrap() });
+        app.observed("model/list").await;
+        other.remove_provider("codex").unwrap();
+        app.release("model/list");
+        response_json(updating.await.unwrap(), 409).await;
+        assert!(!app.configured(), "A second Runtime's disconnect must invalidate delayed activation");
+    }
+    drop(other);
+    let lost = app.login().await;
+    app.scenario(json!({"account":"closed"}));
+    app.account(Some(&lost), 502).await;
+    app.account(Some(&lost), 409).await;
+    assert!(!app.configured());
+    assert!(app.requests("account/logout").is_empty(), "Disconnect/Cancel never log out Codex");
+    println!("in-flight save/check/login rejection after disconnect and lost callback ownership: PASS");
+    app.scenario(json!({"account":"signed_in"}));
+    app.send("POST", "/api/providers/codex/check", Value::Null, 200).await;
+    app.stop().await;
+    // A fresh process has no verification evidence. Its saved selection survives
+    // both restart and the official executable becoming unavailable.
+    let restarted = DashboardFixture::new(&fixture.0.join("lifecycle"), &fixture.0.join("missing-provider")).await;
+    let view = restarted.view();
+    assert_eq!(view["connected"], true);
+    assert_eq!(view["available"], false);
+    assert_eq!(view["verification"], "unknown");
+    assert!(view.get("verification_error").is_none());
+    assert_eq!(view["account"], "");
+    assert!(restarted.core.config("codex").is_ok());
+    restarted.account(None, 503).await;
+    assert_eq!(restarted.view()["verification_error"], "codex_missing");
+    assert!(restarted.configured());
+    restarted.stop().await;
+    println!("configured restart and missing executable are independent of verification: PASS");
 }

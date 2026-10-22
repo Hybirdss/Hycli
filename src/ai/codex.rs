@@ -4,6 +4,7 @@ use crate::{
     apperr::{AppError, AppResult},
     util,
 };
+use serde::Serialize;
 use serde_json::{Value, json};
 use std::{
     path::{Path, PathBuf},
@@ -23,7 +24,42 @@ pub struct Codex {
     connection: AsyncMutex<Option<Connection>>,
     inference_pool: AsyncMutex<Vec<Connection>>,
     inference_gate: tokio::sync::Semaphore,
-    account: Mutex<Option<String>>,
+    account: Mutex<AccountState>,
+    login_gate: AsyncMutex<()>,
+    login: Mutex<Option<LoginAttempt>>,
+}
+/// Live evidence is deliberately separate from the persisted provider choice.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Verification {
+    #[default]
+    Unknown,
+    Checking,
+    Verified,
+    SignedOut,
+    CheckFailed,
+}
+#[derive(Clone, Default, Serialize)]
+pub struct AccountState {
+    #[serde(skip)]
+    revision: u64,
+    pub verification: Verification,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub verification_error: Option<String>,
+    pub account: Option<String>,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LoginStatus {
+    Pending,
+    Completed,
+    Failed,
+}
+struct LoginAttempt {
+    id: String,
+    revision: u64,
+    status: LoginStatus,
+    activation_pending: bool,
 }
 struct BinarySelection {
     requested: Option<PathBuf>,
@@ -167,7 +203,9 @@ impl Codex {
             connection: AsyncMutex::new(None),
             inference_pool: AsyncMutex::new(vec![]),
             inference_gate: tokio::sync::Semaphore::new(3),
-            account: Mutex::new(None),
+            account: Mutex::new(AccountState::default()),
+            login_gate: AsyncMutex::new(()),
+            login: Mutex::new(None),
         }
     }
     pub fn with_binary(workspace: PathBuf, binary: PathBuf) -> Self {
@@ -177,7 +215,9 @@ impl Codex {
             connection: AsyncMutex::new(None),
             inference_pool: AsyncMutex::new(vec![]),
             inference_gate: tokio::sync::Semaphore::new(3),
-            account: Mutex::new(None),
+            account: Mutex::new(AccountState::default()),
+            login_gate: AsyncMutex::new(()),
+            login: Mutex::new(None),
         }
     }
     /// Reports an executable candidate, not a signed-in account.
@@ -188,7 +228,7 @@ impl Codex {
             .is_some()
     }
     pub fn cached_account(&self) -> Option<String> {
-        self.account.lock().ok().and_then(|a| a.clone())
+        self.account.lock().ok().and_then(|a| a.account.clone())
     }
     async fn connect(&self) -> AppResult<Connection> {
         tokio::time::timeout(Duration::from_secs(40), self.connect_inner())
@@ -251,65 +291,168 @@ impl Codex {
             .await?;
         Ok(connection)
     }
+    pub fn account_state(&self) -> AccountState {
+        self.account.lock().map(|a| a.clone()).unwrap_or_default()
+    }
     async fn call(&self, method: &str, params: Value) -> AppResult<Value> {
+        self.call_with(method, params, |_| Ok(())).await
+    }
+    async fn call_with(
+        &self,
+        method: &str,
+        params: Value,
+        on_response: impl FnOnce(&Value) -> AppResult<()> + Send,
+    ) -> AppResult<Value> {
         let mut guard = self.connection.lock().await;
-        tokio::time::timeout(Duration::from_secs(40), async {
+        let result = tokio::time::timeout(Duration::from_secs(40), async {
             let mut connection = match guard.take() {
                 Some(connection) => connection,
                 None => self.connect().await?,
             };
             let result = connection.call(method, params).await;
+            // Register a newly returned loginId before draining notifications. A
+            // completion can precede the start response on the same connection.
+            if let Ok(response) = &result {
+                on_response(response)?;
+            }
+            self.observe_login_notifications(&mut connection.backlog)?;
             if result.is_ok() {
                 *guard = Some(connection);
             }
             result
         })
         .await
-        .map_err(|_| AppError::api("timeout", 504))?
+        .unwrap_or_else(|_| Err(AppError::api("timeout", 504)));
+        if result.is_err() {
+            let mut owned = self.login.lock().map_err(|_| AppError::api("internal", 500))?;
+            if owned.as_ref().is_some_and(|attempt| attempt.status == LoginStatus::Pending) {
+                // The dropped child owned the callback. Do not silently keep polling
+                // a login whose completion can no longer be observed.
+                *owned = None;
+            }
+        }
+        result
+    }
+    fn observe_login_notifications(&self, backlog: &mut Vec<Value>) -> AppResult<()> {
+        let mut owned = self.login.lock().map_err(|_| AppError::api("internal", 500))?;
+        for notification in backlog.drain(..) {
+            let Some(attempt) = owned.as_mut() else { continue };
+            if notification.get("method").and_then(Value::as_str)
+                != Some("account/login/completed")
+                || notification.pointer("/params/loginId").and_then(Value::as_str)
+                    != Some(attempt.id.as_str())
+                || attempt.status != LoginStatus::Pending
+            {
+                continue;
+            }
+            // Do not propagate provider error text, which may contain private data.
+            attempt.status = match notification.pointer("/params/success").and_then(Value::as_bool) {
+                Some(true) => LoginStatus::Completed,
+                Some(false) => LoginStatus::Failed,
+                None => continue,
+            };
+        }
+        Ok(())
     }
     pub async fn refresh_account(&self) -> AppResult<Option<String>> {
-        let response = self
-            .call("account/read", json!({"refreshToken":false}))
-            .await?;
-        let account = response
-            .get("account")
-            .filter(|a| a.get("type").and_then(Value::as_str) == Some("chatgpt"));
-        let label = account.map(|a| {
-            a.get("email")
-                .and_then(Value::as_str)
-                .unwrap_or("ChatGPT")
-                .to_owned()
-        });
-        *self
-            .account
-            .lock()
-            .map_err(|_| AppError::api("internal", 500))? = label.clone();
-        Ok(label)
+        let revision = {
+            let mut state = self.account.lock().map_err(|_| AppError::api("internal", 500))?;
+            state.revision += 1;
+            state.verification = Verification::Checking;
+            state.verification_error = None;
+            state.revision
+        };
+        let result = self.call("account/read", json!({"refreshToken":false})).await;
+        let result = result.and_then(|response| account_label(&response));
+        let mut state = self.account.lock().map_err(|_| AppError::api("internal", 500))?;
+        if state.revision == revision {
+            match &result {
+                Ok(account) => {
+                    state.account = account.clone();
+                    state.verification = if account.is_some() {
+                        Verification::Verified
+                    } else {
+                        Verification::SignedOut
+                    };
+                }
+                Err(error) => {
+                    // Inconclusive probes never erase the last identity evidence.
+                    state.verification = Verification::CheckFailed;
+                    state.verification_error = Some(error.public_code.clone());
+                }
+            }
+        }
+        result
     }
     pub async fn login(&self) -> AppResult<Value> {
-        let response = self
-            .call("account/login/start", json!({"type":"chatgpt"}))
-            .await?;
-        let url = response
-            .get("authUrl")
-            .and_then(Value::as_str)
-            .ok_or_else(|| AppError::api("ai_unavailable", 502))?;
-        let parsed = url::Url::parse(url).map_err(|_| AppError::api("ai_unavailable", 502))?;
-        if parsed.scheme() != "https"
-            || !parsed.host_str().is_some_and(|host| {
-                host == "auth.openai.com"
-                    || host == "auth0.openai.com"
-                    || host == "auth.chatgpt.com"
-                    || host == "chatgpt.com"
-            })
-        {
-            return Err(AppError::api("ai_unavailable", 502));
+        self.login_with_intent(0, || Ok(())).await
+    }
+    pub(crate) async fn login_with_intent(
+        &self,
+        revision: u64,
+        validate_intent: impl FnOnce() -> AppResult<()> + Send,
+    ) -> AppResult<Value> {
+        let _gate = self.login_gate.lock().await;
+        // Admission can lag request receipt. A queued stale request must not
+        // replace or cancel ownership established by a more recent intent.
+        validate_intent()?;
+        let previous = self.login.lock().map_err(|_| AppError::api("internal", 500))?.take();
+        if let Some(previous) = previous.filter(|a| a.status == LoginStatus::Pending) {
+            self.call("account/login/cancel", json!({"loginId":previous.id})).await?;
         }
-        Ok(json!({"auth_url":url,"login_id":response.get("loginId")}))
+        let response = self.call_with(
+            "account/login/start",
+            json!({"type":"chatgpt"}),
+            |response| {
+                let (_, id) = login_response(response)?;
+                *self.login.lock().map_err(|_| AppError::api("internal", 500))? = Some(LoginAttempt {
+                    id: id.to_owned(),
+                    revision,
+                    status: LoginStatus::Pending,
+                    activation_pending: true,
+                });
+                Ok(())
+            },
+        ).await?;
+        let (url, id) = login_response(&response)?;
+        Ok(json!({"auth_url":url,"login_id":id}))
+    }
+    pub fn login_status(&self, id: &str) -> AppResult<(LoginStatus, u64, bool)> {
+        let owned = self.login.lock().map_err(|_| AppError::api("internal", 500))?;
+        let attempt = owned.as_ref().filter(|a| a.id == id)
+            .ok_or_else(|| AppError::api("cancelled", 409))?;
+        Ok((attempt.status, attempt.revision, attempt.activation_pending))
+    }
+    /// Serializes the last ownership check with cancellation, not with network I/O.
+    pub(crate) fn activate_login(
+        &self,
+        id: &str,
+        revision: u64,
+        activate: impl FnOnce() -> AppResult<()>,
+    ) -> AppResult<()> {
+        let mut owned = self.login.lock().map_err(|_| AppError::api("internal", 500))?;
+        let attempt = owned.as_mut().filter(|a| a.id == id && a.revision == revision
+            && a.status == LoginStatus::Completed)
+            .ok_or_else(|| AppError::api("cancelled", 409))?;
+        if attempt.activation_pending {
+            activate()?;
+            attempt.activation_pending = false;
+        }
+        Ok(())
     }
     pub async fn cancel_login(&self, id: &str) -> AppResult<()> {
-        self.call("account/login/cancel", json!({"loginId":id}))
-            .await?;
+        let _gate = self.login_gate.lock().await;
+        let attempt = {
+            let mut owned = self.login.lock().map_err(|_| AppError::api("internal", 500))?;
+            if !owned.as_ref().is_some_and(|a| a.id == id) {
+                // A late Close from an older dialog must not cancel a newer login.
+                return Ok(());
+            }
+            owned.take().unwrap()
+        };
+        if attempt.status == LoginStatus::Pending {
+            self.call("account/login/cancel", json!({"loginId":id})).await?;
+        }
         Ok(())
     }
     pub async fn models(&self) -> AppResult<Vec<String>> {
@@ -365,6 +508,31 @@ impl Codex {
         .await
         .map_err(|_| AppError::api("timeout", 504))?
     }
+}
+fn account_label(response: &Value) -> AppResult<Option<String>> {
+    let account = response.get("account")
+        .ok_or_else(|| AppError::api("ai_response_invalid", 502))?;
+    if account.is_null() || account.get("type").and_then(Value::as_str) == Some("apiKey") {
+        return Ok(None);
+    }
+    if account.get("type").and_then(Value::as_str) != Some("chatgpt") {
+        return Err(AppError::api("ai_response_invalid", 502));
+    }
+    Ok(Some(account.get("email").and_then(Value::as_str).unwrap_or("ChatGPT").to_owned()))
+}
+fn login_response(response: &Value) -> AppResult<(&str, &str)> {
+    let url = response.get("authUrl").and_then(Value::as_str)
+        .ok_or_else(|| AppError::api("ai_unavailable", 502))?;
+    let id = response.get("loginId").and_then(Value::as_str)
+        .filter(|id| !id.is_empty() && id.len() <= 512)
+        .ok_or_else(|| AppError::api("ai_unavailable", 502))?;
+    let parsed = url::Url::parse(url).map_err(|_| AppError::api("ai_unavailable", 502))?;
+    if parsed.scheme() != "https" || !parsed.host_str().is_some_and(|host| {
+        matches!(host, "auth.openai.com" | "auth0.openai.com" | "auth.chatgpt.com" | "chatgpt.com")
+    }) {
+        return Err(AppError::api("ai_unavailable", 502));
+    }
+    Ok((url, id))
 }
 impl Connection {
     async fn write(&mut self, value: Value) -> AppResult<()> {
