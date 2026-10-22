@@ -184,6 +184,8 @@ Kết nối đăng nhập Codex chạy trong một luồng tạm thời đã vô
 
 Thêm Hycli vào máy khách MCP của bạn (**Tác nhân lập trình → Xem cài đặt kết nối** sẽ hiển thị đường dẫn chính xác cho hệ điều hành của bạn):
 
+Ví dụ dưới đây dành cho ứng dụng chấp nhận JSON `mcpServers`. Với ChatGPT và Claude, xem [thiết lập ứng dụng máy tính](../../README.md#use-hycli-with-your-ai); đây không phải cách đăng nhập nhà cung cấp AI trong Hycli.
+
 ```json
 {
   "mcpServers": {

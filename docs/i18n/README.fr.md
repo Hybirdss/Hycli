@@ -184,6 +184,8 @@ La connexion via Codex s'exécute dans un fil éphémère où l'accès aux fichi
 
 Ajoutez Hycli à votre client MCP (**Agents de programmation → Voir les paramètres de connexion** affiche le chemin exact pour votre système d'exploitation) :
 
+L’exemple ci-dessous concerne les clients qui acceptent le format JSON `mcpServers`. Pour ChatGPT et Claude, consultez la [configuration des applications de bureau](../../README.md#use-hycli-with-your-ai), distincte de la connexion au fournisseur d’IA dans Hycli.
+
 ```json
 {
   "mcpServers": {

@@ -184,6 +184,8 @@ La conexión mediante inicio de sesión de Codex se ejecuta en un hilo efímero 
 
 Añade Hycli a tu cliente MCP (**Agentes de programación → Ver configuración de conexión** muestra la ruta exacta para tu sistema operativo):
 
+El ejemplo siguiente es para clientes que aceptan JSON con `mcpServers`. Para ChatGPT y Claude, consulta la [configuración de escritorio](../../README.md#use-hycli-with-your-ai); es distinta del inicio de sesión del proveedor de IA en Hycli.
+
 ```json
 {
   "mcpServers": {

@@ -184,6 +184,8 @@ De Codex-aanmeldingsverbinding draait in een tijdelijke thread waarin uitvoering
 
 Voeg Hycli toe aan je MCP-client (**Codeer-agents → Verbindingsinstellingen bekijken** toont het exacte pad voor jouw besturingssysteem):
 
+Het onderstaande voorbeeld is voor clients die `mcpServers`-JSON accepteren. Zie de [desktopinstellingen](../../README.md#use-hycli-with-your-ai) voor ChatGPT en Claude; dit staat los van aanmelden bij een AI-provider in Hycli.
+
 ```json
 {
   "mcpServers": {

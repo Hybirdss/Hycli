@@ -184,6 +184,8 @@ Połączenie logowania Codex działa w tymczasowym wątku z wyłączonym dostęp
 
 Dodaj Hycli do klienta MCP (**Agenci programistyczni → Zobacz ustawienia połączenia** pokazuje dokładną ścieżkę dla Twojego systemu):
 
+Poniższy przykład dotyczy klientów obsługujących JSON `mcpServers`. Dla ChatGPT i Claude zobacz [konfigurację aplikacji desktopowych](../../README.md#use-hycli-with-your-ai); to osobna konfiguracja, niezależna od logowania do dostawcy AI w Hycli.
+
 ```json
 {
   "mcpServers": {
