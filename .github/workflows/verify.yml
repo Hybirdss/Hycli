@@ -57,7 +57,7 @@ jobs:
           cache-dependency-path: dashboard/package-lock.json
       - name: Registry, fixture and companion boundary tests
         shell: bash
-        run: node --test scripts/check-baseline-lock.test.mjs scripts/registry.test.mjs scripts/fixture-panic.test.mjs browser-companion/site-scope.test.cjs dashboard/e2e-screenshots.test.mjs dashboard/snapshot.test.mjs dashboard/accepted-command.test.mjs dashboard/account-continuation.test.mjs dashboard/native-discovery.test.mjs dashboard/provider-login.test.mjs dashboard/provider-status.test.mjs dashboard/bootstrap-landing.test.mjs
+        run: node --test scripts/check-baseline-lock.test.mjs scripts/registry.test.mjs scripts/mcpb-guidance.test.mjs scripts/fixture-panic.test.mjs browser-companion/site-scope.test.cjs dashboard/e2e-screenshots.test.mjs dashboard/snapshot.test.mjs dashboard/accepted-command.test.mjs dashboard/account-continuation.test.mjs dashboard/native-discovery.test.mjs dashboard/provider-login.test.mjs dashboard/provider-status.test.mjs dashboard/bootstrap-landing.test.mjs
       - name: Rust toolchain
         run: |
           rustup update stable --no-self-update
