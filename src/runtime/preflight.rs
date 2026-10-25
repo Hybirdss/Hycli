@@ -20,6 +20,11 @@ impl Runtime {
         check_authority: &(dyn Fn() -> AppResult<()> + Sync),
     ) -> AppResult<BTreeMap<String, String>> {
         let mut extracted_values = BTreeMap::new();
+        // A preflight for an operation that is not a plain read (a write, or an
+        // approval-gated effect) may fetch a change-intent form or token page
+        // such as /submit; a plain read keeps the strict bounded-read check.
+        let allow_change_path =
+            crate::policy::operation_effect(op, effective_inputs) != crate::policy::Effect::Read;
         for step in &op.preflight {
             let step_url = if !step.op.is_empty() {
                 let pre_op = sp.op(&step.op)?;
@@ -109,6 +114,7 @@ impl Runtime {
                     account_id,
                     &sp.defaults.tls_profile,
                     credential_snapshot,
+                    allow_change_path,
                     || {
                         check_authority()?;
                         self.ensure_credential_snapshot(

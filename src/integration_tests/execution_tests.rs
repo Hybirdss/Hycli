@@ -693,6 +693,106 @@ async fn write_path_commit_barrier_and_pid_aware_recovery_keep_state_consistent(
     server.abort();
 }
 
+#[tokio::test]
+async fn write_preflight_reads_a_change_intent_token_page_but_a_read_cannot() {
+    // A site such as Hacker News hands its CSRF token out on GET /submit and
+    // then takes the write on POST /r. The token page path reads as a
+    // change-intent, but a write operation's preflight must still fetch it to
+    // carry the token into the write; a plain read must not reach such a path.
+    let writes_hit = Arc::new(AtomicUsize::new(0));
+    let wh = writes_hit.clone();
+    let (base, server) = host(
+        Router::new()
+            .route(
+                "/submit",
+                get(|| async { (StatusCode::OK, "<input name=\"fnid\" value=\"tok-xyz\">") }),
+            )
+            .route(
+                "/r",
+                post(move |body: String| {
+                    let wh = wh.clone();
+                    async move {
+                        if body.contains("fnid=tok-xyz") {
+                            wh.fetch_add(1, Ordering::SeqCst);
+                            (StatusCode::OK, Json(json!({"ok": true})))
+                        } else {
+                            (StatusCode::BAD_REQUEST, Json(json!({"error": "no token"})))
+                        }
+                    }
+                }),
+            ),
+    )
+    .await;
+
+    let core = runtime();
+    let sp = spec::parse(
+        json!({
+            "spec_version": 2,
+            "site": { "name": "fixture", "base_url": base },
+            "operations": [
+                {
+                    "name": "submit-story",
+                    "method": "POST",
+                    "path": "/r",
+                    "effect": "write",
+                    "evidence": "Synthetic write that reads a token page",
+                    "preflight": [{
+                        "name": "form",
+                        "path": "/submit",
+                        "extract": { "fnid": "css:input[name='fnid']@value" }
+                    }],
+                    "body": { "form": {
+                        "fnid": { "type": "string", "required": false, "default": "{{step.form.fnid}}" },
+                        "title": { "type": "string", "required": true }
+                    } }
+                },
+                {
+                    "name": "peek",
+                    "method": "GET",
+                    "path": "/items",
+                    "effect": "read",
+                    "evidence": "Synthetic read that must not reach a change path",
+                    "preflight": [{
+                        "name": "form",
+                        "path": "/submit",
+                        "extract": { "fnid": "css:input[name='fnid']@value" }
+                    }]
+                }
+            ]
+        })
+        .to_string()
+        .as_bytes(),
+    )
+    .unwrap();
+    core.install(&sp).unwrap();
+    allow_changes(&core, "fixture");
+
+    // The write operation's preflight fetches /submit and the write reaches /r
+    // with the extracted token.
+    let req = core
+        .request(
+            &sp,
+            "submit-story",
+            BTreeMap::from([("title".into(), "Story 1".into())]),
+            None,
+        )
+        .unwrap();
+    let review = core.approval(req.clone(), "en").unwrap();
+    assert_eq!(
+        core.execute(req, Some(&review.id)).await.unwrap().0.status,
+        200
+    );
+    assert_eq!(writes_hit.load(Ordering::SeqCst), 1);
+
+    // The same preflight on a plain read stays refused: reads never reach a
+    // change-intent path.
+    let Err(error) = core.run_op(&sp, "peek", &BTreeMap::new()).await else {
+        panic!("read preflight to a change-intent path should be refused");
+    };
+    assert_eq!(error.public_code, "approval_required");
+    server.abort();
+}
+
 #[test]
 fn resume_auth_exact_scope_and_atomic_credential_update_preserve_isolation() {
     let core = runtime();

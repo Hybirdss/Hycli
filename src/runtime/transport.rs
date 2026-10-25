@@ -115,7 +115,7 @@ impl Runtime {
         } else {
             Some(self.job_credential(job, account, url)?)
         };
-        self.read_page_checked(url, account, "go", credential.as_ref(), || {
+        self.read_page_checked(url, account, "go", credential.as_ref(), false, || {
             if account.is_empty() {
                 return Ok(());
             }
@@ -140,7 +140,7 @@ impl Runtime {
         tls_profile: &str,
         snapshot: Option<&crate::accounts::Credential>,
     ) -> AppResult<Response> {
-        self.read_page_checked(url, account, tls_profile, snapshot, || {
+        self.read_page_checked(url, account, tls_profile, snapshot, false, || {
             if account.is_empty() {
                 return Ok(());
             }
@@ -161,10 +161,16 @@ impl Runtime {
         account: &str,
         tls_profile: &str,
         snapshot: Option<&crate::accounts::Credential>,
+        allow_change_path: bool,
         check_authority: impl Fn() -> AppResult<()> + Sync,
     ) -> AppResult<Response> {
         let parsed = crate::net::validate_url(url)?;
-        if !policy::safe_read_url(&parsed) {
+        let safe = if allow_change_path {
+            policy::safe_write_preflight_read_url(&parsed)
+        } else {
+            policy::safe_read_url(&parsed)
+        };
+        if !safe {
             return Err(AppError::api("approval_required", 409));
         }
         let mut headers = vec![];

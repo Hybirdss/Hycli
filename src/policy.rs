@@ -1246,7 +1246,23 @@ pub fn validate_spec(sp: &Spec) -> AppResult<()> {
 
 /// The same semantic check is used for observation URLs and every redirect.
 pub fn safe_read_url(url: &url::Url) -> bool {
-    if dangerous_intent(url.path())
+    bounded_read_url(url, false)
+}
+
+/// A preflight read that belongs to an operation requiring change approval (a
+/// write, or any non-read effect) may fetch a form or token page whose path
+/// reads as a change-intent, for example `/submit`, which carries the CSRF
+/// nonce a later POST needs. The request is still a same-origin GET that only
+/// reads the page, dangerous query parameters are still rejected, and the
+/// parent operation carries its own per-site change approval, so permitting the
+/// change-intent path here does not widen the user's authorized exposure. A
+/// plain read operation keeps the strict `safe_read_url` check.
+pub(crate) fn safe_write_preflight_read_url(url: &url::Url) -> bool {
+    bounded_read_url(url, true)
+}
+
+fn bounded_read_url(url: &url::Url, allow_change_path: bool) -> bool {
+    if (!allow_change_path && dangerous_intent(url.path()))
         || url.query_pairs().any(|(key, value)| {
             util::secret_field(&key)
                 || dangerous_intent(&key)
@@ -1257,11 +1273,17 @@ pub fn safe_read_url(url: &url::Url) -> bool {
         return false;
     }
     // Preflight reads and redirects are separate requests with their own URL
-    // semantics, not covered by the originating operation's effect check.
+    // semantics, not covered by the originating operation's effect check. When a
+    // change-intent path is allowed, evaluate the query payload against a neutral
+    // path so the path name alone does not force a Write verdict.
     let operation = Operation {
         name: "bounded-read".into(),
         method: "GET".into(),
-        path: url.path().into(),
+        path: if allow_change_path {
+            "/".into()
+        } else {
+            url.path().into()
+        },
         effect: Effect::Read,
         evidence: "bounded GET request contract".into(),
         ..Default::default()
@@ -1270,7 +1292,14 @@ pub fn safe_read_url(url: &url::Url) -> bool {
         .query_pairs()
         .map(|(key, value)| (key.into_owned(), value.into_owned()))
         .collect();
-    rendered_request_effect(&operation, &inputs, url.as_str(), None) == Effect::Read
+    let effect_url = if allow_change_path {
+        let mut neutral = url.clone();
+        neutral.set_path("/");
+        neutral.to_string()
+    } else {
+        url.as_str().to_string()
+    };
+    rendered_request_effect(&operation, &inputs, &effect_url, None) == Effect::Read
 }
 
 /// Strict URL semantics for bounded manual session diagnostic GETs.
@@ -1445,6 +1474,36 @@ mod rendered_request_tests {
             url.query_pairs_mut().append_pair(key, value);
             assert!(super::safe_read_url(&url));
         }
+    }
+
+    #[test]
+    fn write_preflight_reads_reach_change_intent_token_pages_but_reads_stay_strict() {
+        // A form or token page such as /submit is a change-intent path: a plain
+        // bounded read refuses it, while a write operation's preflight may fetch
+        // it to extract the CSRF token a later POST needs.
+        for path in ["/submit", "/upload", "/send"] {
+            let url = url::Url::parse(&format!("https://fixture.example.test{path}")).unwrap();
+            assert!(!super::safe_read_url(&url), "strict read allowed {path}");
+            assert!(
+                super::safe_write_preflight_read_url(&url),
+                "write preflight blocked {path}"
+            );
+        }
+        // Allowing the change-intent path does not relax the query payload:
+        // dangerous keys, intent-keyed change values and secret fields are still
+        // refused for a write preflight.
+        for query in ["delete=1", "action=delete", "op=create", "csrf=leak"] {
+            let url =
+                url::Url::parse(&format!("https://fixture.example.test/submit?{query}")).unwrap();
+            assert!(
+                !super::safe_write_preflight_read_url(&url),
+                "write preflight allowed dangerous query {query}"
+            );
+        }
+        // An ordinary read path stays permitted through either check.
+        let ok = url::Url::parse("https://fixture.example.test/items?tag=blue").unwrap();
+        assert!(super::safe_read_url(&ok));
+        assert!(super::safe_write_preflight_read_url(&ok));
     }
 
     #[test]
