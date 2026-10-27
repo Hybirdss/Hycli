@@ -150,19 +150,33 @@ test('fetch rejects a mismatched release checksum before packing', async t => {
   assert.deepEqual(await fs.readdir(path.join(dir, 'output')), []);
 });
 
-async function publisher(t, {tag = 'v0.1.0', missing, corrupt} = {}) {
+async function publisher(t, {tag = 'v0.1.0', missing, corrupt, mutate, runInfo = {}, tagVersion = '0.1.0', automatic = false, noRuns = false, dryRun = true} = {}) {
   const {dir} = await fixture(t);
   const source = path.join(dir, 'artifacts');
   for (const platform of platforms) {
     const folder = path.join(source, 'hycli-' + platform);
     await fs.mkdir(folder, {recursive: true});
     if (platform === missing) continue;
-    const name = `hycli-mcp-0.1.0-${platform}.mcpb`, bytes = Buffer.from(platform);
-    await fs.writeFile(path.join(folder, name), platform === corrupt ? 'corrupt' : bytes);
-    await fs.writeFile(path.join(folder, name + '.sha256'), `${digest(bytes)}  ${name}\n`);
+    const [os, arch] = platform.split('-'), stem = `hycli-0.1.0-${platform}`;
+    const bundle = `hycli-mcp-0.1.0-${platform}.mcpb`;
+    const installer = stem + (os === 'linux' ? '.deb' : os === 'darwin' ? '.dmg' : '-setup.exe');
+    for (const name of [stem + '.tar.gz', bundle, installer, ...(platform === 'linux-x64' ? ['hycli-0.1.0-source.tar.gz'] : [])]) {
+      const bytes = Buffer.from('synthetic ' + name);
+      await fs.writeFile(path.join(folder, name), name === bundle && platform === corrupt ? 'corrupt' : bytes);
+      await fs.writeFile(path.join(folder, name + '.sha256'), `${digest(bytes)}  ${name}\n`);
+      if (name.endsWith('.tar.gz')) {
+        const isSource = name.includes('-source.');
+        await fs.writeFile(path.join(folder, name.replace('.tar.gz', '.manifest.json')), JSON.stringify({
+          version: '0.1.0', kind: isSource ? 'source' : 'native', platform: isSource ? null : os,
+          arch: isSource ? null : arch, files: ['synthetic-file', 'SHA256SUMS'], sha256: digest(bytes)
+        }));
+      }
+    }
   }
-  // Intercept the subprocess at its boundary, portable across Windows/macOS/Linux.
-  // Fail closed: no real gh command (especially upload) can run in these tests.
+  if (mutate) await mutate(source);
+  const metadata = {id: 123, status: 'completed', conclusion: 'success', head_branch: 'main',
+    head_sha: 'a'.repeat(40), event: 'push', path: '.github/workflows/verify.yml', ...runInfo};
+  // Intercept all subprocesses before publisher imports. Nothing falls through to real gh.
   await fs.writeFile(path.join(dir, 'gh-mock.mjs'), `
 import cp from 'node:child_process';
 import fs from 'node:fs';
@@ -171,42 +185,142 @@ import path from 'node:path';
 import {syncBuiltinESMExports} from 'node:module';
 import {fileURLToPath} from 'node:url';
 const dir = path.dirname(fileURLToPath(import.meta.url));
+const calls = [];
 cp.spawnSync = (command, args) => {
-  if (command !== 'gh' || args[0] !== 'run' || args[1] !== 'download') throw new Error('Forbidden subprocess: ' + command + ' ' + args);
-  fs.cpSync(path.join(dir, 'artifacts'), args[args.indexOf('--dir') + 1], {recursive: true});
-  return {status: 0, stdout: '', stderr: ''};
+  calls.push([command, ...args]);
+  fs.writeFileSync(path.join(dir, 'gh-calls.json'), JSON.stringify(calls));
+  if (command !== 'gh') throw new Error('Forbidden subprocess: ' + command);
+  let value;
+  if (args[0] === 'run' && args[1] === 'download') {
+    fs.cpSync(path.join(dir, 'artifacts'), args[args.indexOf('--dir') + 1], {recursive: true});
+    return {status: 0, stdout: '', stderr: ''};
+  } else if (args[0] === 'run' && args[1] === 'list') value = ${JSON.stringify(noRuns ? [] : [{databaseId: 123}])};
+  else if (args[0] === 'api' && args[1] === 'repos/{owner}/{repo}/actions/runs/123') value = ${JSON.stringify(metadata)};
+  else if (args[0] === 'api' && args[1] === ${JSON.stringify('repos/{owner}/{repo}/commits/' + encodeURIComponent('refs/tags/' + tag))}) value = {sha: '${'a'.repeat(40)}'};
+  else if (args[0] === 'api' && args[1] === 'repos/{owner}/{repo}/contents/Cargo.toml?ref=${'a'.repeat(40)}') value = {encoding: 'base64', content: ${JSON.stringify(Buffer.from('[package]\nversion = "' + tagVersion + '"\n').toString('base64'))}};
+  else throw new Error('Forbidden subprocess: ' + command + ' ' + args);
+  return {status: 0, stdout: JSON.stringify(value), stderr: ''};
 };
 syncBuiltinESMExports();
+globalThis.fetch = () => { throw new Error('Network forbidden'); };
 const write = fsp.writeFile;
 fsp.writeFile = async (file, bytes, ...options) => {
-  if (path.basename(file) === 'server.json') await write(path.join(dir, 'saved-server.json'), bytes);
+  if (['server.json', 'SHA256SUMS'].includes(path.basename(file))) await write(path.join(dir, 'saved-' + path.basename(file)), bytes);
   return write(file, bytes, ...options);
 };
 `);
-  const result = run(dir, 'publish-release.mjs', ['--dry-run', '--run-id', '123', '--tag', tag], 'gh-mock.mjs');
-  return {dir, result};
+  const args = [...(dryRun ? ['--dry-run'] : []), ...(automatic ? [] : ['--run-id', '123']), '--tag', tag];
+  const result = run(dir, 'publish-release.mjs', args, 'gh-mock.mjs');
+  const calls = JSON.parse(await fs.readFile(path.join(dir, 'gh-calls.json'), 'utf8').catch(() => '[]'));
+  assert.ok(!calls.some(call => call[1] === 'release'), 'publisher must not attempt upload in this fixture');
+  return {dir, result, calls};
 }
 
-test('publisher uses the actual release tag for every download URL', async t => {
+test('publisher validates complete artifacts and preserves custom release tags', async t => {
   for (const tag of ['v0.1.0', 'testing-v0.1.0', 'release/0.1.0']) {
     const {dir, result} = await publisher(t, {tag});
     assert.equal(result.status, 0, result.stderr);
     const server = JSON.parse(await fs.readFile(path.join(dir, 'saved-server.json')));
     assert.equal(server.packages.length, 6);
     for (const item of server.packages) assert.ok(item.identifier.includes(`/download/${encodeURIComponent(tag)}/`));
+    const summary = JSON.parse(result.stdout.trim().split('\n').at(-1));
+    assert.equal(summary.total_files, 47);
+    assert.equal(summary.verified_artifacts, 19);
+    assert.equal((await fs.readFile(path.join(dir, 'saved-SHA256SUMS'), 'utf8')).trim().split('\n').length, 19);
   }
+});
+
+test('publisher automatic selection receives the same run validation', async t => {
+  const valid = await publisher(t, {automatic: true});
+  assert.equal(valid.result.status, 0, valid.result.stderr);
+  assert.ok(valid.calls.some(call => call.includes('repos/{owner}/{repo}/actions/runs/123')));
+  const failed = await publisher(t, {automatic: true, runInfo: {conclusion: 'failure'}});
+  assert.notEqual(failed.result.status, 0);
+  assert.ok(!failed.calls.some(call => call[2] === 'download'));
+});
+
+for (const [name, runInfo] of [
+  ['failed run', {conclusion: 'failure'}], ['unfinished run', {status: 'in_progress'}],
+  ['wrong workflow', {path: '.github/workflows/other.yml'}], ['wrong branch', {head_branch: 'feature'}],
+  ['pull request run', {event: 'pull_request'}], ['different source', {head_sha: 'b'.repeat(40)}]
+]) test(`publisher refuses explicit ${name} before downloading`, async t => {
+  const {result, calls} = await publisher(t, {runInfo});
+  assert.notEqual(result.status, 0, 'invalid run must not pass collection');
+  assert.ok(!calls.some(call => call[2] === 'download'), 'invalid run must be rejected before download');
+});
+
+test('publisher refuses a tag whose source version differs from Cargo', async t => {
+  const {result, calls} = await publisher(t, {tagVersion: '0.2.0'});
+  assert.notEqual(result.status, 0, 'tag version mismatch must not pass');
+  assert.match(result.stderr, /version/i);
+  assert.ok(!calls.some(call => call[2] === 'download'));
+});
+
+test('publisher refuses an empty successful-run selection', async t => {
+  const {result} = await publisher(t, {automatic: true, noRuns: true});
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /No successful/);
 });
 
 test('publisher refuses a missing platform', async t => {
   const {result} = await publisher(t, {missing: 'win32-arm64'});
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /Missing MCP bundles: win32-arm64/);
+  assert.match(result.stderr, /Missing .*artifact/i);
 });
 
 test('publisher refuses corrupted bundle bytes', async t => {
   const {result} = await publisher(t, {corrupt: 'linux-x64'});
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /SHA-256 mismatch/);
+});
+
+for (const file of ['hycli-0.1.0-linux-x64.tar.gz', 'hycli-0.1.0-linux-x64.deb', 'hycli-mcp-0.1.0-linux-x64.mcpb',
+  'hycli-0.1.0-source.tar.gz', 'hycli-0.1.0-linux-x64.manifest.json', 'hycli-0.1.0-source.manifest.json',
+  'hycli-0.1.0-linux-x64.tar.gz.sha256', 'hycli-0.1.0-linux-x64.deb.sha256',
+  'hycli-mcp-0.1.0-linux-x64.mcpb.sha256', 'hycli-0.1.0-source.tar.gz.sha256']) {
+  test(`publisher refuses missing ${file}`, async t => {
+    const {result} = await publisher(t, {mutate: source => fs.rm(path.join(source, 'hycli-linux-x64', file))});
+    assert.notEqual(result.status, 0, 'incomplete artifact set must not pass');
+    assert.match(result.stderr, /Missing .*artifact/i);
+  });
+}
+
+for (const payload of ['hycli-0.1.0-linux-x64.tar.gz', 'hycli-0.1.0-linux-x64.deb', 'hycli-0.1.0-source.tar.gz']) {
+  test(`publisher refuses absent payload and sidecar together for ${payload}`, async t => {
+    const {result} = await publisher(t, {mutate: async source => {
+      for (const name of [payload, payload + '.sha256']) await fs.rm(path.join(source, 'hycli-linux-x64', name));
+    }});
+    assert.notEqual(result.status, 0, 'missing artifact class must not pass');
+    assert.match(result.stderr, /Missing .*artifact/i);
+  });
+}
+
+test('publisher refuses duplicate basenames instead of overwriting', async t => {
+  const {result} = await publisher(t, {mutate: source => fs.copyFile(
+    path.join(source, 'hycli-linux-x64', 'hycli-mcp-0.1.0-linux-x64.mcpb'),
+    path.join(source, 'hycli-win32-arm64', 'hycli-mcp-0.1.0-linux-x64.mcpb'))});
+  assert.notEqual(result.status, 0, 'duplicate basename must not pass');
+  assert.match(result.stderr, /Duplicate/);
+});
+
+for (const [name, mutate] of [
+  ['wrong sidecar filename', source => fs.writeFile(path.join(source, 'hycli-linux-x64', 'hycli-0.1.0-linux-x64.deb.sha256'), `${digest(Buffer.from('synthetic hycli-0.1.0-linux-x64.deb'))}  different.deb\n`)],
+  ['unexpected artifact', source => fs.writeFile(path.join(source, 'hycli-linux-x64', 'debug-output.txt'), 'synthetic')],
+  ...Object.entries({version: '0.2.0', platform: 'win32', arch: 'arm64', kind: 'source', sha256: '0'.repeat(64)}).map(([key, value]) => [
+    'manifest ' + key, async source => {
+      const file = path.join(source, 'hycli-linux-x64', 'hycli-0.1.0-linux-x64.manifest.json');
+      const manifest = JSON.parse(await fs.readFile(file)); manifest[key] = value; await fs.writeFile(file, JSON.stringify(manifest));
+    }
+  ])
+]) test(`publisher refuses ${name}`, async t => {
+  const {result} = await publisher(t, {mutate});
+  assert.notEqual(result.status, 0, name + ' must not pass');
+});
+
+test('publisher validation failure cannot reach upload without dry-run', async t => {
+  const {result} = await publisher(t, {dryRun: false, runInfo: {conclusion: 'failure'}});
+  assert.notEqual(result.status, 0);
+  assert.doesNotMatch(result.stderr, /Forbidden subprocess/);
 });
 
 test('registry metadata rejects malformed hashes and empty bundle sets', () => {
