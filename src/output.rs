@@ -15,7 +15,7 @@ impl Emitter {
         }
     }
 
-    pub fn data(&self, v: &impl serde::Serialize) {
+    pub fn data(&self, v: &impl serde::Serialize) -> Result<(), AppError> {
         let mut out = io::stdout();
         let value = serde_json::to_value(v).unwrap_or(serde_json::Value::Null);
         let pretty = if self.json {
@@ -24,7 +24,15 @@ impl Emitter {
             serde_json::to_string_pretty(&value)
         }
         .unwrap_or_default();
-        let _ = writeln!(out, "{pretty}");
+        writeln!(out, "{pretty}")
+            .and_then(|()| out.flush())
+            .map_err(|error| {
+                apperr::runtime(
+                    error,
+                    "Cannot write stdout",
+                    "Check the output destination.",
+                )
+            })
     }
 
     /// Emit a single-line error to stderr and return the exit code.

@@ -65,9 +65,9 @@ async fn dispatch(deps: Deps, cmd: Cmd, emit: &Emitter) -> Result<(), AppError> 
     match cmd {
         Cmd::Browsers { url } => {
             if let Some(url) = url {
-                emit.data(&runner(&deps)?.find_browser_accounts("", &url, "").await?);
+                emit.data(&runner(&deps)?.find_browser_accounts("", &url, "").await?)?;
             } else {
-                emit.data(&crate::browser_discovery::discover());
+                emit.data(&crate::browser_discovery::discover())?;
             }
             Ok(())
         }
@@ -86,7 +86,7 @@ async fn dispatch(deps: Deps, cmd: Cmd, emit: &Emitter) -> Result<(), AppError> 
                             job
                         })
                         .collect();
-                    emit.data(&jobs);
+                    emit.data(&jobs)?;
                 }
                 JobsCmd::Show { id, watch } => {
                     let mut previous = String::new();
@@ -94,7 +94,7 @@ async fn dispatch(deps: Deps, cmd: Cmd, emit: &Emitter) -> Result<(), AppError> 
                         let mut job = core.state.job(&id)?;
                         job.url.clear();
                         if job.updated_at != previous {
-                            emit.data(&job);
+                            emit.data(&job)?;
                             previous = job.updated_at.clone();
                         }
                         if !watch || !["running", "queued"].contains(&job.status.as_str()) {
@@ -108,14 +108,14 @@ async fn dispatch(deps: Deps, cmd: Cmd, emit: &Emitter) -> Result<(), AppError> 
             Ok(())
         }
         Cmd::Version => {
-            emit.data(&serde_json::json!({"version": env!("CARGO_PKG_VERSION")}));
+            emit.data(&serde_json::json!({"version": env!("CARGO_PKG_VERSION")}))?;
             Ok(())
         }
         Cmd::Feedback => {
             let url = crate::feedback::issue_url();
             // The platform opener is asynchronous: spawning it does not prove a page opened.
             let launch_requested = crate::dashboard::open_url(&url).is_ok();
-            emit.data(&serde_json::json!({"url": url, "launch_requested": launch_requested}));
+            emit.data(&serde_json::json!({"url": url, "launch_requested": launch_requested}))?;
             if launch_requested {
                 eprintln!(
                     "hycli: browser launch requested; if no page opens, open the returned URL"
@@ -156,7 +156,7 @@ async fn dispatch(deps: Deps, cmd: Cmd, emit: &Emitter) -> Result<(), AppError> 
                                     format!("{suggestion}Available actions: {}.", names.join(", ")),
                                 )
                             })?;
-                    emit.data(&action);
+                    emit.data(&action)?;
                 } else {
                     let latest_understanding =
                         core.state.latest_understanding(&site.id).ok().flatten();
@@ -168,7 +168,7 @@ async fn dispatch(deps: Deps, cmd: Cmd, emit: &Emitter) -> Result<(), AppError> 
                             serde_json::to_value(&guide).unwrap_or(serde_json::Value::Null),
                         );
                     }
-                    emit.data(&val);
+                    emit.data(&val)?;
                 }
                 return Ok(());
             }
@@ -180,7 +180,7 @@ async fn dispatch(deps: Deps, cmd: Cmd, emit: &Emitter) -> Result<(), AppError> 
                     "exit_codes": {"ok": 0, "runtime": 1, "usage": 2, "auth": 3, "blocked": 4, "spec": 5},
                 },
                 "usage": "hycli SITE ACTION --input value; hycli SITE ACTION --help",
-            }));
+            }))?;
             Ok(())
         }
         Cmd::Accounts { site, cmd } => {
@@ -193,7 +193,7 @@ async fn dispatch(deps: Deps, cmd: Cmd, emit: &Emitter) -> Result<(), AppError> 
                 .into_values()
                 .filter(|a| site.as_ref().is_none_or(|id| a.site_id == *id))
                 .collect();
-            emit.data(&accounts);
+            emit.data(&accounts)?;
             Ok(())
         }
         Cmd::Prepare {
@@ -253,7 +253,7 @@ async fn dispatch(deps: Deps, cmd: Cmd, emit: &Emitter) -> Result<(), AppError> 
             let (result, _) = runner(&deps)?
                 .run_op_for_account(&sp, &action, &args, account.as_deref())
                 .await?;
-            emit.data(&result.output());
+            emit.data(&result.output())?;
             Ok(())
         }
         Cmd::Writes { site, mode } => {
@@ -284,25 +284,25 @@ async fn dispatch(deps: Deps, cmd: Cmd, emit: &Emitter) -> Result<(), AppError> 
             emit.data(&serde_json::json!({
                 "site": site,
                 "writes": writes,
-            }));
+            }))?;
             Ok(())
         }
         Cmd::Open { port, no_open } => {
             let instance =
                 crate::desktop::open(port, !no_open, deps.allow_local, deps.kb.as_deref()).await?;
             let url = crate::desktop::launch_url(&crate::platform::data_dir(), &instance);
-            emit.data(&serde_json::json!({"running": true, "url": url}));
+            emit.data(&serde_json::json!({"running": true, "url": url}))?;
             Ok(())
         }
         Cmd::Status => {
             let root = crate::platform::data_dir();
             let instance = crate::desktop::running(&root).await;
-            emit.data(&serde_json::json!({"running": instance.is_some(), "url": instance.map(|i| crate::desktop::launch_url(&root, &i))}));
+            emit.data(&serde_json::json!({"running": instance.is_some(), "url": instance.map(|i| crate::desktop::launch_url(&root, &i))}))?;
             Ok(())
         }
         Cmd::Stop => {
             crate::desktop::stop(&crate::platform::data_dir()).await?;
-            emit.data(&serde_json::json!({"running": false}));
+            emit.data(&serde_json::json!({"running": false}))?;
             Ok(())
         }
         Cmd::Dashboard {
@@ -356,7 +356,7 @@ async fn dispatch(deps: Deps, cmd: Cmd, emit: &Emitter) -> Result<(), AppError> 
             } else {
                 core.probe(&deps.site, &url, &tls_profile).await?
             };
-            emit.data(&result);
+            emit.data(&result)?;
             let defense = result
                 .get("defense")
                 .and_then(serde_json::Value::as_str)
@@ -411,7 +411,7 @@ async fn dispatch(deps: Deps, cmd: Cmd, emit: &Emitter) -> Result<(), AppError> 
                     obj.insert("draft_file".into(), serde_json::Value::String(out_path));
                 }
             }
-            emit.data(&report);
+            emit.data(&report)?;
             Ok(())
         }
         Cmd::Kb { cmd } => kb_cmd(deps, cmd, emit).await,
@@ -467,10 +467,10 @@ async fn accounts_cmd(
                         cursor.as_deref(),
                     )
                     .await?,
-            );
+            )?;
         }
         AccountsCmd::Inspect { account } => {
-            emit.data(&core.inspect_account_session(&account)?);
+            emit.data(&core.inspect_account_session(&account)?)?;
         }
         AccountsCmd::Observe {
             account,
@@ -481,7 +481,7 @@ async fn accounts_cmd(
                 &core
                     .observe_account_session(&account, &url, browser)
                     .await?,
-            );
+            )?;
         }
         AccountsCmd::Verify { account, recipe } => {
             let recipe: crate::session_recipe::ConnectionRecipe = serde_json::from_slice(
@@ -489,10 +489,10 @@ async fn accounts_cmd(
                     .map_err(|_| AppError::api("data_invalid", 400))?,
             )
             .map_err(|_| AppError::api("data_invalid", 400))?;
-            emit.data(&core.verify_observed_session(&account, &recipe).await?);
+            emit.data(&core.verify_observed_session(&account, &recipe).await?)?;
         }
         AccountsCmd::Refresh { account } => {
-            emit.data(&core.refresh_account_session(&account).await?)
+            emit.data(&core.refresh_account_session(&account).await?)?
         }
     }
     Ok(())
@@ -506,36 +506,36 @@ async fn kb_cmd(deps: Deps, cmd: KbCmd, emit: &Emitter) -> Result<(), AppError> 
             emit.data(
                 &serde_json::json!({"path": crate::platform::resolve_kb(deps.kb.as_deref()),
                 "schema_version": kb.schema_version(), "status": "ready"}),
-            );
+            )?;
             Ok(())
         }
         KbCmd::Next => match kb.next(&deps.site)? {
             Some(g) => {
                 emit.data(&serde_json::json!({"action": "resolve-gap", "gap": g,
-                    "hint": "hycli kb gap-set <id> done"}));
+                    "hint": "hycli kb gap-set <id> done"}))?;
                 Ok(())
             }
             None => {
-                emit.data(&serde_json::json!({"action": "none", "detail": "No open gaps; coverage satisfied"}));
+                emit.data(&serde_json::json!({"action": "none", "detail": "No open gaps; coverage satisfied"}))?;
                 Ok(())
             }
         },
         KbCmd::Gaps { state } => {
-            emit.data(&kb.gaps(&deps.site, &state)?);
+            emit.data(&kb.gaps(&deps.site, &state)?)?;
             Ok(())
         }
         KbCmd::GapSet { id, state } => {
             kb.set_gap_state(id, &state)?;
-            emit.data(&serde_json::json!({"id": id, "state": state}));
+            emit.data(&serde_json::json!({"id": id, "state": state}))?;
             Ok(())
         }
         KbCmd::NodeLs { kind, limit } => {
-            emit.data(&kb.query_nodes(&deps.site, &kind, limit)?);
+            emit.data(&kb.query_nodes(&deps.site, &kind, limit)?)?;
             Ok(())
         }
         KbCmd::NodeGet { kind, key } => match kb.node(&deps.site, &kind, &key)? {
             Some(n) => {
-                emit.data(&n);
+                emit.data(&n)?;
                 Ok(())
             }
             None => Err(apperr::spec(
@@ -545,7 +545,7 @@ async fn kb_cmd(deps: Deps, cmd: KbCmd, emit: &Emitter) -> Result<(), AppError> 
         },
         KbCmd::Graph { node_id, depth } => {
             let (nodes, edges) = kb.subgraph(node_id, depth)?;
-            emit.data(&serde_json::json!({"root": node_id, "depth": depth, "nodes": nodes, "edges": edges}));
+            emit.data(&serde_json::json!({"root": node_id, "depth": depth, "nodes": nodes, "edges": edges}))?;
             Ok(())
         }
         KbCmd::Record {
@@ -567,7 +567,7 @@ async fn kb_cmd(deps: Deps, cmd: KbCmd, emit: &Emitter) -> Result<(), AppError> 
                 defense,
                 ..Default::default()
             })?;
-            emit.data(&serde_json::json!({"id": id}));
+            emit.data(&serde_json::json!({"id": id}))?;
             Ok(())
         }
         KbCmd::FindingAdd {
@@ -580,15 +580,15 @@ async fn kb_cmd(deps: Deps, cmd: KbCmd, emit: &Emitter) -> Result<(), AppError> 
                 .filter_map(|p| p.trim().parse().ok())
                 .collect();
             let id = kb.add_finding(&deps.site, &statement, confidence, &evs)?;
-            emit.data(&serde_json::json!({"id": id, "statement": statement, "evidence": evs}));
+            emit.data(&serde_json::json!({"id": id, "statement": statement, "evidence": evs}))?;
             Ok(())
         }
         KbCmd::FindingSearch { q } => {
-            emit.data(&kb.search_findings(&deps.site, &q, 50)?);
+            emit.data(&kb.search_findings(&deps.site, &q, 50)?)?;
             Ok(())
         }
         KbCmd::Stats => {
-            emit.data(&kb.stats(&deps.site)?);
+            emit.data(&kb.stats(&deps.site)?)?;
             Ok(())
         }
         KbCmd::Fsck => {
@@ -598,7 +598,7 @@ async fn kb_cmd(deps: Deps, cmd: KbCmd, emit: &Emitter) -> Result<(), AppError> 
             } else {
                 format!("{} issues", issues.len())
             };
-            emit.data(&serde_json::json!({"status": status, "issues": issues}));
+            emit.data(&serde_json::json!({"status": status, "issues": issues}))?;
             Ok(())
         }
     }

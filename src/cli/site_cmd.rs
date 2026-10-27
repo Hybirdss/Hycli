@@ -73,21 +73,21 @@ pub(super) async fn spec_cmd(deps: Deps, cmd: SpecCmd, emit: &Emitter) -> Result
             let sp = load_file_spec(&file)?;
             let issues = sp.validate();
             if !issues.is_empty() {
-                emit.data(&serde_json::json!({"status": format!("{} issues", issues.len()), "issues": issues}));
+                emit.data(&serde_json::json!({"status": format!("{} issues", issues.len()), "issues": issues}))?;
                 return Err(apperr::spec(
                     "Spec validation failed",
                     "Fix the reported issues.",
                 ));
             }
             crate::policy::validate_spec(&sp)?;
-            emit.data(&serde_json::json!({"status": "ok", "site": sp.site.name, "ops": sp.operations.len()}));
+            emit.data(&serde_json::json!({"status": "ok", "site": sp.site.name, "ops": sp.operations.len()}))?;
             Ok(())
         }
         SpecCmd::Install { file } => {
             let sp = load_file_spec(&file)?;
             let issues = sp.validate();
             if !issues.is_empty() {
-                emit.data(&serde_json::json!({"issues": issues}));
+                emit.data(&serde_json::json!({"issues": issues}))?;
                 return Err(apperr::spec(
                     "Validation failed; installation aborted",
                     "Fix the reported issues.",
@@ -111,7 +111,7 @@ pub(super) async fn spec_cmd(deps: Deps, cmd: SpecCmd, emit: &Emitter) -> Result
                 "site": sp.site.name,
                 "ops": sp.operations.len(),
                 "user_guide": user_guide,
-            }));
+            }))?;
             Ok(())
         }
         SpecCmd::Ls => {
@@ -149,7 +149,7 @@ pub(super) async fn spec_cmd(deps: Deps, cmd: SpecCmd, emit: &Emitter) -> Result
                     })
                 })
                 .collect();
-            emit.data(&rows);
+            emit.data(&rows)?;
             Ok(())
         }
         SpecCmd::Rm { site } => {
@@ -165,7 +165,7 @@ pub(super) async fn spec_cmd(deps: Deps, cmd: SpecCmd, emit: &Emitter) -> Result
                 true,
             )?
             .remove_site(&site)?;
-            emit.data(&serde_json::json!({"removed": site}));
+            emit.data(&serde_json::json!({"removed": site}))?;
             Ok(())
         }
     }
@@ -245,11 +245,11 @@ pub(super) fn auth_cmd(cmd: AuthCmd, emit: &Emitter) -> Result<(), AppError> {
                 Err(error) if oauth.is_some() => return Err(error),
                 Err(_) => st.set(site, key, &v)?,
             }
-            emit.data(&serde_json::json!({"stored": r#ref}));
+            emit.data(&serde_json::json!({"stored": r#ref}))?;
             Ok(())
         }
         AuthCmd::Ls => {
-            emit.data(&st.keys());
+            emit.data(&st.keys())?;
             Ok(())
         }
         AuthCmd::Rm { r#ref } => {
@@ -295,7 +295,7 @@ pub(super) fn auth_cmd(cmd: AuthCmd, emit: &Emitter) -> Result<(), AppError> {
             } else {
                 st.delete(site, key)?;
             }
-            emit.data(&serde_json::json!({"removed": r#ref}));
+            emit.data(&serde_json::json!({"removed": r#ref}))?;
             Ok(())
         }
     }
@@ -368,7 +368,7 @@ pub(super) async fn capture_run(
     emit.data(
         &serde_json::json!({"clusters": clusters.len(), "recorded": recorded, "artifact_sha": short,
         "draft": out_path, "next": "Verify replay with hycli try, then mark gap done"}),
-    );
+    )?;
     Ok(())
 }
 
@@ -397,7 +397,7 @@ pub(super) async fn try_run(
         runner.run_op(&sp, &op, &args).await?
     };
     res.ensure_success()?;
-    emit.data(&res);
+    emit.data(&res)?;
     Ok(())
 }
 
@@ -415,7 +415,7 @@ pub(super) async fn check_run(
     for site in sites {
         reports.push(core.check_site(&site).await?);
     }
-    emit.data(&reports);
+    emit.data(&reports)?;
     // Exit status follows the most actionable verdict, so scripts can branch without parsing.
     let worst = [
         "signed_out",
@@ -496,7 +496,7 @@ pub(super) async fn site_run(
     let (result, _) = runner(&deps)?
         .run_op_for_account(&sp, op, &args.inputs, args.account.as_deref())
         .await?;
-    emit.data(&result.output());
+    emit.data(&result.output())?;
     Ok(())
 }
 
@@ -527,7 +527,7 @@ pub(super) async fn wait_preparation(
                     }
                 }
                 job.url.clear();
-                emit.data(&job);
+                emit.data(&job)?;
                 return job_outcome(&job);
             }
             tokio::time::sleep(std::time::Duration::from_millis(750)).await;
