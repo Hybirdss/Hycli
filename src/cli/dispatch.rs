@@ -575,10 +575,21 @@ async fn kb_cmd(deps: Deps, cmd: KbCmd, emit: &Emitter) -> Result<(), AppError> 
             confidence,
             evidence,
         } => {
-            let evs: Vec<i64> = evidence
-                .split(',')
-                .filter_map(|p| p.trim().parse().ok())
-                .collect();
+            let evs: Vec<i64> = if evidence.trim().is_empty() {
+                Vec::new()
+            } else {
+                evidence
+                    .split(',')
+                    .map(|p| {
+                        p.trim().parse().map_err(|_| {
+                            apperr::usage(
+                                "Invalid --evidence list",
+                                "Use comma-separated integer IDs, or omit --evidence.",
+                            )
+                        })
+                    })
+                    .collect::<Result<_, _>>()?
+            };
             let id = kb.add_finding(&deps.site, &statement, confidence, &evs)?;
             emit.data(&serde_json::json!({"id": id, "statement": statement, "evidence": evs}))?;
             Ok(())
