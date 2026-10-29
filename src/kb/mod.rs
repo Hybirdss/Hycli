@@ -399,12 +399,18 @@ impl Kb {
 
     pub fn set_gap_state(&self, id: i64, state: &str) -> AppResult<()> {
         let conn = self.conn.lock().unwrap();
-        conn.execute(
+        let updated = conn.execute(
             "UPDATE gap SET state=?1, updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?2",
             params![state, id],
         )
-        .map(|_| ())
-        .map_err(|e| apperr::runtime(e, "Failed to update gap state", ""))
+        .map_err(|e| apperr::runtime(e, "Failed to update gap state", ""))?;
+        if updated == 0 {
+            return Err(apperr::usage(
+                format!("Gap not found: {id}"),
+                "Use `hycli kb gaps --state ''` to list gap IDs.",
+            ));
+        }
+        Ok(())
     }
 
     pub fn add_finding(
