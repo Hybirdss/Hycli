@@ -249,7 +249,7 @@ async fn desktop_shutdown_preserves_active_work_and_rejects_later_requests() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
     let web = crate::dashboard::Web::new(core.clone(), port).unwrap();
-    let launch = web.launch.clone();
+    let ticket = web.test_bootstrap_ticket();
     let shutdown = web.shutdown.clone();
     let server = tokio::spawn(async move {
         axum::serve(listener, crate::dashboard::router(web))
@@ -259,7 +259,8 @@ async fn desktop_shutdown_preserves_active_work_and_rejects_later_requests() {
     let client = reqwest::Client::builder().no_proxy().build().unwrap();
     let base = format!("http://127.0.0.1:{port}");
     let session = client
-        .get(format!("{base}/api/session?launch={launch}"))
+        .post(format!("{base}/api/bootstrap"))
+        .json(&json!({"ticket": ticket}))
         .send()
         .await
         .unwrap();

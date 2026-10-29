@@ -26,6 +26,12 @@ The smoke script extracts the package into a new directory, checks every checksu
 
 ## Native CI and publication
 
+### v0.1.1 native browser acceptance exception
+
+The user explicitly waived native browser acceptance for v0.1.1 on 2026-10-29 while retaining the #54 authentication fix. Native private-file handoff, authenticated cross-origin shutdown rejection, saved-settings persistence through restart, and browser Quit are **NOT RUN and unverified**, not passed. The workflow runs the non-browser desktop lifecycle check and records this exception separately. The explicit `--browser` smoke request remains fail-closed; the exception does not authorize running a denied transport or weakening authentication.
+
+Release notes must disclose these four unverified criteria. All six native builds, package and installer checks, actual CLI/MCP smoke, independent final-source review, and source/artifact integrity remain required. Synthetic browser fixtures are separate coverage. This exception is specific to v0.1.1 and must be reconsidered before a later release.
+
 The verification workflow defines native x64 and ARM64 jobs on Linux, macOS and Windows. Each job builds its own executable and checks its extracted package. Linux x64 additionally runs the full browser fixture suite. A workflow definition is not evidence that a runner passed: use the actual CI result for each published platform.
 
 Run the workflow on the intended public repository and review its artifacts before creating a public release. Publication requires a real repository and permission to publish there. This repository does not assume that a developer's remote or account is the user's destination.

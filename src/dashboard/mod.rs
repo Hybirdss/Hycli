@@ -1,5 +1,6 @@
 //! Loopback-only companion API. Credential values have no read/export endpoint.
 mod auth;
+pub(crate) mod private_file;
 mod routes_accounts;
 mod routes_jobs;
 mod routes_sites;
@@ -34,11 +35,7 @@ use tokio_stream::wrappers::BroadcastStream;
 pub struct Web {
     pub core: Arc<Runtime>,
     pub port: u16,
-    pub session: String,
-    pub csrf: String,
-    /// Shown only in the address `hycli dashboard` opens; a plain local request cannot
-    /// mint a dashboard session, so a tool-calling agent cannot approve its own change.
-    pub launch: String,
+    auth: Arc<auth::DashboardAuth>,
     pub instance_id: String,
     pub shutdown: tokio::sync::watch::Sender<bool>,
     pub pairs: Arc<Mutex<BTreeMap<String, Pair>>>,
@@ -148,15 +145,42 @@ pub async fn serve_with_options(
         &crate::desktop::Instance {
             port,
             id: web.instance_id.clone(),
+            control_file: web.control_path(),
         },
     )?;
-    let url = web.launch_url();
-    eprintln!("Hycli dashboard: {url}");
+    let opening = web.prepare_opening()?;
+    eprintln!("Hycli dashboard: http://127.0.0.1:{port}");
     if open_browser {
-        if let Err(e) = open_url(&url) {
-            eprintln!("{e}. Open {url} in your browser.");
+        if open_path(&opening).is_err() {
+            eprintln!(
+                "The browser could not be opened. Open {} in your browser.",
+                opening.display()
+            );
         }
+    } else {
+        eprintln!(
+            "Open {} in your browser (valid for two minutes).",
+            opening.display()
+        );
     }
+    // A bounded ticker cleans unused artifacts even when no requests arrive.
+    // A weak owner does not keep credentials alive after server teardown.
+    let weak_auth = Arc::downgrade(&web.auth);
+    let mut cleanup_shutdown = web.shutdown.subscribe();
+    let cleanup = tokio::spawn(async move {
+        loop {
+            tokio::select! {
+                _ = tokio::time::sleep(Duration::from_secs(1)) => {
+                    let Some(auth) = weak_auth.upgrade() else { break; };
+                    auth.expire();
+                }
+                _ = cleanup_shutdown.wait_for(|value| *value) => {
+                    if let Some(auth) = weak_auth.upgrade() { auth.revoke_all(); }
+                    break;
+                }
+            }
+        }
+    });
     let shutdown = web.shutdown.clone();
     let mut shutdown_rx = shutdown.subscribe();
     let mut done_rx = shutdown.subscribe();
@@ -167,10 +191,12 @@ pub async fn serve_with_options(
         }
     });
     // SSE streams close on the signal; bound any remaining keepalive connections.
-    tokio::select! {
+    let result = tokio::select! {
         result = std::future::IntoFuture::into_future(server) => result.map_err(Into::into),
         _ = async { let _ = done_rx.wait_for(|value| *value).await; tokio::time::sleep(Duration::from_secs(5)).await; } => Ok(()),
-    }
+    };
+    cleanup.abort();
+    result
 }
 
 async fn shutdown_signal() {
@@ -197,12 +223,19 @@ async fn shutdown(State(web): State<Web>) -> AppResult<Json<Value>> {
     {
         return Err(AppError::api("work_in_progress", 409));
     }
+    web.auth.revoke_all();
     web.shutdown.send_replace(true);
     Ok(ok())
 }
 
 pub fn router(web: Web) -> Router {
     Router::new()
+        .route("/bootstrap", get(auth::landing))
+        .route("/bootstrap.js", get(auth::landing_script))
+        .route("/api/bootstrap", post(auth::bootstrap))
+        .route("/control/probe", post(auth::control_probe))
+        .route("/control/open", post(auth::control_open))
+        .route("/control/shutdown", post(shutdown))
         .route("/api/session", get(auth::session))
         .route("/api/shutdown", post(shutdown))
         .route("/api/state", get(snapshot))
@@ -468,6 +501,30 @@ async fn asset(request: Request) -> Response {
     }
 }
 
+pub(crate) fn validate_opening(
+    path: &std::path::Path,
+    port: u16,
+    instance_id: &str,
+) -> std::io::Result<()> {
+    auth::validate_opening(path, port, instance_id)
+}
+
+pub fn open_path(path: &std::path::Path) -> std::io::Result<()> {
+    open_path_with(path, open_url)
+}
+fn open_path_with(
+    path: &std::path::Path,
+    opener: impl FnOnce(&str) -> std::io::Result<()>,
+) -> std::io::Result<()> {
+    let url = url::Url::from_file_path(path).map_err(|_| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "Invalid opening file path",
+        )
+    })?;
+    opener(url.as_str())
+}
+
 pub fn open_url(url: &str) -> std::io::Result<()> {
     let mut command = if cfg!(target_os = "macos") {
         std::process::Command::new("open")
@@ -493,4 +550,21 @@ pub fn open_url(url: &str) -> std::io::Result<()> {
         let _ = child.wait();
     });
     Ok(())
+}
+
+#[cfg(test)]
+mod opener_contract_tests {
+    #[test]
+    fn fake_opener_receives_only_file_path_even_when_it_fails() {
+        let path = std::env::temp_dir().join("synthetic-hycli-opening.html");
+        let result = super::open_path_with(&path, |argument| {
+            let url = url::Url::parse(argument).unwrap();
+            assert_eq!(url.scheme(), "file");
+            assert!(url.query().is_none());
+            assert!(url.fragment().is_none());
+            assert_eq!(url.to_file_path().unwrap(), path);
+            Err(std::io::Error::other("synthetic opener failure"))
+        });
+        assert!(result.is_err());
+    }
 }

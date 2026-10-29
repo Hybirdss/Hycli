@@ -42,6 +42,7 @@ const dashboard=spawn(executable,['dashboard','--no-open','--port',String(port)]
 let startup='',launchError;dashboard.stderr.on('data',chunk=>startup+=chunk);dashboard.on('error',error=>launchError=error);
 const base=`http://127.0.0.1:${port}`,sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 let mcp;
+console.warn('NOT RUN: private-file/native-browser bootstrap and authenticated dashboard state. CLI/MCP checks do not establish protected transport coverage.');
 try{
  let response;const deadline=Date.now()+startupTimeout;
  while(Date.now()<deadline){if(launchError)throw launchError;if(dashboard.exitCode!==null)throw Error(startup);try{response=await fetch(base,{signal:AbortSignal.timeout(2000)});if(response.ok)break;}catch{}await sleep(200);}
@@ -51,11 +52,14 @@ try{
  for(const document of ['/guide.html','/license.txt'])if(!(await fetch(base+document)).ok)throw Error('Missing offline documentation: '+document);
  for(const asset of assets)if(!(await fetch(new URL(asset,base))).ok)throw Error(`Embedded asset unavailable: ${asset}`);
  if((await fetch(base+'/api/session')).status!==401)throw Error('A plain local request minted a dashboard session');
- const launch=startup.match(/[?&]launch=([A-Za-z0-9]+)/)?.[1];if(!launch)throw Error('Missing launch address: '+startup);
- const session=await fetch(base+'/api/session?launch='+launch),cookie=session.headers.get('set-cookie')?.split(';')[0];
- if(!cookie)throw Error('Missing local session');
- const state=await (await fetch(base+'/api/state',{headers:{cookie}})).json();
- if(state.sites.length||state.accounts.length)throw Error('Release includes website/account data');
+ if((await fetch(base+'/api/state')).status!==401)throw Error('Protected dashboard state is public');
+ if((await fetch(base+'/api/shutdown',{method:'POST'})).status!==401)throw Error('Unauthenticated dashboard shutdown succeeded');
+ const status=spawnSync(executable,['status'],{cwd,env,encoding:'utf8'});
+ if(status.error||status.status!==0)throw Error('Packaged status failed: '+status.stderr);
+ const running=JSON.parse(status.stdout),publicUrl=new URL(running.url);
+ if(!running.running||publicUrl.origin!==base||publicUrl.search||publicUrl.hash||publicUrl.username||publicUrl.password)throw Error('Status did not return the nonsecret dashboard address');
+ // Fresh-data assertions use the public CLI/MCP, not a private bootstrap ticket.
+ // This does not verify authenticated dashboard state or the native browser handoff.
  mcp=spawn(executable,['mcp'],{cwd,env,stdio:['pipe','pipe','pipe']});
  let buffer='',sequence=0;const pending=new Map();
  const fail=error=>{for(const item of pending.values()){clearTimeout(item.timer);item.reject(error);}pending.clear();};mcp.on('error',fail);mcp.on('exit',code=>fail(Error(`MCP exited ${code}`)));
@@ -79,7 +83,11 @@ try{
   const check=spawnSync(path.join(prefix,'bin/hycli'),['--version'],{cwd,env,encoding:'utf8'});
   if(check.error||check.status!==0)throw Error('Installed CLI link failed');
  }
- console.log(JSON.stringify({package:path.basename(archive),checksums:'passed',fresh_data:'empty',embedded_assets:assets.length,cli:'passed',mcp:'passed',runtime_path:'package directory only',directory}));
+ const stopped=spawnSync(executable,['stop'],{cwd,env,encoding:'utf8'});
+ if(stopped.error||stopped.status!==0)throw Error('Packaged stop failed: '+stopped.stderr);
+ const finalStatus=spawnSync(executable,['status'],{cwd,env,encoding:'utf8'});
+ if(finalStatus.error||finalStatus.status!==0||JSON.parse(finalStatus.stdout).running!==false)throw Error('Packaged dashboard did not stop');
+ console.log(JSON.stringify({package:path.basename(archive),checksums:'passed',fresh_data:'empty',embedded_assets:assets.length,cli:'passed',mcp:'passed',lifecycle:'passed',unauthenticated_api_guards:'passed',protected_transport:{status:'NOT RUN',reason:'Private-file/native-browser bootstrap requires separate permitted browser verification; CLI/MCP checks are not equivalent coverage.'},authenticated_dashboard_state:'NOT RUN',runtime_path:'package directory only',directory}));
 }finally{
  if(mcp){mcp.stdin.end();mcp.kill('SIGTERM');}
  dashboard.kill('SIGTERM');

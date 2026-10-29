@@ -1,3 +1,4 @@
+import {installFixtureSession} from './scripts/fixture-session.mjs';
 import {fileURLToPath} from 'node:url';
 // Real Rust API regression coverage for account resume, key setup, retries and restart.
 // Website/provider data and mutations are synthetic; only owned browser contexts close.
@@ -22,7 +23,8 @@ const done=async(id,timeout=180000)=>{let job;await poll(async()=>{job=(await ap
 const findJob=async(kind,excluded=[])=>{let job;await poll(async()=>{job=(await state()).jobs.find(j=>j.kind===kind&&!excluded.includes(j.id));return !!job;});return job;};
 const openSite=async title=>{await button(page,'nav.websites').click();await page.locator('.site-card').filter({hasText:title}).getByRole('button',{name:en['sites.openActions'],exact:true}).click();};
 try {
- await page.goto(ports.dashboard+'/?launch='+ports.launch,{waitUntil:'domcontentloaded'});await page.getByRole('heading',{name:en['sites.title'],exact:true}).waitFor();
+ await installFixtureSession(context, ports);
+ await page.goto(ports.dashboard,{waitUntil:'domcontentloaded'});await page.getByRole('heading',{name:en['sites.title'],exact:true}).waitFor();
  console.log('Account selection resumes preparation through the real route.');
  assert.equal((await api('/api/sites/library','PATCH',{title:'Lifecycle research library'})).status,200);
  await poll(async()=>await page.getByRole('button',{name:'Lifecycle research library',exact:true}).count()===1);

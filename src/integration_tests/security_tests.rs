@@ -516,7 +516,7 @@ async fn loopback_api_requires_session_origin_and_csrf() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
     let web = crate::dashboard::Web::new(core, port).unwrap();
-    let launch = web.launch.clone();
+    let ticket = web.test_bootstrap_ticket();
     let router = crate::dashboard::router(web);
     let server = tokio::spawn(async move {
         axum::serve(listener, router).await.unwrap();
@@ -539,11 +539,23 @@ async fn loopback_api_requires_session_origin_and_csrf() {
     ] {
         assert_eq!(client.get(address).send().await.unwrap().status(), 401);
     }
+    assert_eq!(
+        client
+            .post(format!("{base}/api/bootstrap"))
+            .json(&json!({"ticket": "synthetic-invalid-ticket"}))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        401
+    );
     let session = client
-        .get(format!("{base}/api/session?launch={launch}"))
+        .post(format!("{base}/api/bootstrap"))
+        .json(&json!({"ticket": ticket}))
         .send()
         .await
         .unwrap();
+    assert_eq!(session.status(), 200);
     let cookie = session
         .headers()
         .get("set-cookie")
