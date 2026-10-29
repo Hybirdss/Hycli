@@ -460,7 +460,7 @@ jobs:
         run: |
           echo '::warning::v0.1.1 native browser acceptance is NOT RUN (user-waived). Native handoff, authenticated cross-origin shutdown, saved-settings restart, and browser Quit remain unverified.'
           echo '### v0.1.1 native browser acceptance: NOT RUN (user-waived)' >> "$GITHUB_STEP_SUMMARY"
-          echo 'Native handoff, authenticated cross-origin shutdown, saved-settings restart, and browser Quit remain unverified. Non-browser lifecycle and independent synthetic browser fixtures do not satisfy these criteria.' >> "$GITHUB_STEP_SUMMARY
+          echo 'Native handoff, authenticated cross-origin shutdown, saved-settings restart, and browser Quit remain unverified. Non-browser lifecycle and independent synthetic browser fixtures do not satisfy these criteria.' >> "$GITHUB_STEP_SUMMARY"
       - name: Native installer
         run: node scripts/package-desktop.mjs
       - name: Native installer smoke check
