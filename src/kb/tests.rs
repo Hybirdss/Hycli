@@ -79,6 +79,84 @@ fn finding_fts_and_evidence() {
 }
 
 #[test]
+fn subgraph_excludes_edges_beyond_depth_in_either_direction() {
+    for reverse in [false, true] {
+        let kb = open_test();
+        let ids: Vec<_> = ["a", "b", "c"]
+            .into_iter()
+            .map(|key| {
+                kb.ensure_node("s", "endpoint", key, &serde_json::Value::Null)
+                    .unwrap()
+            })
+            .collect();
+        let links = if reverse {
+            [(ids[1], ids[0]), (ids[2], ids[1])]
+        } else {
+            [(ids[0], ids[1]), (ids[1], ids[2])]
+        };
+        for (src, dst) in links {
+            kb.link(src, dst, "links").unwrap();
+        }
+        for depth in [1, 2] {
+            let (nodes, edges) = kb.subgraph(ids[0], depth).unwrap();
+            let mut returned_ids: Vec<_> = nodes.iter().map(|node| node.id).collect();
+            returned_ids.sort_unstable();
+            assert_eq!(returned_ids, ids[..=depth as usize]);
+            let mut returned_edges: Vec<_> = edges
+                .iter()
+                .map(|edge| (edge.src, edge.dst, edge.rel.as_str()))
+                .collect();
+            returned_edges.sort_unstable();
+            let mut expected: Vec<_> = links[..depth as usize]
+                .iter()
+                .map(|&(src, dst)| (src, dst, "links"))
+                .collect();
+            expected.sort_unstable();
+            assert_eq!(returned_edges, expected, "reverse={reverse}, depth={depth}");
+            assert!(edges.iter().all(|edge| {
+                returned_ids.contains(&edge.src) && returned_ids.contains(&edge.dst)
+            }));
+        }
+    }
+}
+
+#[test]
+fn subgraph_keeps_internal_boundary_edges_and_self_loops_once() {
+    let kb = open_test();
+    let ids: Vec<_> = ["root", "left", "right", "outside"]
+        .into_iter()
+        .map(|key| {
+            kb.ensure_node("s", "endpoint", key, &serde_json::Value::Null)
+                .unwrap()
+        })
+        .collect();
+    let internal = [
+        (ids[0], ids[1]),
+        (ids[2], ids[0]),
+        (ids[1], ids[2]),
+        (ids[1], ids[1]),
+    ];
+    for (src, dst) in internal.into_iter().chain([(ids[2], ids[3])]) {
+        kb.link(src, dst, "links").unwrap();
+    }
+    let (nodes, edges) = kb.subgraph(ids[0], 1).unwrap();
+    let mut returned_ids: Vec<_> = nodes.iter().map(|node| node.id).collect();
+    returned_ids.sort_unstable();
+    assert_eq!(returned_ids, ids[..3]);
+    let mut returned_edges: Vec<_> = edges
+        .iter()
+        .map(|edge| (edge.src, edge.dst, edge.rel.as_str()))
+        .collect();
+    returned_edges.sort_unstable();
+    let mut expected: Vec<_> = internal
+        .iter()
+        .map(|&(src, dst)| (src, dst, "links"))
+        .collect();
+    expected.sort_unstable();
+    assert_eq!(returned_edges, expected);
+}
+
+#[test]
 fn fsck_catches() {
     let kb = open_test();
     kb.ensure_node("s", "endpoint", "GET /lonely", &serde_json::Value::Null)
