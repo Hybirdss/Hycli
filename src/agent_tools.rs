@@ -218,14 +218,21 @@ impl Runtime {
                     return Err(AppError::api("unsupported_evidence", 422));
                 }
                 let response = self
-                    .read_page_checked(url.as_str(), account, "go", Some(&credential), || {
-                        self.ensure_job_credential_snapshot(
-                            context.job,
-                            account,
-                            url.as_str(),
-                            Some(&credential),
-                        )
-                    })
+                    .read_page_checked(
+                        url.as_str(),
+                        account,
+                        "go",
+                        Some(&credential),
+                        false,
+                        || {
+                            self.ensure_job_credential_snapshot(
+                                context.job,
+                                account,
+                                url.as_str(),
+                                Some(&credential),
+                            )
+                        },
+                    )
                     .await?;
                 let text = String::from_utf8_lossy(&response.bytes);
                 let body = response.json();
