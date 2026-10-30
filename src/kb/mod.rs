@@ -277,6 +277,8 @@ impl Kb {
                 }
             }
         }
+        let included: std::collections::HashSet<_> = nodes.iter().map(|node| node.id).collect();
+        edges.retain(|edge| included.contains(&edge.src) && included.contains(&edge.dst));
         Ok((nodes, edges))
     }
 
