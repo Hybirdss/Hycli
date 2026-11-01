@@ -170,7 +170,10 @@ pub async fn capture_with_engine(
 
 fn is_safe_graphql_read_post(url: &url::Url, post_data: Option<&str>) -> bool {
     let lower = url.path().to_ascii_lowercase();
-    if !lower.contains("graphql") && !lower.ends_with("/gql") {
+    if !lower.contains("graphql")
+        && !lower.ends_with("/gql")
+        && persisted_graphql_route(url).is_none()
+    {
         return false;
     }
     let Some(raw) = post_data else {
@@ -179,27 +182,134 @@ fn is_safe_graphql_read_post(url: &url::Url, post_data: Option<&str>) -> bool {
     let Ok(val) = serde_json::from_str::<Value>(raw) else {
         return false;
     };
-    let Some(query) = val.get("query").and_then(Value::as_str) else {
-        return false;
-    };
-    use graphql_parser::query::{Definition, OperationDefinition};
-    let Ok(doc) = graphql_parser::parse_query::<&str>(query) else {
-        return false;
-    };
-    let mut has_query = false;
-    for def in &doc.definitions {
-        if let Definition::Operation(op) = def {
-            match op {
-                OperationDefinition::Mutation(_) | OperationDefinition::Subscription(_) => {
-                    return false;
-                }
-                OperationDefinition::Query(_) | OperationDefinition::SelectionSet(_) => {
-                    has_query = true;
+
+    if val.get("query").is_some_and(|query| !query.is_null()) {
+        if persisted_graphql_route(url).is_some() && !is_known_persisted_graphql_read(url) {
+            return false;
+        }
+        let Some(query) = val.get("query").and_then(Value::as_str) else {
+            return false;
+        };
+        use graphql_parser::query::{Definition, OperationDefinition};
+        let Ok(doc) = graphql_parser::parse_query::<&str>(query) else {
+            return false;
+        };
+        let mut has_query = false;
+        for def in &doc.definitions {
+            if let Definition::Operation(op) = def {
+                match op {
+                    OperationDefinition::Mutation(_) | OperationDefinition::Subscription(_) => {
+                        return false;
+                    }
+                    OperationDefinition::Query(_) | OperationDefinition::SelectionSet(_) => {
+                        has_query = true;
+                    }
                 }
             }
         }
+        return has_query;
     }
-    has_query
+
+    is_safe_persisted_graphql_read(url, &val)
+}
+
+fn persisted_graphql_route(url: &url::Url) -> Option<(&str, &str)> {
+    let mut segments = url
+        .path_segments()?
+        .filter(|segment| !segment.is_empty())
+        .rev();
+    let operation_name = segments.next()?;
+    let query_id = segments.next()?;
+    let endpoint = segments.next()?;
+    if query_id.is_empty() || !endpoint.eq_ignore_ascii_case("graphql") {
+        return None;
+    }
+    Some((query_id, operation_name))
+}
+
+fn persisted_graphql_operation_name(url: &url::Url) -> Option<&str> {
+    persisted_graphql_route(url).map(|(_, operation_name)| operation_name)
+}
+
+fn is_known_persisted_graphql_read(url: &url::Url) -> bool {
+    const KNOWN_READ_ROUTES: &[(&str, &str)] = &[
+        // X persisted operations observed from the read-only timeline exporter.
+        ("VjWsfItbiMLeajpZ90NJeg", "Bookmarks"),
+        ("svLglq6U2wlTyZMGDDcLYQ", "HomeTimeline"),
+        ("NmDBT3APtNxDpMqIEauu7A", "HomeLatestTimeline"),
+    ];
+    let Some((query_id, operation_name)) = persisted_graphql_route(url) else {
+        return false;
+    };
+    KNOWN_READ_ROUTES
+        .iter()
+        .any(|(known_id, known_name)| *known_id == query_id && *known_name == operation_name)
+}
+
+fn is_safe_persisted_graphql_read(url: &url::Url, body: &Value) -> bool {
+    let Some(operation_name) = persisted_graphql_operation_name(url) else {
+        return false;
+    };
+    if !is_known_persisted_graphql_read(url) {
+        return false;
+    }
+    let Some(object) = body.as_object() else {
+        return false;
+    };
+    if object.is_empty()
+        || object.keys().any(|key| {
+            !matches!(
+                key.as_str(),
+                "query"
+                    | "variables"
+                    | "features"
+                    | "fieldToggles"
+                    | "extensions"
+                    | "operationName"
+            )
+        })
+    {
+        return false;
+    }
+    if object.get("query").is_some_and(|query| !query.is_null()) {
+        return false;
+    }
+    if !["variables", "features", "fieldToggles", "extensions"]
+        .iter()
+        .any(|key| object.contains_key(*key))
+    {
+        return false;
+    }
+    for key in ["variables", "features", "fieldToggles", "extensions"] {
+        if let Some(value) = object.get(key) {
+            if !value.is_object() {
+                return false;
+            }
+        }
+    }
+    if let Some(body_operation_name) = object.get("operationName") {
+        if body_operation_name.as_str() != Some(operation_name) {
+            return false;
+        }
+    }
+    true
+}
+
+fn decode_post_data(entries: &[network::PostDataEntry]) -> Option<String> {
+    use base64::Engine;
+    if entries.is_empty() {
+        return None;
+    }
+    let mut bytes = Vec::new();
+    for entry in entries {
+        let encoded: &str = entry.bytes.as_ref()?.as_ref();
+        bytes.extend_from_slice(
+            &base64::engine::general_purpose::STANDARD
+                .decode(encoded)
+                .ok()?,
+        );
+    }
+    String::from_utf8(bytes).ok()
 }
 
 fn extract_post_body_schema(post_data: Option<&str>) -> BTreeMap<String, String> {
@@ -287,13 +397,8 @@ async fn observe(
                     let post_data = event
                         .request
                         .post_data_entries
-                        .as_ref()
-                        .and_then(|entries| entries.first())
-                        .and_then(|entry| entry.bytes.as_ref())
-                        .and_then(|b| {
-                            let slice: &[u8] = b.as_ref();
-                            String::from_utf8(slice.to_vec()).ok()
-                        });
+                        .as_deref()
+                        .and_then(decode_post_data);
                     let is_safe_method = ["GET", "HEAD", "OPTIONS"].contains(&method.as_str())
                         || (method == "POST"
                             && parsed
@@ -448,6 +553,7 @@ async fn observe(
     // Navigation only: never click a control or submit a form to discover a session.
     let _ = tokio::time::timeout(Duration::from_secs(18), page.goto(entry)).await;
     let anonymous = credential.cookies.is_empty() && credential.local_storage.is_empty();
+    let mut identity_grace_ticks = 0;
     for tick in 0..24 {
         if tick == 2 {
             // Trigger lazy-loaded list items and scroll-activated XHR/fetch endpoints.
@@ -456,7 +562,12 @@ async fn observe(
                 .await;
         }
         if result.lock().is_ok_and(|c| c.identity.is_some()) {
-            break;
+            identity_grace_ticks += 1;
+            // Keep the listener alive briefly after identity discovery so delayed
+            // read-only XHR/fetch observations are not lost to an early exit.
+            if identity_grace_ticks >= 3 {
+                break;
+            }
         }
         if anonymous && tick >= 3 && result.lock().is_ok_and(|c| (200..400).contains(&c.status)) {
             if let Ok(dom) = page.content().await {
@@ -609,4 +720,115 @@ async fn identity_body(page: &Page, id: network::RequestId) -> AppResult<Value> 
         body.body.into_bytes()
     };
     serde_json::from_slice(&bytes).map_err(|_| AppError::api("data_invalid", 400))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn persisted_graphql_read_without_query_is_allowed() {
+        let url = url::Url::parse("https://x.com/i/api/graphql/VjWsfItbiMLeajpZ90NJeg/Bookmarks")
+            .unwrap();
+        let body = r#"{"variables":{"count":20},"features":{}}"#;
+        assert!(is_safe_graphql_read_post(&url, Some(body)));
+    }
+
+    #[test]
+    fn persisted_graphql_mutation_is_blocked() {
+        let url = url::Url::parse("https://x.com/i/api/graphql/opaque/CreateBookmark").unwrap();
+        let body = r#"{"variables":{"tweet_id":"synthetic"}}"#;
+        assert!(!is_safe_graphql_read_post(&url, Some(body)));
+    }
+
+    #[test]
+    fn unknown_persisted_graphql_operation_is_blocked() {
+        let url = url::Url::parse("https://x.com/i/api/graphql/opaque/OpaqueOperation").unwrap();
+        let body = r#"{"variables":{},"features":{}}"#;
+        assert!(!is_safe_graphql_read_post(&url, Some(body)));
+    }
+
+    #[test]
+    fn persisted_graphql_body_shape_is_strict() {
+        let url = url::Url::parse("https://x.com/i/api/graphql/VjWsfItbiMLeajpZ90NJeg/Bookmarks")
+            .unwrap();
+        assert!(!is_safe_graphql_read_post(&url, None));
+        assert!(!is_safe_graphql_read_post(&url, Some("not-json")));
+        assert!(!is_safe_graphql_read_post(
+            &url,
+            Some(r#"{"variables":[]}"#),
+        ));
+        assert!(!is_safe_graphql_read_post(
+            &url,
+            Some(r#"{"variables":{},"query":"unexpected"}"#),
+        ));
+        assert!(is_safe_graphql_read_post(
+            &url,
+            Some(r#"{"query":null,"variables":{},"extensions":{}}"#),
+        ));
+        assert!(!is_safe_graphql_read_post(
+            &url,
+            Some(r#"{"variables":{},"evil":{}}"#),
+        ));
+    }
+
+    #[test]
+    fn graphql_mutation_and_subscription_are_blocked() {
+        let url = url::Url::parse("https://x.com/i/api/graphql/VjWsfItbiMLeajpZ90NJeg/Bookmarks")
+            .unwrap();
+        assert!(!is_safe_graphql_read_post(
+            &url,
+            Some(r#"{"query":"mutation { createBookmark }"}"#),
+        ));
+        assert!(!is_safe_graphql_read_post(
+            &url,
+            Some(r#"{"query":"subscription { notifications }"}"#),
+        ));
+        assert!(is_safe_graphql_read_post(
+            &url,
+            Some(r#"{"query":"query { bookmarks { id } }"}"#),
+        ));
+    }
+
+    #[test]
+    fn persisted_graphql_operation_name_must_match_body() {
+        let url = url::Url::parse("https://x.com/i/api/graphql/VjWsfItbiMLeajpZ90NJeg/Bookmarks")
+            .unwrap();
+        assert!(!is_safe_graphql_read_post(
+            &url,
+            Some(r#"{"variables":{},"operationName":"CreateBookmark"}"#),
+        ));
+        assert!(is_safe_graphql_read_post(
+            &url,
+            Some(r#"{"variables":{},"operationName":"Bookmarks"}"#),
+        ));
+    }
+
+    #[test]
+    fn persisted_graphql_query_id_must_match_operation() {
+        let url =
+            url::Url::parse("https://x.com/i/api/graphql/mutation-query-id/Bookmarks").unwrap();
+        let body = r#"{"variables":{},"features":{}}"#;
+        assert!(!is_safe_graphql_read_post(&url, Some(body)));
+    }
+
+    #[test]
+    fn fragmented_post_data_is_reassembled_before_parsing() {
+        use base64::Engine;
+        let entries = vec![
+            network::PostDataEntry::builder()
+                .bytes(
+                    base64::engine::general_purpose::STANDARD
+                        .encode(r#"{"variables":{"count":20},"#),
+                )
+                .build(),
+            network::PostDataEntry::builder()
+                .bytes(base64::engine::general_purpose::STANDARD.encode(r#""features":{}}"#))
+                .build(),
+        ];
+        assert_eq!(
+            decode_post_data(&entries).as_deref(),
+            Some(r#"{"variables":{"count":20},"features":{}}"#)
+        );
+    }
 }

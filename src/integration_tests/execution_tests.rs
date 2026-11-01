@@ -13,6 +13,7 @@ async fn browser_restores_storage_captures_identity_and_blocks_writes() {
                         r#"<script>
             const token = localStorage.getItem('site-session');
             fetch('/users/@me', {headers: {Authorization: 'Bearer '+token}});
+            setTimeout(() => fetch('/i/api/graphql/VjWsfItbiMLeajpZ90NJeg/Bookmarks', {method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({variables:{count:20},features:{}})}), 800);
             fetch('/items', {method:'POST',body:'must-not-run'});
         </script>"#,
                     )
@@ -43,6 +44,13 @@ async fn browser_restores_storage_captures_identity_and_blocks_writes() {
                 }),
             )
             .route(
+                "/i/api/graphql/VjWsfItbiMLeajpZ90NJeg/Bookmarks",
+                post(|Json(body): Json<Value>| async move {
+                    assert_eq!(body["variables"]["count"], 20);
+                    Json(json!({"data":{"bookmark_timeline_v2":{"timeline":[]}}}))
+                }),
+            )
+            .route(
                 "/items",
                 post(move || {
                     let counted = counted.clone();
@@ -58,6 +66,23 @@ async fn browser_restores_storage_captures_identity_and_blocks_writes() {
     let capture = crate::browser_session::capture(&credential, &format!("{url}/login"), true)
         .await
         .unwrap();
+    let graphql = capture
+        .observations
+        .iter()
+        .find(|observation| {
+            observation.method == "POST"
+                && observation.path == "/i/api/graphql/VjWsfItbiMLeajpZ90NJeg/Bookmarks"
+        })
+        .expect("persisted GraphQL read should be observed");
+    assert_eq!(graphql.status, 200);
+    assert_eq!(
+        graphql.body.get("variables").map(String::as_str),
+        Some("object")
+    );
+    assert_eq!(
+        graphql.body.get("features").map(String::as_str),
+        Some("object")
+    );
     assert_eq!(capture.identity.unwrap().user_id, "browser-person");
     assert_eq!(capture.identity_url, format!("{url}/users/@me"));
     assert_eq!(writes.load(Ordering::SeqCst), 0);
