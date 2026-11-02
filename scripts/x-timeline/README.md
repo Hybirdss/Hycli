@@ -2,15 +2,23 @@
 
 hycli에 연결된 X 계정의 로그인 세션으로 북마크, 홈 피드(추천), 홈 피드(팔로잉)를 받아 Markdown과 JSON으로 저장합니다.
 
-X 웹 화면이 쓰는 내부 GraphQL 주소를 GET으로 읽습니다. 공식 API가 아니어서 X 약관의 수집 금지 조항에 걸리고, 주소의 쿼리 ID는 X가 웹을 배포할 때 바뀔 수 있습니다.
+X 웹 화면이 사용하는 내부 GraphQL persisted POST를 읽습니다. 공식 API가 아니며 X 웹 배포 때 query ID와 요청 필드가 바뀔 수 있습니다. 이 스크립트는 쓰기 요청을 만들거나 실행하지 않습니다.
 
 ## 필요한 것
 
-- `hycli accounts read`가 들어간 hycli 빌드. 2026-10-20 기준 이 명령은 main에 없고, 로컬 브랜치 `fix/session-cli`(커밋 `d82b8d8`)에만 있습니다.
+- 현재 checkout에서 빌드한 `hycli`와 `accounts read --request` 지원
 - `hycli accounts`에 `verified_identity: true`, `status: connected`로 연결된 X 계정
-- `x-graphql.json`의 각 주소가 hycli에 관찰 기록돼 있어야 합니다. `accounts read`는 브라우저에서 관찰된 GET 주소와 query 키 묶음이 같을 때만 요청을 보냅니다. 기록이 없으면 `unsupported_evidence`로 끝납니다.
-    - 기록 방법: `hycli accounts observe <hycli 계정 id> '<x-graphql.json으로 만든 전체 URL>'`
-    - 북마크는 query 키가 `variables`, `features` 두 개이고, 추천과 팔로잉은 `fieldToggles`까지 세 개입니다.
+- 브라우저 관찰로 각 GraphQL POST route의 성공한 읽기 증거를 저장
+
+관찰은 실제 브라우저의 read-only 요청만 기록합니다. 먼저 `accounts observe <계정 ID> https://x.com/home --browser`를 실행하고, 현재 계정 검증을 마치면 `accounts verify` 결과의 `read_observations`에서 route별 `ro_...` 참조를 확인합니다. 참조는 로컬 vault에만 저장되며 쿠키, storage token, bearer 값은 출력하지 않습니다. 증거가 없거나 body schema가 다르면 `unsupported_evidence`로 중단합니다.
+
+`accounts read --request`는 다음을 검증합니다.
+
+- method, same-origin URL, path, query/body schema가 성공한 브라우저 관찰과 일치
+- X persisted GraphQL route와 operation name이 알려진 read route와 일치
+- mutation/subscription, change intent, redirect, 비JSON 응답 차단
+- `read_only: true`, redirect 미허용, 응답 크기 제한
+- 다음 페이지 cursor는 raw 값 대신 계정/요청에 묶인 `rc_...` 핸들로 반환
 
 ## 사용법
 
@@ -39,10 +47,14 @@ python3 -I export-x-timeline.py --account devn0w --timeline home --check
 | `01-<timeline>.md` | 읽기용 목록(작성자, 날짜, 링크, 본문) |
 | `02-<timeline>.json` | 정리된 게시물(본문, 외부 링크, 미디어 URL)과 읽지 못한 항목 |
 | `03-manifest.json` | 페이지별 개수, 광고와 추천 모듈 제외 수, 종료 근거, 오류 |
-| `04-pages/` | X 응답 원본 |
-| `05-export.py`, `06-request.json` | 실행한 스크립트와 요청 정의 사본 |
+| `04-pages/` | `accounts read`의 상태/계정 ID/JSON body/opaque next cursor를 담은 페이지 응답 |
+| `05-export.py`, `06-request.json` | 실행한 스크립트와 POST 요청 descriptor 사본, observation reference 포함 |
 
 광고(`promotedMetadata`)와 팔로우 추천 같은 게시물이 아닌 모듈은 빼고 개수만 기록합니다.
+
+## 팔로우 데이터의 의미
+
+`following`은 팔로우한 계정 목록이 아니라 X의 `HomeLatestTimeline` 팔로잉 피드입니다. 팔로우 계정 목록은 별도의 성공한 read-only 관찰 증거가 없으므로 이 exporter가 대신 수집한다고 주장하지 않습니다.
 
 ## 요청 제한
 

@@ -1,4 +1,5 @@
 //! The single execution boundary used by the dashboard, CLI and MCP.
+mod account_read;
 mod accounts;
 mod execution;
 mod preflight;

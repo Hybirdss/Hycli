@@ -68,11 +68,12 @@ hycli accounts observe ACCOUNT_ID https://website.example/current-context
 hycli accounts verify ACCOUNT_ID --recipe connection.json
 hycli accounts refresh ACCOUNT_ID
 hycli accounts read ACCOUNT_ID https://website.example/current-context
+hycli accounts read ACCOUNT_ID --request request.json --cursor rc_...
 ```
 
 Inspection and observation return key names, request shapes and response types, never cookies, authentication headers or private response values. The optional browser observation retains captured authentication headers in the local vault. Observation alone does not verify identity. The JSON connection recipe uses the same `identity_url`, local `headers` references, `identity` or `identity_html` mapping, and `evidence` fields used during preparation; it must not contain secret values. Verification requires a GET path already observed for this account's website, enforces its credential origin and read-only URL policy, and rejects identities also returned without authentication. Use an actual current-account response, not a public profile. A failed recipe preserves the previously verified recipe.
 
-`accounts read` returns JSON only after identity verification and a successful GET observation with the same path and query keys. It shares the bounded session GET transport with preparation, rejects change intents and mutation documents, and redacts credential values. It can read observed persisted GraphQL GETs without presenting them as generated actions. It does not change the classification or write permissions of installed website actions.
+`accounts read` returns JSON only after identity verification and a successful observation. The legacy positional URL form replays observed GET requests. The `--request REQUEST.json` form supports observed GET/POST requests, including persisted GraphQL POST descriptors, and requires the descriptor's same-origin method/path/query/body schema to match the observation. It uses bounded read-only transport with redirects disabled, rejects change intents and mutation/subscription documents, returns an opaque account/request-bound cursor handle for pagination, and redacts credential values. It does not change the classification or write permissions of installed website actions.
 
 ## Reproducible verification
 

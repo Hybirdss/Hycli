@@ -3,7 +3,7 @@ use axum::{
     Json, Router,
     extract::Query,
     http::{HeaderMap, StatusCode},
-    routing::get,
+    routing::{get, post},
 };
 use hycli::{runtime::Runtime, spec, util};
 use serde_json::{Value, json};
@@ -161,6 +161,38 @@ async fn session_cli_inspects_observes_and_verifies_without_exposing_secrets() {
     assert_eq!(verified["verified_identity"], true);
     assert_eq!(verified["user_id"], "person-one");
     assert!(!verified.to_string().contains("synthetic-session-secret"));
+    let read_reference = verified["read_observations"][0]["reference"]
+        .as_str()
+        .unwrap();
+    let reference_descriptor = root.join("reference-request.json");
+    std::fs::write(
+        &reference_descriptor,
+        json!({
+            "version": 1,
+            "request": {"method":"GET", "url":format!("{url}/current-context")},
+            "evidence": {"observation":read_reference}
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let reference_read = ok(cli(
+        &root,
+        &[
+            "--allow-local",
+            "accounts",
+            "read",
+            &account.id,
+            "--request",
+            reference_descriptor.to_str().unwrap(),
+        ],
+    )
+    .await);
+    assert_eq!(reference_read["body"]["id"], "person-one");
+    assert!(
+        !reference_read
+            .to_string()
+            .contains("synthetic-session-secret")
+    );
     let private = ok(cli(
         &root,
         &[
@@ -252,6 +284,161 @@ async fn session_cli_inspects_observes_and_verifies_without_exposing_secrets() {
     )
     .await);
     assert_eq!(refreshed["verified_identity"], true);
+    server.abort();
+    drop(core);
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[tokio::test]
+async fn account_read_replays_observed_persisted_graphql_post_read_only() {
+    let requests = Arc::new(AtomicUsize::new(0));
+    let seen = requests.clone();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let graphql_path = "/i/api/graphql/VjWsfItbiMLeajpZ90NJeg/Bookmarks";
+    let router = Router::new().route(
+        graphql_path,
+        post(move |headers: HeaderMap, Json(body): Json<Value>| {
+            let seen = seen.clone();
+            async move {
+                assert_eq!(
+                    headers.get("content-type").and_then(|v| v.to_str().ok()),
+                    Some("application/json")
+                );
+                assert_eq!(body["variables"]["count"], 20);
+                assert_eq!(body["features"], json!({}));
+                let previous = seen.fetch_add(1, Ordering::SeqCst);
+                if previous == 0 {
+                    assert!(body["variables"].get("cursor").is_none());
+                } else {
+                    assert_eq!(body["variables"]["cursor"], "raw-x-cursor");
+                }
+                Json(json!({"data":{"bookmark_timeline_v2":{"timeline":{"instructions":[{"type":"TimelineAddEntries","entries":[{"content":{"cursorType":"Bottom","value":"raw-x-cursor"}}]}]}}}}))
+            }
+        }),
+    );
+    let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join(".cache/cli-tests")
+        .join(util::id());
+    let core = Runtime::open(&root, None, None, false, true, false).unwrap();
+    let cookies = hycli::accounts::parse_cookies(
+        &json!([{"name":"sid","value":"synthetic-session-secret","domain":"127.0.0.1","path":"/"}])
+            .to_string(),
+        &url,
+    )
+    .unwrap();
+    let account = core
+        .connect_account("", &url, cookies, "Fixture", "POST read", "")
+        .unwrap();
+    let observation = hycli::accounts::Observation {
+        method: "POST".into(),
+        path: graphql_path.into(),
+        body: [
+            ("features".into(), "object".into()),
+            ("variables".into(), "object".into()),
+        ]
+        .into_iter()
+        .collect(),
+        status: 200,
+        observed_at: util::now(),
+        ..Default::default()
+    };
+    let account_id = account.id.clone();
+    let site_id = account.site_id.clone();
+    core.state
+        .update(|data| {
+            data.accounts
+                .get_mut(&account_id)
+                .unwrap()
+                .verified_identity = true;
+            data.accounts.get_mut(&account_id).unwrap().user_id = "person-one".into();
+            data.accounts.get_mut(&account_id).unwrap().name = "Private Person".into();
+            data.sites
+                .get_mut(&site_id)
+                .unwrap()
+                .observations
+                .push(observation);
+            Ok(())
+        })
+        .unwrap();
+    let descriptor_path = root.join("bookmarks-request.json");
+    let descriptor = json!({
+        "version": 1,
+        "request": {
+            "method": "POST",
+            "url": format!("{url}{graphql_path}"),
+            "json": {"variables":{"count":20},"features":{}}
+        },
+        "evidence": {"observation":"observed"},
+        "pagination": {"variable":"cursor","next":"$x_timeline_bottom"}
+    });
+    std::fs::write(&descriptor_path, descriptor.to_string()).unwrap();
+    let result = ok(cli(
+        &root,
+        &[
+            "--allow-local",
+            "accounts",
+            "read",
+            &account.id,
+            "--request",
+            descriptor_path.to_str().unwrap(),
+        ],
+    )
+    .await);
+    assert_eq!(result["status"], 200);
+    assert_eq!(
+        result["body"]["data"]["bookmark_timeline_v2"]["timeline"]["instructions"][0]["entries"][0]
+            ["content"]["value"],
+        Value::Null
+    );
+    let cursor = result["next_cursor"].as_str().unwrap().to_owned();
+    assert!(cursor.starts_with("rc_"));
+    assert!(!result.to_string().contains("raw-x-cursor"));
+    assert_eq!(requests.load(Ordering::SeqCst), 1);
+    assert!(!result.to_string().contains("synthetic-session-secret"));
+
+    let second = ok(cli(
+        &root,
+        &[
+            "--allow-local",
+            "accounts",
+            "read",
+            &account.id,
+            "--request",
+            descriptor_path.to_str().unwrap(),
+            "--cursor",
+            &cursor,
+        ],
+    )
+    .await);
+    assert_eq!(requests.load(Ordering::SeqCst), 2);
+    assert!(!second.to_string().contains("raw-x-cursor"));
+
+    let mutation_path = root.join("mutation.json");
+    let mut mutation = descriptor.clone();
+    mutation["request"]["json"]["query"] = json!("mutation { deleteBookmark }");
+    std::fs::write(&mutation_path, mutation.to_string()).unwrap();
+    let rejected = cli(
+        &root,
+        &[
+            "--allow-local",
+            "accounts",
+            "read",
+            &account.id,
+            "--request",
+            mutation_path.to_str().unwrap(),
+        ],
+    )
+    .await;
+    assert!(!rejected.status.success());
+    assert!(String::from_utf8_lossy(&rejected.stderr).contains("unsupported_evidence"));
+    assert_eq!(
+        requests.load(Ordering::SeqCst),
+        2,
+        "mutation must not reach the fixture"
+    );
+
     server.abort();
     drop(core);
     std::fs::remove_dir_all(root).unwrap();

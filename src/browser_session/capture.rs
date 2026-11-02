@@ -168,7 +168,7 @@ pub async fn capture_with_engine(
     Ok(first)
 }
 
-fn is_safe_graphql_read_post(url: &url::Url, post_data: Option<&str>) -> bool {
+pub(crate) fn is_safe_graphql_read_post(url: &url::Url, post_data: Option<&str>) -> bool {
     let lower = url.path().to_ascii_lowercase();
     if !lower.contains("graphql")
         && !lower.ends_with("/gql")
@@ -232,18 +232,22 @@ fn persisted_graphql_operation_name(url: &url::Url) -> Option<&str> {
 }
 
 fn is_known_persisted_graphql_read(url: &url::Url) -> bool {
-    const KNOWN_READ_ROUTES: &[(&str, &str)] = &[
-        // X persisted operations observed from the read-only timeline exporter.
-        ("VjWsfItbiMLeajpZ90NJeg", "Bookmarks"),
-        ("svLglq6U2wlTyZMGDDcLYQ", "HomeTimeline"),
-        ("NmDBT3APtNxDpMqIEauu7A", "HomeLatestTimeline"),
-    ];
     let Some((query_id, operation_name)) = persisted_graphql_route(url) else {
         return false;
     };
-    KNOWN_READ_ROUTES
-        .iter()
-        .any(|(known_id, known_name)| *known_id == query_id && *known_name == operation_name)
+    // Persisted query IDs rotate with web deployments. The browser observation
+    // and later request descriptor bind the exact route; the capture gate accepts
+    // only operation names that are recognizably read-like and not change intent.
+    if query_id.is_empty() || crate::policy::dangerous_intent(operation_name) {
+        return false;
+    }
+    let lower = operation_name.to_ascii_lowercase();
+    [
+        "read", "get", "list", "search", "query", "fetch", "lookup", "find", "timeline",
+        "bookmark", "feed", "home", "viewer", "profile", "user", "item",
+    ]
+    .iter()
+    .any(|word| lower.contains(word))
 }
 
 fn is_safe_persisted_graphql_read(url: &url::Url, body: &Value) -> bool {
@@ -296,6 +300,7 @@ fn is_safe_persisted_graphql_read(url: &url::Url, body: &Value) -> bool {
 }
 
 fn decode_post_data(entries: &[network::PostDataEntry]) -> Option<String> {
+    const MAX_POST_DATA: usize = 128 * 1024;
     use base64::Engine;
     if entries.is_empty() {
         return None;
@@ -303,11 +308,17 @@ fn decode_post_data(entries: &[network::PostDataEntry]) -> Option<String> {
     let mut bytes = Vec::new();
     for entry in entries {
         let encoded: &str = entry.bytes.as_ref()?.as_ref();
-        bytes.extend_from_slice(
-            &base64::engine::general_purpose::STANDARD
-                .decode(encoded)
-                .ok()?,
-        );
+        let remaining = MAX_POST_DATA.saturating_sub(bytes.len());
+        if encoded.len() > remaining.saturating_mul(4) / 3 + 4 {
+            return None;
+        }
+        let fragment = base64::engine::general_purpose::STANDARD
+            .decode(encoded)
+            .ok()?;
+        if bytes.len().checked_add(fragment.len())? > MAX_POST_DATA {
+            return None;
+        }
+        bytes.extend_from_slice(&fragment);
     }
     String::from_utf8(bytes).ok()
 }
@@ -321,11 +332,12 @@ fn extract_post_body_schema(post_data: Option<&str>) -> BTreeMap<String, String>
         for (k, v) in map.into_iter().take(40) {
             if !util::secret_field(&k) {
                 let kind = match v {
+                    Value::Null => "null",
                     Value::Number(_) => "number",
                     Value::Bool(_) => "bool",
                     Value::Array(_) => "array",
                     Value::Object(_) => "object",
-                    _ => "string",
+                    Value::String(_) => "string",
                 };
                 schema.insert(k, kind.into());
             }
@@ -435,6 +447,7 @@ async fn observe(
                                 if let Ok(mut capture) = captured.lock() {
                                     if capture.observations.len() < 80 {
                                         capture.observations.push(AccountObservation {
+                                            account_id: String::new(),
                                             method,
                                             path: url.path().into(),
                                             query: url
@@ -494,6 +507,7 @@ async fn observe(
                             if let Ok(mut capture) = captured.lock() {
                                 if capture.observations.len() < 80 {
                                     capture.observations.push(AccountObservation {
+                                        account_id: String::new(),
                                         method: req_method.clone(),
                                         path: path_str.clone(),
                                         query: url.query_pairs().filter(|(k, _)| !util::secret_field(k)).map(|(k, _)| (k.into_owned(), "string".into())).collect(),
@@ -631,6 +645,7 @@ async fn observe(
                     } else if capture.observations.len() < 80 {
                         let auth_headers: Vec<String> = capture.headers.keys().cloned().collect();
                         capture.observations.push(AccountObservation {
+                            account_id: String::new(),
                             method,
                             path: path_str,
                             query: parsed
@@ -805,11 +820,11 @@ mod tests {
     }
 
     #[test]
-    fn persisted_graphql_query_id_must_match_operation() {
+    fn persisted_graphql_query_id_rotation_keeps_read_operation_allowed() {
         let url =
-            url::Url::parse("https://x.com/i/api/graphql/mutation-query-id/Bookmarks").unwrap();
+            url::Url::parse("https://x.com/i/api/graphql/rotated-query-id/Bookmarks").unwrap();
         let body = r#"{"variables":{},"features":{}}"#;
-        assert!(!is_safe_graphql_read_post(&url, Some(body)));
+        assert!(is_safe_graphql_read_post(&url, Some(body)));
     }
 
     #[test]

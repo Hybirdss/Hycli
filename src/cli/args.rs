@@ -272,8 +272,18 @@ pub enum AuthCmd {
 pub enum AccountsCmd {
     /// Inspect cookie/header names and storage structure, never sign-in values.
     Inspect { account: String },
-    /// Read JSON from a successful observed GET with a verified session.
-    Read { account: String, url: String },
+    /// Read JSON from a successful observed request with a verified session.
+    Read {
+        account: String,
+        /// Legacy observed GET URL. Prefer --request for POST and persisted GraphQL reads.
+        url: Option<String>,
+        /// JSON request descriptor containing the request and observation evidence.
+        #[arg(long, conflicts_with = "url")]
+        request: Option<String>,
+        /// Opaque cursor returned by a previous descriptor read.
+        #[arg(long)]
+        cursor: Option<String>,
+    },
     /// Observe one same-site GET before identity verification; private values stay local.
     Observe {
         account: String,

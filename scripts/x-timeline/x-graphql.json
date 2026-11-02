@@ -11,7 +11,8 @@
       "variables": {
         "count": 20,
         "includePromotedContent": false
-      }
+      },
+      "cursor_pointer": "$x_timeline_bottom"
     },
     "home": {
       "title": "X 홈 피드(추천)",
@@ -30,6 +31,7 @@
       "field_toggles": {
         "withArticleRichContentState": false
       },
+      "cursor_pointer": "$x_timeline_bottom",
       "endless": true
     },
     "following": {
@@ -48,6 +50,7 @@
       "field_toggles": {
         "withArticleRichContentState": false
       },
+      "cursor_pointer": "$x_timeline_bottom",
       "endless": true
     }
   },

@@ -6,6 +6,7 @@ Automate any website, with changes only where you allow them.
 
 ### Safety
 
+- `accounts read --request REQUEST.json` now replays only verified, successful observed GET/POST requests. Descriptors use strict JSON fields, same-origin and body-schema evidence matching, persisted GraphQL read gates, bounded JSON responses, disabled redirects, credential redaction, account-binding rechecks and opaque account-bound pagination handles. Website writes remain disabled and no X mutation is executed.
 - Every website starts read-only. Its change actions are hidden from MCP and refused by the CLI with `writes_disabled` until you turn on **Allow changes** for that website in the dashboard. Turning it off cancels pending approvals.
 - The dashboard grants its session only to the address `hycli dashboard` opens. A plain local request can no longer obtain the session that approves changes. The session persists in the private data directory, so an open dashboard still reconnects after a restart.
 - Credentials resolved by `derived` authentication or secret-classified `preflight` steps (`cookie:*`, `header:*`, or token/CSRF fields) are automatically registered for output redaction (`[private]`), while non-secret page identifiers (`buildId`, workspace IDs, cursors) remain intact and can be interpolated into URL paths, query strings, headers and bodies with strict path-segment URL encoding and origin pinning.

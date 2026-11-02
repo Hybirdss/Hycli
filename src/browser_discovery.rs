@@ -442,10 +442,13 @@ impl Runtime {
                                 {
                                     meta.identity_paths.push(identity_url);
                                 }
-                                for observation in observations {
+                                for mut observation in observations {
+                                    observation.account_id = id.clone();
                                     if !meta.observations.iter().any(|old| {
                                         old.method == observation.method
                                             && old.path == observation.path
+                                            && old.query == observation.query
+                                            && old.body == observation.body
                                     }) {
                                         meta.observations.push(observation);
                                     }
@@ -464,10 +467,13 @@ impl Runtime {
                             let observations = capture.observations;
                             self.state.update(|data| {
                                 let meta = data.sites.entry(effective_id.clone()).or_default();
-                                for observation in observations {
+                                for mut observation in observations {
+                                    observation.account_id = id.clone();
                                     if !meta.observations.iter().any(|old| {
                                         old.method == observation.method
                                             && old.path == observation.path
+                                            && old.query == observation.query
+                                            && old.body == observation.body
                                     }) {
                                         meta.observations.push(observation);
                                     }

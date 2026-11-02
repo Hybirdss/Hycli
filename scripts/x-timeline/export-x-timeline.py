@@ -15,7 +15,6 @@ import subprocess
 import sys
 import tempfile
 import time
-import urllib.parse
 from datetime import datetime, timezone
 
 HERE = Path(__file__).resolve().parent
@@ -33,7 +32,7 @@ def write_json(destination, data):
 
 
 def timeline_instructions(data, keys):
-    node = data["data"]
+    node = data["body"]["data"]
     for key in keys:
         node = node[key]
     return node["instructions"]
@@ -113,7 +112,54 @@ def resolve_account(accounts, base_url, handle, account_id):
     return max(candidates, key=lambda a: a.get("checked_at") or "")
 
 
+def observation_for(verified, spec):
+    observations = [
+        item
+        for item in verified.get("read_observations", [])
+        if item.get("method") == "POST"
+        and item.get("path") == spec["path"]
+        and 200 <= item.get("status", 0) < 300
+    ]
+    if not observations:
+        raise RuntimeError(
+            f"No successful POST observation for {spec['path']}; run browser observation first."
+        )
+    return observations[0]
+
+
+def request_descriptor(definitions, spec, variables, observation):
+    body = {
+        "variables": variables,
+        "features": definitions["features"],
+    }
+    if spec.get("field_toggles"):
+        body["fieldToggles"] = spec["field_toggles"]
+    observed_body = observation.get("body", {})
+    if "query" in observed_body:
+        body["query"] = None
+    if "operationName" in observed_body:
+        body["operationName"] = spec["path"].rstrip("/").rsplit("/", 1)[-1]
+    if "extensions" in observed_body:
+        body["extensions"] = {}
+    descriptor = {
+        "version": 1,
+        "request": {
+            "method": "POST",
+            "url": definitions["base_url"] + spec["path"],
+            "json": body,
+        },
+        "evidence": {"observation": observation["reference"]},
+    }
+    if spec.get("cursor_pointer"):
+        descriptor["pagination"] = {
+            "variable": "cursor",
+            "next": spec["cursor_pointer"],
+        }
+    return descriptor
+
+
 def main():
+
     definitions_default = HERE / "x-graphql.json"
     definitions = json.loads(definitions_default.read_text(encoding="utf-8"))
     parser = argparse.ArgumentParser(description="Export X bookmarks or the home feed through Hycli.")
@@ -152,12 +198,6 @@ def main():
                 continue
             raise RuntimeError(f"Hycli exit {result.returncode}: {result.stderr.strip()}")
 
-    def page_url(variables):
-        params = {"variables": json.dumps(variables, separators=(",", ":")), "features": json.dumps(definitions["features"], separators=(",", ":"))}
-        if spec.get("field_toggles"):
-            params["fieldToggles"] = json.dumps(spec["field_toggles"], separators=(",", ":"))
-        return definitions["base_url"] + spec["path"] + "?" + urllib.parse.urlencode(params)
-
     account = resolve_account(call(["accounts"]), definitions["base_url"], (args.account or "").lstrip("@"), args.account_id)
     saved = call(["accounts", "inspect", account["id"]]).get("saved_recipe")
     if not saved:
@@ -169,10 +209,33 @@ def main():
     if not verified.get("verified_identity") or verified.get("user_id") != account.get("user_id") or verified.get("name") != account.get("name"):
         raise RuntimeError("The verified account does not match the requested account")
     handle = verified["name"]
+    observation = observation_for(verified, spec)
+    request_directory = tempfile.TemporaryDirectory(prefix="hycli-x-request-")
+    request_root = Path(request_directory.name)
+    request_number = 0
+
+    def read_page(cursor_handle=None):
+        nonlocal request_number
+        request_number += 1
+        descriptor_file = request_root / f"request-{request_number:04d}.json"
+        write_json(
+            descriptor_file,
+            request_descriptor(definitions, spec, spec["variables"], observation),
+        )
+        command = ["accounts", "read", account["id"], "--request", str(descriptor_file)]
+        if cursor_handle:
+            command.extend(["--cursor", cursor_handle])
+        return call(command)
+
     if args.check:
-        data = call(["accounts", "read", account["id"], page_url(spec["variables"])])
-        entries = [e for i in timeline_instructions(data, spec["response_keys"]) for e in i.get("entries", [])]
-        print(json.dumps({"account": "@" + handle, "timeline": timeline, "verified_identity": True, "posts_on_first_page": sum(len(list(tweet_results(e.get("content", {})))) for e in entries), "has_next_cursor": any(e.get("content", {}).get("cursorType") == "Bottom" for e in entries)}))
+        data = read_page()
+        entries = [
+            e
+            for i in timeline_instructions(data, spec["response_keys"])
+            for e in i.get("entries", [])
+        ]
+        print(json.dumps({"account": "@" + handle, "timeline": timeline, "verified_identity": True, "posts_on_first_page": sum(len(list(tweet_results(e.get("content", {})))) for e in entries), "has_next_cursor": bool(data.get("next_cursor"))}))
+        request_directory.cleanup()
         return 0
     if args.output:
         output = args.output
@@ -185,7 +248,10 @@ def main():
     if (output / "03-manifest.json").exists():
         raise RuntimeError("An export already exists here; select a new output directory")
     shutil.copy2(__file__, output / "05-export.py")
-    write_json(output / "06-request.json", {"timeline": timeline, "definition": spec, "features": definitions["features"], "account": {"handle": handle, "user_id": account["user_id"], "hycli_account_id": account["id"]}})
+    write_json(
+        output / "06-request.json",
+        request_descriptor(definitions, spec, spec["variables"], observation),
+    )
     pages = output / "04-pages"
     pages.mkdir(exist_ok=True)
     os.chmod(pages, 0o700)
@@ -201,10 +267,7 @@ def main():
     failure = None
     try:
         while True:
-            variables = dict(spec["variables"])
-            if cursor:
-                variables["cursor"] = cursor
-            data = call(["accounts", "read", account["id"], page_url(variables)])
+            data = read_page(cursor)
             instructions = timeline_instructions(data, spec["response_keys"])
             number = len(manifest["pages"]) + 1
             raw_file = pages / f"page-{number:04d}.json"
@@ -212,14 +275,13 @@ def main():
                 raise RuntimeError("Raw page already exists; refusing to overwrite")
             write_json(raw_file, data)
             entries = [entry for instruction in instructions for entry in instruction.get("entries", [])]
-            next_cursor = None
+            next_cursor = data.get("next_cursor")
             next_stop = False
             item_count = 0
             page_ids = []
             for entry in entries:
                 content = entry.get("content", {})
                 if content.get("cursorType") == "Bottom":
-                    next_cursor = content.get("value")
                     next_stop = bool(content.get("stopOnEmptyResponse"))
                     continue
                 if content.get("entryType") == "TimelineTimelineCursor":
@@ -288,6 +350,7 @@ def main():
             lines.extend([f"- {link}", ""])
     (output / f"01-{timeline}.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     os.chmod(output / f"01-{timeline}.md", 0o600)
+    request_directory.cleanup()
     print(json.dumps({"output": str(output), "posts": len(posts), "pages": len(manifest["pages"]), "complete": manifest["complete"], "error": failure}, ensure_ascii=False), flush=True)
     return 0 if manifest["complete"] else 1
 

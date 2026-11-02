@@ -447,7 +447,31 @@ async fn accounts_cmd(deps: &Deps, cmd: AccountsCmd, emit: &Emitter) -> Result<(
             emit.data(&core.inspect_session_key(&account, &account_origin, "", 0)?);
         }
         AccountsCmd::Refresh { account } => emit.data(&core.refresh_account(&account).await?),
-        AccountsCmd::Read { account: id, url } => {
+        AccountsCmd::Read {
+            account: id,
+            url,
+            request,
+            cursor,
+        } => {
+            if let Some(request) = request {
+                let result = core
+                    .read_account_request(&id, std::path::Path::new(&request), cursor.as_deref())
+                    .await?;
+                emit.data(&result);
+                return Ok(());
+            }
+            let url = url.ok_or_else(|| {
+                apperr::usage(
+                    "Missing request descriptor",
+                    "Use `--request REQUEST.json`, or provide a legacy observed GET URL.",
+                )
+            })?;
+            if cursor.is_some() {
+                return Err(apperr::usage(
+                    "Cursor requires --request",
+                    "Pass the opaque cursor together with the same request descriptor.",
+                ));
+            }
             let target = crate::net::validate_url(&url)?;
             if !account.verified_identity || account.status != "connected" {
                 return Err(AppError::api("auth_required", 401));
@@ -517,12 +541,15 @@ async fn accounts_cmd(deps: &Deps, cmd: AccountsCmd, emit: &Emitter) -> Result<(
                 return Err(AppError::api("unsafe_target", 400));
             }
             let (observations, result) = if browser {
-                let capture = crate::browser_session::capture(
+                let mut capture = crate::browser_session::capture(
                     &core.credential(&id)?,
                     &url,
                     core.network.allow_local,
                 )
                 .await?;
+                for observation in &mut capture.observations {
+                    observation.account_id = id.clone();
+                }
                 let names: Vec<_> = capture.headers.keys().cloned().collect();
                 core.update_credential(&id, |credential| {
                     credential.headers.extend(capture.headers);
@@ -536,6 +563,7 @@ async fn accounts_cmd(deps: &Deps, cmd: AccountsCmd, emit: &Emitter) -> Result<(
                 core.policy.resume_auth(&format!("{account_origin}|{id}"))?;
                 let response = core.read_page(&url, &id).await?;
                 let observation = Observation {
+                    account_id: id.clone(),
                     method: "GET".into(),
                     path: target.path().into(),
                     query: target
@@ -556,9 +584,16 @@ async fn accounts_cmd(deps: &Deps, cmd: AccountsCmd, emit: &Emitter) -> Result<(
                 let meta = data.sites.entry(account.site_id.clone()).or_default();
                 for observation in &observations {
                     if let Some(old) = meta.observations.iter_mut().find(|old| {
-                        old.method == observation.method && old.path == observation.path
+                        old.method == observation.method
+                            && old.path == observation.path
+                            && old.query == observation.query
+                            && old.body == observation.body
                     }) {
-                        *old = observation.clone();
+                        if !(200..300).contains(&old.status)
+                            || (200..300).contains(&observation.status)
+                        {
+                            *old = observation.clone();
+                        }
                     } else {
                         meta.observations.push(observation.clone());
                     }
@@ -590,7 +625,13 @@ async fn accounts_cmd(deps: &Deps, cmd: AccountsCmd, emit: &Emitter) -> Result<(
             if !observed || recipe.evidence.trim().is_empty() {
                 return Err(AppError::api("unsupported_evidence", 422));
             }
-            emit.data(&core.verify_session_recipe(&id, &recipe).await?);
+            let verified = core.verify_session_recipe(&id, &recipe).await?;
+            let observations = core.mint_read_observations(&id)?;
+            let mut output = serde_json::to_value(verified)?;
+            if let Some(object) = output.as_object_mut() {
+                object.insert("read_observations".into(), json!(observations));
+            }
+            emit.data(&output);
         }
     }
     Ok(())
