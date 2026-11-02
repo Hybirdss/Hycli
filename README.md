@@ -8,14 +8,14 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Hybirdss/Hycli/releases/tag/v0.1.0"><img src="docs/brand/badges/release.svg" alt="Release 0.1.0" /></a>
+  <a href="https://github.com/Hybirdss/Hycli/releases/tag/v0.1.1"><img src="docs/brand/badges/release.svg" alt="Release 0.1.1" /></a>
   <a href="LICENSE"><img src="docs/brand/badges/license.svg" alt="Apache-2.0 license" /></a>
   <a href="#use-hycli-with-your-ai"><img src="docs/brand/badges/interface.svg" alt="CLI and MCP" /></a>
   <a href="#languages"><img src="docs/brand/badges/languages.svg" alt="20 languages" /></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/Hybirdss/Hycli/releases/tag/v0.1.0">Download (Windows · macOS · Linux)</a> ·
+  <a href="https://github.com/Hybirdss/Hycli/releases/tag/v0.1.1">Download (Windows · macOS · Linux)</a> ·
   <a href="https://github.com/Hybirdss/Hycli/issues">Help and feedback</a> ·
   <a href="#try-it-in-30-seconds">30-second quickstart</a> ·
   <a href="#what-your-ai-can-do">What your AI can do</a> ·
@@ -67,23 +67,27 @@ Hycli ships as a single native binary containing both the website engine and the
 
 ### Download and run (Windows, macOS, Linux)
 
-Download the native installer or portable archive for your platform from **[Releases (v0.1.0)](https://github.com/Hybirdss/Hycli/releases/tag/v0.1.0)**:
+Download the native installer or portable archive for your platform from **[Releases (v0.1.1)](https://github.com/Hybirdss/Hycli/releases/tag/v0.1.1)**:
 
 | Platform | Architecture | Native Installer | Portable Archive | How to start |
 | --- | --- | --- | --- | --- |
-| **Windows 10/11** | x64 & ARM64 | `hycli-0.1.0-win32-*-setup.exe` | `hycli-0.1.0-win32-*.tar.gz` | Run `*-setup.exe` (adds `hycli` to your user `PATH` and Start Menu), then launch **Hycli** or run `hycli open` in PowerShell. |
-| **macOS 13+** | Apple Silicon (`arm64`) & Intel (`x64`) | `hycli-0.1.0-darwin-*.dmg` | `hycli-0.1.0-darwin-*.tar.gz` | Open the `.dmg`, drag **Hycli.app** to **Applications**, and open it (automatically links `hycli` into `~/.local/bin`). |
-| **Linux** | x64 & ARM64 | `hycli-0.1.0-linux-*.deb` | `hycli-0.1.0-linux-*.tar.gz` | Install the `.deb` (`sudo apt install ./hycli-*.deb`) or extract the `.tar.gz` and run `./install.sh`, then run `hycli open`. |
+| **Windows 10/11** | x64 & ARM64 | `hycli-0.1.1-win32-*-setup.exe` | `hycli-0.1.1-win32-*.tar.gz` | Run `*-setup.exe` (adds `hycli` to your user `PATH` and Start Menu), then launch **Hycli** or run `hycli open` in PowerShell. |
+| **macOS 13+** | Apple Silicon (`arm64`) & Intel (`x64`) | `hycli-0.1.1-darwin-*.dmg` | `hycli-0.1.1-darwin-*.tar.gz` | Open the `.dmg`, drag **Hycli.app** to **Applications**, and open it (automatically links `hycli` into `~/.local/bin`). |
+| **Linux** | x64 & ARM64 | `hycli-0.1.1-linux-*.deb` | `hycli-0.1.1-linux-*.tar.gz` | Install the `.deb` (`sudo apt install ./hycli-*.deb`) or extract the `.tar.gz` and run `./install.sh`, then run `hycli open`. |
+
+**Published v0.1.0:** Windows and macOS portable archives do not include installation scripts. Use the Windows `*-setup.exe` or macOS `.dmg` installer from the release above instead.
 
 <details>
 <summary><strong>Quick terminal install & build from source</strong></summary>
 
+The archive commands below require a package containing `install.sh` (Linux/macOS) or `install.ps1` (Windows), such as a package built from current source.
+
 **Linux / macOS portable archive:**
 
 ```sh
-sha256sum -c hycli-0.1.0-*.tar.gz.sha256   # or: shasum -a 256 -c on macOS
-tar -xzf hycli-0.1.0-*.tar.gz
-cd hycli-0.1.0-*
+sha256sum -c hycli-0.1.1-*.tar.gz.sha256   # or: shasum -a 256 -c on macOS
+tar -xzf hycli-0.1.1-*.tar.gz
+cd hycli-0.1.1-*
 ./install.sh
 hycli open
 ```
@@ -91,8 +95,8 @@ hycli open
 **Windows PowerShell portable archive:**
 
 ```powershell
-tar -xzf hycli-0.1.0-win32-x64.tar.gz
-cd hycli-0.1.0-win32-x64
+tar -xzf hycli-0.1.1-win32-x64.tar.gz
+cd hycli-0.1.1-win32-x64
 powershell -ExecutionPolicy Bypass -File .\install.ps1
 hycli open
 ```
@@ -191,7 +195,14 @@ The Codex login connection runs in an ephemeral thread with file, shell, browser
 <a id="use-hycli-with-your-ai"></a>
 ## Use Hycli with your AI
 
-Add Hycli to your MCP client (**Coding agents → View connection settings** shows the exact path for your OS):
+MCP lets an AI app call Hycli tools. It does not connect that app's subscription to Hycli's **AI connections**. Hycli's Claude provider uses an Anthropic API key. Its ChatGPT login provider uses the Codex app-server protocol described above.
+
+Open **Coding agents → View connection settings** in Hycli. For manual setup, preserve the generated executable path, arguments, and `HYCLI_DATA_DIR` so the client uses the same installed sites and accounts.
+
+- In ChatGPT desktop versions with **Settings → MCP servers → Add server**, choose **STDIO** and enter those values in the corresponding fields. Save, then select **Restart**. Follow the [ChatGPT MCP instructions](https://learn.chatgpt.com/docs/extend/mcp) for your version. The JSON below is not ChatGPT's configuration format.
+- In Claude Desktop, use the generated settings with its [manual local MCP configuration](https://modelcontextprotocol.io/docs/develop/connect-local-servers). If you have a Hycli `.mcpb` bundle, install it through **Settings → Extensions → Advanced settings → Install Extension** instead. Choose the bundle that matches both your OS and CPU: `darwin-x64` or `darwin-arm64` for macOS, `win32-x64` or `win32-arm64` for Windows. See [Claude's extension instructions](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop). Managed policies can restrict installation. The bundle does not set `HYCLI_DATA_DIR`. If your dashboard uses a custom data directory, use the manual configuration to preserve it.
+
+For clients that accept `mcpServers` JSON, this is a minimal example. Use the generated settings rather than replacing their path, arguments, or data directory with this example:
 
 ```json
 {
@@ -225,6 +236,10 @@ See the [Hycli skill](skills/hycli/SKILL.md) and [agent guide](agent/AGENTS.md) 
 
 Hycli discovers local Chrome, Chromium, Edge, Brave, Vivaldi, Arc, Whale, and Firefox profiles (plus local stealth Chromium binaries when installed) on Windows, macOS, and Linux, importing only the requested website's session into the local vault. Profiles sharing the same verified website account are deduplicated automatically.
 
+**Native discovery is optional.** In **Settings**, choose whether Hycli may scan local browser sessions. It defaults off on macOS, including upgrades without a saved choice; Windows and Linux retain the enabled default. The choice applies to the dashboard, CLI and MCP using the same data directory (`HYCLI_DATA_DIR` when configured), including already-running processes. Enabling it does not start a scan: use **Find/Recheck** explicitly. Native access may request OS keychain approval.
+
+Turning it off preserves imported accounts and the browser companion connection. If a native attempt does not complete, automatic retries pause. Finish or dismiss any existing OS prompts before choosing **Find/Recheck** again; a still-running scan must finish first. Cancellation prevents further work cooperatively but cannot dismiss dialogs the OS already displayed. See [recovery guidance](agent/AGENTS.md#native-discovery-choice-and-recovery).
+
 If a session is locked by Windows App-Bound encryption, private containers, or an unimported browser, use **Accounts → Connect an account** to sign in via your browser, connect the [browser companion extension](browser-companion/guide.html), or import a JSON/Netscape cookie file in the dashboard (never paste cookies into an AI chat).
 
 <a id="languages"></a>
@@ -247,7 +262,9 @@ npm --prefix dashboard ci
 npm --prefix dashboard run check
 npm --prefix dashboard run build
 cargo test --all-targets --locked
-cargo build --locked --bin hycli --example dashboard_fixture
+cargo test --locked --features dashboard-test-support --test codex_launch
+cargo build --locked --bin hycli
+cargo build --locked --features dashboard-test-support --example dashboard_fixture
 node scripts/test-e2e.mjs --full
 ```
 
@@ -274,3 +291,5 @@ Hycli is licensed under [Apache-2.0](LICENSE). Use it only with websites and acc
    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=Hybirdss/Hycli&type=Date" />
  </picture>
 </a>
+
+For a known JSON or GraphQL endpoint before a website action exists, see [bounded verified-account reads](docs/ACCOUNT_READ.md): `hycli accounts read ACCOUNT --request REQUEST.json`.

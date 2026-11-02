@@ -20,6 +20,9 @@ use std::sync::{
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let restart_dashboard = Arc::new(tokio::sync::Notify::new());
     let fail_summary = Arc::new(AtomicBool::new(false));
+    let fail_auth = Arc::new(AtomicBool::new(false));
+    let account_fail_auth = fail_auth.clone();
+    let control_fail_auth = fail_auth.clone();
     let delay_ai_ms = Arc::new(AtomicU64::new(0));
     let control_restart = restart_dashboard.clone();
     let control_fail = fail_summary.clone();
@@ -41,13 +44,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
       .route("/articles/{id}",get(|RoutePath(id):RoutePath<String>|async move { if id != "ref-1" { return (StatusCode::NOT_FOUND,Json(json!({"error":"unknown article"}))); } (StatusCode::OK,Json(json!({"id":id,"title":"Learning to observe","content":"Observe actual behavior before choosing the next design task."}))) }))
       .route("/articles",get(||async{Json(json!({"items":[{"id":"ref-1","title":"Learning to observe","collection":"Research","saved":true},{"title":"A quieter workflow","collection":"Design","saved":false}],"token":"synthetic-response-secret"}))}))
       .route("/tasks",post(move|Json(body):Json<Value>|{let c=write_count.clone();async move{c.fetch_add(1,Ordering::SeqCst);Json(json!({"created":true,"title":body["title"],"id":42}))}}))
-      .route("/account",get(|headers:HeaderMap|async move{if headers.get("cookie").and_then(|v|v.to_str().ok()).is_some_and(|v|v.contains("session=synthetic-browser-secret")){(StatusCode::OK,Json(json!({"user":{"id":"mina","name":"Mina Kim","email":"mina@example.com"},"csrf":"synthetic-csrf-secret"})))}else{(StatusCode::UNAUTHORIZED,Json(json!({"error":"sign in"})))}}))
+      .route("/account",get(move |headers:HeaderMap|{let fail_auth=account_fail_auth.clone();async move{if !fail_auth.load(Ordering::SeqCst) && headers.get("cookie").and_then(|v|v.to_str().ok()).is_some_and(|v|v.contains("session=synthetic-browser-secret")){(StatusCode::OK,Json(json!({"user":{"id":"mina","name":"Mina Kim","email":"mina@example.com"},"csrf":"synthetic-csrf-secret"})))}else{(StatusCode::UNAUTHORIZED,Json(json!({"error":"sign in"})))}}}))
       .route("/key-items",get(|headers:HeaderMap|async move {
         if headers.get("x-api-key").and_then(|v|v.to_str().ok()) == Some("synthetic-website-key") {
             (StatusCode::OK, Json(json!({"items":[{"title":"Private reference","source":"API key"}],"echo":"synthetic-website-key"})))
         } else { (StatusCode::UNAUTHORIZED, Json(json!({"error":"key required"}))) }
       }))
-      .route("/fixture/control",post(move |Json(body):Json<Value>| { let restart=control_restart.clone();let fail=control_fail.clone();let delay=control_delay.clone();async move {
+      .route("/fixture/control",post(move |Json(body):Json<Value>| { let restart=control_restart.clone();let fail=control_fail.clone();let delay=control_delay.clone();let auth=control_fail_auth.clone();async move {
+        if let Some(value)=body["fail_auth"].as_bool(){auth.store(value,Ordering::SeqCst);}
         if let Some(value)=body["fail_summary"].as_bool(){fail.store(value,Ordering::SeqCst);}
         if let Some(value)=body["delay_ai_ms"].as_u64(){delay.store(value.min(10000),Ordering::SeqCst);}
         if body["restart_dashboard"].as_bool()==Some(true){restart.notify_one();}
@@ -160,24 +164,46 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let port = listener.local_addr()?.port();
     let address = format!("http://127.0.0.1:{port}");
-    let launch = hycli::dashboard::Web::new(core.clone(), port)?.launch;
-    util::atomic_file(
-        &std::env::var_os("HYCLI_FIXTURE_OUTPUT")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|| project.join(".cache/e2e-ports.json")),
-        &serde_json::to_vec(
-            &json!({"dashboard":address,"launch":launch,"website":website,"data":root}),
-        )?,
-    )?;
-    println!("Synthetic dashboard fixture: {address}");
     let mut first = Some(listener);
+    let mut publish_session = true;
     loop {
         let listener = match first.take() {
             Some(listener) => listener,
             None => tokio::net::TcpListener::bind(("127.0.0.1", port)).await?,
         };
-        let router = hycli::dashboard::router(hycli::dashboard::Web::new(core.clone(), port)?);
+        let web = hycli::dashboard::Web::new(core.clone(), port)?;
+        let ticket = publish_session.then(|| web.test_bootstrap_ticket());
+        let router = hycli::dashboard::router(web);
         let mut server = tokio::spawn(async move { axum::serve(listener, router).await });
+        if let Some(ticket) = ticket {
+            // Test-only issuance, normal production redemption. This does not
+            // exercise the private-file/browser handoff transport.
+            let response = reqwest::Client::builder()
+                .no_proxy()
+                .build()?
+                .post(format!("{address}/api/bootstrap"))
+                .json(&json!({"ticket": ticket}))
+                .send()
+                .await?
+                .error_for_status()?;
+            let cookie = response.headers()["set-cookie"]
+                .to_str()?
+                .split(';')
+                .next()
+                .ok_or("fixture session cookie missing")?
+                .to_owned();
+            let session: Value = response.json().await?;
+            util::atomic_file(
+                &std::env::var_os("HYCLI_FIXTURE_OUTPUT")
+                    .map(std::path::PathBuf::from)
+                    .unwrap_or_else(|| project.join(".cache/e2e-ports.json")),
+                &serde_json::to_vec(
+                    &json!({"dashboard":address,"session":{"cookie":cookie,"csrf":session["csrf"]},"website":website,"data":root}),
+                )?,
+            )?;
+            println!("Synthetic dashboard fixture: {address}");
+            publish_session = false;
+        }
         tokio::select! {
             result = &mut server => { result??; break; }
             _ = restart_dashboard.notified() => { server.abort(); let _ = server.await; }

@@ -112,12 +112,35 @@ pub fn redact(value: &mut serde_json::Value, secrets: &[String]) {
                     *value = serde_json::Value::String("[private]".into());
                 }
             }
-            for (key, child) in object.iter_mut() {
-                if secret_field(key) {
-                    *child = serde_json::Value::String("[private]".into());
+            let mut renamed = Vec::new();
+            for (key, mut child) in std::mem::take(object) {
+                if secret_field(&key) {
+                    child = serde_json::Value::String("[private]".into());
                 } else {
-                    redact(child, secrets);
+                    redact(&mut child, secrets);
                 }
+                let mut clean = serde_json::Value::String(key.clone());
+                redact(&mut clean, secrets);
+                let clean = clean.as_str().expect("redacted string").to_owned();
+                if clean == key {
+                    object.insert(key, child);
+                } else {
+                    renamed.push((clean, child));
+                }
+            }
+            // Reserve unchanged names first. Keep every entry when different secrets
+            // collapse to one name, without overwriting a legitimate API property.
+            let mut next_suffix = std::collections::BTreeMap::new();
+            for (base, child) in renamed {
+                let mut key = base.clone();
+                let next = next_suffix.entry(base.clone()).or_insert(1usize);
+                while object.contains_key(&key) {
+                    // The underscore keeps short numeric secrets from matching the
+                    // generated index on subsequent redaction passes.
+                    key = format!("{base}#_{next}");
+                    *next += 1;
+                }
+                object.insert(key, child);
             }
         }
         serde_json::Value::Array(array) => {
@@ -273,5 +296,100 @@ pub fn is_pid_alive(pid: u32) -> bool {
             ProcessRefreshKind::nothing(),
         );
         system.process(target).is_some()
+    }
+}
+
+#[cfg(test)]
+mod redaction_tests {
+    use super::redact;
+    use serde_json::json;
+
+    #[test]
+    fn secret_keys_are_redacted_recursively_without_losing_colliding_entries() {
+        let secrets = vec![
+            "access-canary".into(),
+            "refresh-canary".into(),
+            "client-secret-canary".into(),
+        ];
+        let mut value = json!({"nested":[{
+            "access-canary": {"refresh-canary": "access-canary"},
+            "refresh-canary": "second entry",
+            "client-secret-canary": "third entry",
+            "[private]": "original entry",
+            "[private]#_1": "original suffixed entry",
+            "subject": "subject-canary", "client_id": "client-canary",
+            "access_token": "hidden regardless of known secrets"
+        }]});
+        redact(&mut value, &secrets);
+        let text = value.to_string();
+        for secret in &secrets {
+            assert!(!text.contains(secret));
+        }
+        let fields = value["nested"][0].as_object().unwrap();
+        assert_eq!(fields.len(), 8);
+        assert_eq!(fields["[private]"], "original entry");
+        assert_eq!(fields["[private]#_1"], "original suffixed entry");
+        assert_eq!(fields["subject"], "subject-canary");
+        assert_eq!(fields["client_id"], "client-canary");
+        assert_eq!(fields["access_token"], "[private]");
+        assert!(fields.values().any(|v| v == "second entry"));
+        assert!(fields.values().any(|v| v == "third entry"));
+        assert!(
+            fields
+                .values()
+                .any(|v| v == &json!({"[private]":"[private]"}))
+        );
+        let once = value.clone();
+        redact(&mut value, &secrets);
+        assert_eq!(value, once);
+    }
+
+    #[test]
+    fn many_colliding_keys_keep_all_entries_with_bounded_names() {
+        let secrets: Vec<String> = (0..1000)
+            .map(|i| format!("credential-canary-{i:04}"))
+            .collect();
+        let mut fields = serde_json::Map::new();
+        for (i, secret) in secrets.iter().enumerate() {
+            fields.insert(secret.clone(), json!(i));
+        }
+        fields.insert("[private]".into(), json!("reserved"));
+        fields.insert("[private]#_1".into(), json!("reserved suffix"));
+        let mut value = serde_json::Value::Object(fields);
+        redact(&mut value, &secrets);
+        let fields = value.as_object().unwrap();
+        assert_eq!(fields.len(), 1002);
+        assert_eq!(fields["[private]"], "reserved");
+        assert_eq!(fields["[private]#_1"], "reserved suffix");
+        assert!(fields.keys().all(|key| key.len() <= 16));
+        assert!(value.to_string().len() < 25_000);
+        let mut retained: Vec<_> = fields
+            .values()
+            .filter_map(serde_json::Value::as_u64)
+            .collect();
+        retained.sort_unstable();
+        assert_eq!(retained, (0..1000).collect::<Vec<_>>());
+        let once = value.clone();
+        redact(&mut value, &secrets);
+        assert_eq!(value, once);
+    }
+
+    #[test]
+    fn key_matching_preserves_short_secret_word_boundaries_and_normal_names() {
+        let mut value = json!({"en":1,"en-US":2,"tenant":3,"en_US":4,"1":5,"v1":6,"":7,"subject":"person","client_id":"client"});
+        redact(&mut value, &["en".into(), "1".into(), "".into()]);
+        assert_eq!(value.as_object().unwrap().len(), 9);
+        assert!(value.get("en").is_none());
+        assert!(value.get("1").is_none());
+        assert_eq!(value["[private]-US"], 2);
+        assert_eq!(value["tenant"], 3);
+        assert_eq!(value["en_US"], 4);
+        assert_eq!(value["v1"], 6);
+        assert_eq!(value[""], 7);
+        assert_eq!(value["subject"], "person");
+        assert_eq!(value["client_id"], "client");
+        let once = value.clone();
+        redact(&mut value, &["en".into(), "1".into(), "".into()]);
+        assert_eq!(value, once);
     }
 }

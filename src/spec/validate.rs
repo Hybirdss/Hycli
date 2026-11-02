@@ -23,6 +23,7 @@ pub fn parse(data: &[u8]) -> AppResult<Spec> {
     }
     if s.auth.is_empty() {
         s.auth.push(AuthStrategy {
+            oauth_refresh: None,
             name: "public".into(),
             kind: "none".into(),
             header: String::new(),
@@ -46,12 +47,21 @@ impl Spec {
                 });
             }
 
-            if self.spec_version != SPEC_VERSION && self.spec_version != 2 {
+            if self.spec_version != SPEC_VERSION && self.spec_version != 2 && self.spec_version != 3
+            {
                 add(
                     &mut out,
                     "spec_version",
-                    format!("supported: 1|2, got: {}", self.spec_version),
-                    "Set spec_version to 1 or 2",
+                    format!("supported: 1|2|3, got: {}", self.spec_version),
+                    "Set spec_version to 1, 2 or 3",
+                );
+            }
+            if self.spec_version != 3 && self.operations.iter().any(|op| op.pagination.is_some()) {
+                add(
+                    &mut out,
+                    "spec_version",
+                    "Explicit private pagination requires SiteSpec v3".into(),
+                    "Set spec_version to 3 for an evidenced supported pagination contract, or remove pagination metadata; never expose the raw continuation as an ordinary input.",
                 );
             }
             if self.site.name.is_empty() {
@@ -79,7 +89,45 @@ impl Spec {
             }
 
             let mut auths = std::collections::HashSet::new();
+            let mut grants = std::collections::HashSet::new();
             for a in &self.auth {
+                if let Some(binding) = &a.oauth_refresh {
+                    if a.name.is_empty()
+                        || !grants.insert(&binding.grant_ref)
+                        || !a.value_from.is_empty()
+                        || binding.check().is_err()
+                        || a.kind != "header"
+                        || !a.header.eq_ignore_ascii_case("authorization")
+                        || a.prefix != "Bearer "
+                        || a.origin.is_empty()
+                    {
+                        add(
+                            &mut out,
+                            &format!("auth.{}.oauth_refresh", a.name),
+                            "Invalid explicit OAuth refresh binding".into(),
+                            "Use pinned endpoints, a stable subject pointer and a private grant reference with Bearer header auth.",
+                        );
+                    }
+                    if self
+                        .operations
+                        .iter()
+                        .filter(|op| op.auth == a.name)
+                        .any(|op| {
+                            op.effect != crate::policy::Effect::Read
+                                || !matches!(op.transport.as_str(), "" | "http")
+                                || !op.preflight.is_empty()
+                        })
+                    {
+                        add(
+                            &mut out,
+                            &format!("auth.{}.oauth_refresh", a.name),
+                            "OAuth refresh requires direct read-only operations without preflight"
+                                .into(),
+                            "Keep browser sessions and write operations separate.",
+                        );
+                    }
+                }
+
                 if !auths.insert(a.name.clone()) {
                     add(
                         &mut out,
@@ -99,7 +147,7 @@ impl Spec {
                                 "",
                             );
                         }
-                        if !a.value_from.starts_with("store:") {
+                        if a.oauth_refresh.is_none() && !a.value_from.starts_with("store:") {
                             add(
                                 &mut out,
                                 &format!("auth.{}.value_from", a.name),
@@ -151,7 +199,7 @@ impl Spec {
                         "GET|POST|PUT|PATCH|DELETE",
                     );
                 }
-                if !op.path.starts_with('/') {
+                if !op.path.starts_with('/') && !(op.derived_target && op.path.is_empty()) {
                     add(
                         &mut out,
                         &format!("{id}.path"),
@@ -166,6 +214,49 @@ impl Spec {
                         format!("unsupported transport: {}", op.transport),
                         "http|browser-fetch|browser",
                     );
+                }
+                if let Some(expected) = &op.response {
+                    if expected.format == "file" {
+                        let valid_types = expected.file.as_ref().is_some_and(|file| {
+                            !file.media_types.is_empty()
+                                && file.media_types.len() <= 16
+                                && file.media_types.iter().all(|media| {
+                                    media.len() <= 127
+                                        && media.matches('/').count() == 1
+                                        && media == &media.to_ascii_lowercase()
+                                        && media.split_once('/').is_some_and(|(kind, subtype)| {
+                                            !kind.is_empty()
+                                                && !subtype.is_empty()
+                                                && media.bytes().all(|b| {
+                                                    b.is_ascii_alphanumeric()
+                                                        || b"/!#$&^_.+-".contains(&b)
+                                                })
+                                        })
+                                })
+                        });
+                        if !valid_types
+                            || op.pagination.is_some()
+                            || !op.model.is_empty()
+                            || !expected.required_pointers.is_empty()
+                            || !expected.required_html_fields.is_empty()
+                            || expected.html.is_some()
+                            || !expected.strip_prefix.is_empty()
+                            || !expected.ssr_json.is_empty()
+                            || !expected.extract_pointer.is_empty()
+                            || !["", "http"].contains(&op.transport.as_str())
+                        {
+                            add(&mut out, &format!("{id}.response"),
+                                "File responses require explicit media types and HTTP transport, without extraction, models or pagination".into(),
+                                "Set response.format: file and response.file.media_types to observed exact media types.");
+                        }
+                    } else if expected.file.is_some() {
+                        add(
+                            &mut out,
+                            &format!("{id}.response.file"),
+                            "File expectations require format: file".into(),
+                            "Remove file or use format: file.",
+                        );
+                    }
                 }
                 if !op.auth.is_empty() && !auths.contains(&op.auth) {
                     add(
@@ -224,12 +315,20 @@ impl Spec {
                     *counts.entry(k).or_default() += 1;
                 }
                 if let Some(b) = &op.body {
-                    if (!b.json.is_empty() || b.json_template.is_some()) && !b.form.is_empty() {
+                    let encodings = [
+                        !b.json.is_empty() || b.json_template.is_some(),
+                        !b.form.is_empty(),
+                        !b.multipart.is_empty(),
+                    ]
+                    .iter()
+                    .filter(|used| **used)
+                    .count();
+                    if encodings > 1 {
                         add(
                             &mut out,
                             &format!("{id}.body"),
                             "Choose one body encoding".into(),
-                            "Use body.json/json_template or body.form, not both.",
+                            "Use body.json/json_template, body.form, or body.multipart, not more than one.",
                         );
                     }
                     for (k, _) in b.inputs() {
@@ -272,6 +371,23 @@ impl Spec {
                 if let Some(b) = &op.body {
                     check(&format!("{id}.body.json"), &b.json, &mut out);
                     check(&format!("{id}.body.form"), &b.form, &mut out);
+                    for (n, p) in &b.multipart {
+                        match p.kind.as_str() {
+                            "string" | "int" | "float" | "bool" | "json" | "file" => {}
+                            other => out.push(Issue {
+                                field: format!("{id}.body.multipart.{n}.type"),
+                                detail: format!("unsupported type: {other}"),
+                                remedy: "string|int|float|bool|json|file".into(),
+                            }),
+                        }
+                        if (p.required || p.kind == "file") && p.default.is_some() {
+                            out.push(Issue {
+                                field: format!("{id}.body.multipart.{n}"),
+                                detail: "file inputs and required parameters cannot define defaults".into(),
+                                remedy: "Provide file inputs explicitly; omit defaults for required parameters".into(),
+                            });
+                        }
+                    }
                 }
             }
         }

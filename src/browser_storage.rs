@@ -30,6 +30,20 @@ pub fn load(profile: &Path, firefox: bool, origin: &str) -> Result<Storage, ()> 
     }
 }
 
+/// Missing stores are empty; unreadable stores are not evidence of sign-out.
+pub(crate) fn source_metadata(path: &Path) -> Result<Option<std::fs::Metadata>, ()> {
+    classify_source_metadata(std::fs::metadata(path))
+}
+fn classify_source_metadata(
+    result: std::io::Result<std::fs::Metadata>,
+) -> Result<Option<std::fs::Metadata>, ()> {
+    match result {
+        Ok(metadata) => Ok(Some(metadata)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(_) => Err(()),
+    }
+}
+
 fn chromium_string(bytes: &[u8]) -> Option<String> {
     match bytes.split_first()? {
         (1, tail) => Some(tail.iter().map(|b| char::from(*b)).collect()),
@@ -188,7 +202,7 @@ fn chromium_storage(profile: &Path, origin: &str) -> Result<Storage, ()> {
     use rusty_leveldb::LdbIterator;
     let mut values = Storage::new();
     let local_source = profile.join("Local Storage/leveldb");
-    if local_source.is_dir() {
+    if source_metadata(&local_source)?.is_some_and(|meta| meta.is_dir()) {
         let (_snapshot, mut db) = open_chromium_leveldb(&local_source)?;
         let mut iter = db
             .new_iter()
@@ -216,7 +230,7 @@ fn chromium_storage(profile: &Path, origin: &str) -> Result<Storage, ()> {
         }
     }
     let session_source = profile.join("Session Storage/leveldb");
-    if session_source.is_dir() {
+    if source_metadata(&session_source)?.is_some_and(|meta| meta.is_dir()) {
         if let Ok((_snapshot, mut db)) = open_chromium_leveldb(&session_source) {
             if let Ok(mut iter) = db.new_iter() {
                 let ns_prefix = b"namespace-";
@@ -286,19 +300,16 @@ fn firefox_storage(profile: &Path, origin: &str) -> Result<Storage, ()> {
         .join("storage/default")
         .join(name)
         .join("ls/data.sqlite");
-    if !source.is_file() {
+    if !source_metadata(&source)?.is_some_and(|meta| meta.is_file()) {
         return Ok(Storage::new());
     }
     let snapshot = Snapshot::new()?;
-    let metadata = |p: &Path| {
-        std::fs::metadata(p)
-            .ok()
-            .map(|m| (m.len(), m.modified().ok()))
-    };
+    let metadata =
+        |p: &Path| source_metadata(p).map(|meta| meta.map(|m| (m.len(), m.modified().ok())));
     let wal = PathBuf::from(format!("{}-wal", source.display()));
-    let before = (metadata(&source), metadata(&wal));
+    let before = (metadata(&source)?, metadata(&wal)?);
     for (from, name) in [(&source, "data.sqlite"), (&wal, "data.sqlite-wal")] {
-        if from.is_file() {
+        if source_metadata(from)?.is_some_and(|meta| meta.is_file()) {
             util::atomic_file(
                 &snapshot.0.join(name),
                 &util::read_bounded(from, 64 * 1024 * 1024).map_err(|_| ())?,
@@ -306,7 +317,7 @@ fn firefox_storage(profile: &Path, origin: &str) -> Result<Storage, ()> {
             .map_err(|_| ())?;
         }
     }
-    if before != (metadata(&source), metadata(&wal)) {
+    if before != (metadata(&source)?, metadata(&wal)?) {
         return Err(());
     }
     let db = rusqlite::Connection::open(snapshot.0.join("data.sqlite")).map_err(|_| ())?;
@@ -374,6 +385,28 @@ mod tests {
         std::fs::create_dir_all(&destination).unwrap();
         std::fs::write(source.join("000001.log"), b"synthetic-a").unwrap();
         (Snapshot(root), source, destination)
+    }
+
+    #[test]
+    fn source_metadata_errors_are_not_empty_stores() {
+        use std::io::{Error, ErrorKind};
+        assert!(
+            classify_source_metadata(Err(Error::from(ErrorKind::NotFound)))
+                .unwrap()
+                .is_none()
+        );
+        for kind in [
+            ErrorKind::PermissionDenied,
+            ErrorKind::Interrupted,
+            ErrorKind::Other,
+        ] {
+            assert!(classify_source_metadata(Err(Error::from(kind))).is_err());
+        }
+        let (_root, source, _) = owned_snapshot_fixture();
+        assert!(source_metadata(&source).unwrap().unwrap().is_dir());
+        let file = source.join("000001.log");
+        assert!(source_metadata(&file).unwrap().unwrap().is_file());
+        assert!(source_metadata(&source.join("missing")).unwrap().is_none());
     }
 
     #[test]

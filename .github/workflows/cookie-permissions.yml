@@ -1,0 +1,42 @@
+name: Synthetic cookie permission matrix
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/cookie-permissions.yml'
+      - 'dashboard/cookie-permission-*.mjs'
+      - 'dashboard/package*.json'
+      - 'docs/COOKIE_PERMISSION_TESTS.md'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  chromium-normal-store:
+    runs-on: windows-2022
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: dashboard
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+      - run: npm ci
+      - run: node --test cookie-permission-contract.test.mjs
+      - name: Install lockfile-matched bundled Chromium
+        run: npx --no-install playwright install chromium
+      - name: Measure synthetic cookie visibility with the sandbox enabled
+        run: node cookie-permission-e2e.mjs
+      - name: Keep only the synthetic result report, never browser profiles
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: chromium-cookie-permission-report
+          path: test-results/cookie-permission-report.json
+          if-no-files-found: error
+          retention-days: 7

@@ -29,10 +29,8 @@ fn normalize_bundle_path(raw: &str) -> Option<String> {
             format!("{{{ident}}}")
         })
         .into_owned();
-    // Convert Express/router style `:id` segments -> `{id}`
     let colon_re = regex::Regex::new(r"/:([A-Za-z_][A-Za-z0-9_]*)").expect("constant");
     cleaned = colon_re.replace_all(&cleaned, "/{$1}").into_owned();
-    // Sanitize all `{...}` segments to valid lowercase parameter IDs
     let brace_re = regex::Regex::new(r"\{([^}]+)\}").expect("constant");
     cleaned = brace_re
         .replace_all(&cleaned, |caps: &regex::Captures<'_>| {
@@ -94,7 +92,7 @@ fn normalize_bundle_path(raw: &str) -> Option<String> {
 /// Extract HTTP routes from inline `<script>` blocks and JS bundles (`fetch`, `axios`, `/api/...`, GraphQL).
 pub fn bundle_routes(text: &str) -> BTreeSet<(String, String)> {
     let mut routes = BTreeSet::new();
-    // 1. Normalize JS string concatenation inside fetch(...) e.g.
+    // Normalize JS string concatenation inside fetch(...) e.g.
     //    fetch('/api/entries/' + encodeURIComponent(id) + '/comments', { method: 'POST' })
     let concat_re = regex::Regex::new(
         r#"["'`]\s*\+\s*(?:(?:encodeURIComponent|String|Number)\s*\(\s*)?([A-Za-z_][A-Za-z0-9_.]*)\s*\)?\s*(?:\+\s*["'`])?"#,
@@ -121,7 +119,6 @@ pub fn bundle_routes(text: &str) -> BTreeSet<(String, String)> {
         })
         .into_owned();
 
-    // 2. Match `fetch("...", { ... })` calls with optional `method: "..."`
     let fetch_re = regex::Regex::new(
         r#"fetch\s*\(\s*["'`]((?:https?://[^/"'`\s]+)?/[^"'`\s]{1,260})["'`](?:\s*,\s*\{([^}]{0,320})\})?"#,
     )
@@ -157,7 +154,6 @@ pub fn bundle_routes(text: &str) -> BTreeSet<(String, String)> {
         routes.insert((method, path));
     }
 
-    // 3. Match `axios.<method>("/path")` or `.get("/api/...")` / `.post("/api/...")`
     let axios_re = regex::Regex::new(
         r#"(?i)\b(?:axios|client|http|api)\s*\.\s*(get|post|put|patch|delete|head)\s*\(\s*["'`]((?:https?://[^/"'`\s]+)?/[^"'`\s]{1,260})["'`]"#,
     )
@@ -178,7 +174,6 @@ pub fn bundle_routes(text: &str) -> BTreeSet<(String, String)> {
         }
     }
 
-    // 4. Match explicit API path string literals: `/api/...`, `/_api/...`, `/v1/...`, `/v2/...`, `/v3/...`, `/graphql`, `/gql`, `/_next/data/...`
     let api_lit_re = regex::Regex::new(
         r#"["'`](/(?:_?api(?:/v[0-9]+)?|v[1-9][0-9]*|graphql|gql|rest|_next/data)(?:/[A-Za-z0-9_@.{}:$;=-]+)*)["'`]"#,
     )
@@ -203,7 +198,7 @@ pub fn bundle_routes(text: &str) -> BTreeSet<(String, String)> {
         }
     }
 
-    // 5. Match `new URL("/path", ...)` and Schema.org `urlTemplate` routes
+    // Match `new URL("/path", ...)` and Schema.org `urlTemplate` routes
     let new_url_re = regex::Regex::new(
         r#"(?:new\s+URL\s*\(\s*|["']urlTemplate["']\s*:\s*)["'`]((?:https?://[^/"'`\s]+)?/[^"'`\s]{1,260})["'`]"#,
     )
@@ -232,7 +227,6 @@ pub fn bundle_routes(text: &str) -> BTreeSet<(String, String)> {
         }
     }
 
-    // 6. Match HTML `<form action="..." method="...">` routes
     let form_re = regex::Regex::new(r"(?is)<form\b([^>]*)>").expect("constant");
     let action_re = regex::Regex::new(
         r#"(?i)\baction\s*=\s*["']((?:https?://[^/"'\s]+)?/[^"'\s<>]{1,260})["']"#,

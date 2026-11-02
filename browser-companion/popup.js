@@ -8,6 +8,7 @@ chrome.storage.local.get('locale').then(saved=>{const language=chrome.i18n.getUI
 $('language').addEventListener('change',()=>{locale=$('language').value;translate();void chrome.storage.local.set({locale});});
 translate();
 let pairing = null;
+let permissionScope = null;
 const status = (message, error = false) => { $('status').textContent = message; $('status').className = error ? 'error' : ''; };
 function address() {
   const value = new URL($('address').value);
@@ -23,30 +24,34 @@ async function call(path, body) {
 }
 $('pair-form').addEventListener('submit', async event => {
   event.preventDefault(); $('pair').disabled = true; status(t('common.loading'));
-  try { pairing = await call('/bridge/pair',{code:$('code').value}); $('website').value = new URL(pairing.url).hostname; $('pair-form').hidden = true; $('connect-step').hidden = false; status(''); }
+  try { pairing = await call('/bridge/pair',{code:$('code').value}); permissionScope = HYCLI_SITE_SCOPE.plan(pairing.url,navigator.userAgent.includes('Firefox/')); $('website').value = permissionScope.origin; $('permission-origins').textContent = permissionScope.permissions.join('\n'); $('pair-form').hidden = true; $('connect-step').hidden = false; status(''); }
   catch (error) { status(error.message,true); } finally { $('pair').disabled = false; }
 });
 $('connect').addEventListener('click', async () => {
   // Permission requests remain directly in a user gesture.
-  const origin = new URL(pairing.url).origin;
-  const permission = chrome.permissions.request({origins:[origin+'/*']});
+  if (!pairing || !permissionScope) return;
+  const scope = permissionScope;
+  const origin = scope.origin;
+  const permission = chrome.permissions.request({origins:scope.permissions});
   $('connect').disabled = true;
   try {
     if (!await permission) throw new Error(t('errors.forbidden'));
     const tabs = await chrome.tabs.query({active:true,currentWindow:true}); const tab = tabs[0];
     const stores = await chrome.cookies.getAllCookieStores(); const store = stores.find(s => s.tabIds.includes(tab?.id));
     if (!store) throw new Error(t('browser.signIn'));
-    const hostname=new URL(pairing.url).hostname;
-    const cookies=(await chrome.cookies.getAll({storeId:store.id,...(navigator.userAgent.includes('Firefox/')?{firstPartyDomain:null}:{})})).filter(c=>{const domain=c.domain.replace(/^\./,'');return hostname===domain||(!c.hostOnly&&hostname.endsWith('.'+domain));});
-    // Request partitioned first-party cookies separately where the browser supports it.
-    try { const partitioned = await chrome.cookies.getAll({url:pairing.url,storeId:store.id,partitionKey:{topLevelSite:origin}}); for(const cookie of partitioned) if(!cookies.some(c=>c.name===cookie.name&&c.domain===cookie.domain&&c.path===cookie.path&&JSON.stringify(c.partitionKey)===JSON.stringify(cookie.partitionKey))) cookies.push(cookie); } catch {}
-    if (!cookies.length) throw new Error(t('errors.auth_required'));
+    if (!tab?.url || new URL(tab.url).origin !== origin) throw new Error(t('browser.signIn'));
+    const cookies = await HYCLI_SITE_SCOPE.cookies(chrome,scope,store.id,navigator.userAgent.includes('Firefox/'));
+    // Empty can mean unavailable browser visibility, not proof of logout.
+    if (!cookies.length) throw new Error(t('browser.cookiesUnavailable'));
+    const current = (await chrome.tabs.query({active:true,currentWindow:true}))[0];
+    const currentStores = await chrome.cookies.getAllCookieStores();
+    if (current?.id !== tab.id || current.incognito !== tab.incognito || !current.url || new URL(current.url).origin !== origin || !currentStores.some(s=>s.id===store.id && s.tabIds.includes(current.id)) || !await chrome.permissions.contains({origins:scope.permissions})) throw new Error(t('errors.forbidden'));
     const key = `identity:${origin}:${tab.incognito?'private':'normal'}`;
     const observed = (await chrome.storage.session.get(key))[key];
     const identity_source = observed && Date.now()-observed.at < 30*60*1000 ? observed.url : '';
     status(t('common.loading'));
     const connected=await call('/bridge/connect',{token:pairing.token,cookies,browser:navigator.userAgent.includes('Edg/')?'Edge':navigator.userAgent.includes('Firefox/')?'Firefox':'Chrome',profile:$('profile').value,identity_source});
-    await chrome.storage.local.set({[`connection:${origin}:${tab.incognito?'private':'normal'}`]:{address:address(),token:connected.session_token,storeId:store.id,siteOrigin:origin,incognito:!!tab.incognito}});
+    await chrome.storage.local.set({[`connection:${origin}:${tab.incognito?'private':'normal'}`]:{address:address(),token:connected.session_token,storeId:store.id,siteOrigin:origin,permissionOrigins:scope.permissions,incognito:!!tab.incognito}});
     pairing = null; $('connect-step').hidden = true;
     status(identity_source ? t('accounts.connectedToast')+'\n'+t('accounts.checking') : t('accounts.connectedToast')+'\n'+t('accounts.unknownHint'));
   } catch (error) { status(error.message,true); } finally { $('connect').disabled=false; }

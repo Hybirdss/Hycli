@@ -1,6 +1,6 @@
 use super::{
     grounding::{accounts_identity, merge_worker_spec, uncovered_routes, verification_key},
-    models::{WorkflowReview, complete_workflows},
+    models::{WorkflowReview, complete_workflows, writes_without_declared_auth},
     prompts::SYSTEM,
 };
 use crate::{
@@ -78,11 +78,23 @@ impl Runtime {
         self.changed();
         let core = self.clone();
         let id = job.id.clone();
+        let action_job = job.kind == "action";
         // A start gate prevents a fast task from completing before its abort handle is registered.
         let (start, ready) = tokio::sync::oneshot::channel();
         let task = tokio::spawn(async move {
             let _ = ready.await;
             let result = work.await;
+            if action_job && result.is_ok() {
+                // Action completion (including artifacts) belongs to runtime.
+                if let Ok(mut tasks) = core.tasks.lock() {
+                    tasks.remove(&id);
+                }
+                core.changed();
+                return;
+            }
+            let outcome_unknown = result
+                .as_ref()
+                .is_err_and(|error| error.public_code == "action_outcome_unknown");
             let persisted = core.state.update_job(&id, |j| {
                 if !["queued", "running"].contains(&j.status.as_str()) {
                     return;
@@ -135,7 +147,13 @@ impl Runtime {
                     if ["queued", "running"].contains(&job.status.as_str()) {
                         job.status = "failed".into();
                         job.phase = "failed".into();
-                        job.error_code = error.public_code;
+                        job.error_code = if outcome_unknown
+                            || (job.artifact.is_some() && job.is_write_action())
+                        {
+                            "action_outcome_unknown".into()
+                        } else {
+                            error.public_code
+                        };
                         job.finished_at = util::now();
                         job.result = None;
                     }
@@ -224,6 +242,7 @@ impl Runtime {
             .get(&job.site_id)
             .map(|m| m.account_id.clone())
             .unwrap_or_default();
+        job.account_selection = Some(self.preparation_selection_snapshot(&job.site_id, &job.url)?);
         let core = self.clone();
         let workjob = job.clone();
         self.spawn_job(job, async move {
@@ -237,10 +256,13 @@ impl Runtime {
         if parent.status != "completed" || parent.kind != "action" {
             return Err(AppError::api("bad_request", 400));
         }
-        let config = self.config(provider)?;
         let result = parent
             .result
             .ok_or_else(|| AppError::api("bad_request", 400))?;
+        if parent.artifact.is_some() {
+            return Err(AppError::api("bad_request", 400));
+        }
+        let config = self.config(provider)?;
         let mut job = Job::new("summary", &parent.locale);
         job.parent_id = id.into();
         job.site_id = parent.site_id;
@@ -339,7 +361,7 @@ impl Runtime {
                 .execute_for_job(request, approval.as_deref(), Some(&job_id))
                 .await?;
             result.ensure_success()?;
-            Ok(result.mapped.or(result.body))
+            Ok(result.output())
         })
     }
 
@@ -356,7 +378,7 @@ impl Runtime {
         understanding: Option<WebsiteUnderstanding>,
         workflow_review: Option<WorkflowReview>,
         self_interrogation: BTreeMap<String, Vec<SelfQa>>,
-        capability_gaps: BTreeMap<String, Vec<String>>,
+        mut capability_gaps: BTreeMap<String, Vec<String>>,
         verification: BTreeMap<String, bool>,
         smoke_checks: Vec<ReadCheck>,
         api_routes: BTreeSet<(String, String)>,
@@ -499,6 +521,15 @@ impl Runtime {
         description
             .actions
             .retain(|name, _| sp.operations.iter().any(|op| &op.name == name));
+        // Missing declarations are a diagnostic, not a ban on intentional public
+        // writes or proof that a declared credential is configured and verified.
+        let undeclared = writes_without_declared_auth(&sp);
+        if !undeclared.is_empty() {
+            capability_gaps.entry("auth".into()).or_default().push(format!(
+                "No authentication strategy is declared for these changes: {}. Their authentication requirements have not been verified. If they require sign-in, connect the intended account and prepare again; intentionally public changes remain available under the existing write permissions.",
+                undeclared.join(", ")
+            ));
+        }
         self.job_progress(&job.id, "verify", 3)?;
         self.job_note(&job.id, "checking", "", 0, "")?;
         if self
@@ -511,7 +542,7 @@ impl Runtime {
         {
             return Err(AppError::api("cancelled", 409));
         }
-        self.install(&sp)?;
+        self.install_selected(&sp, job.account_selection.as_ref())?;
         description.hash = Self::spec_hash(&sp)?;
         self.state.update(|d| {
             let meta = d.sites.entry(job.site_id.clone()).or_default();

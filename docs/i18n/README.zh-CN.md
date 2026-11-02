@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Hybirdss/Hycli/releases/tag/v0.1.0">下载 (Windows · macOS · Linux)</a> ·
+  <a href="https://github.com/Hybirdss/Hycli/releases/tag/v0.1.1">下载 (Windows · macOS · Linux)</a> ·
   <a href="https://github.com/Hybirdss/Hycli/issues">在 GitHub 上获取帮助</a> ·
   <a href="#try-it-in-30-seconds">30 秒快速体验</a> ·
   <a href="#get-started">开始使用</a> ·
@@ -59,23 +59,27 @@ Hycli 将网站引擎与本地仪表盘（`http://127.0.0.1:4318`）打包在单
 
 ### 下载与运行 (Windows, macOS, Linux)
 
-前往 **[GitHub Releases (v0.1.0)](https://github.com/Hybirdss/Hycli/releases/tag/v0.1.0)** 下载适合你操作系统的原生安装包或便携压缩包：
+前往 **[GitHub Releases (v0.1.1)](https://github.com/Hybirdss/Hycli/releases/tag/v0.1.1)** 下载适合你操作系统的原生安装包或便携压缩包：
 
 | 操作系统 | 架构 | 原生安装包 | 便携压缩包 | 启动方式 |
 | --- | --- | --- | --- | --- |
-| **Windows 10/11** | x64 及 ARM64 | `hycli-0.1.0-win32-*-setup.exe` | `hycli-0.1.0-win32-*.tar.gz` | 运行 `*-setup.exe`（无需管理员权限，自动添加至用户 `PATH` 和开始菜单），然后点击 **Hycli** 图标或在 PowerShell 中运行 `hycli open` |
-| **macOS 13+** | Apple Silicon (`arm64`) 及 Intel (`x64`) | `hycli-0.1.0-darwin-*.dmg` | `hycli-0.1.0-darwin-*.tar.gz` | 打开 `.dmg`，将 **Hycli.app** 拖入 **Applications** 后运行（自动链接 `~/.local/bin/hycli`） |
-| **Linux** | x64 及 ARM64 | `hycli-0.1.0-linux-*.deb` | `hycli-0.1.0-linux-*.tar.gz` | 安装 `.deb`（`sudo apt install ./hycli-*.deb`）或解压 `.tar.gz` 后运行 `./install.sh`，随后执行 `hycli open` |
+| **Windows 10/11** | x64 及 ARM64 | `hycli-0.1.1-win32-*-setup.exe` | `hycli-0.1.1-win32-*.tar.gz` | 运行 `*-setup.exe`（无需管理员权限，自动添加至用户 `PATH` 和开始菜单），然后点击 **Hycli** 图标或在 PowerShell 中运行 `hycli open` |
+| **macOS 13+** | Apple Silicon (`arm64`) 及 Intel (`x64`) | `hycli-0.1.1-darwin-*.dmg` | `hycli-0.1.1-darwin-*.tar.gz` | 打开 `.dmg`，将 **Hycli.app** 拖入 **Applications** 后运行（自动链接 `~/.local/bin/hycli`） |
+| **Linux** | x64 及 ARM64 | `hycli-0.1.1-linux-*.deb` | `hycli-0.1.1-linux-*.tar.gz` | 安装 `.deb`（`sudo apt install ./hycli-*.deb`）或解压 `.tar.gz` 后运行 `./install.sh`，随后执行 `hycli open` |
+
+**已发布的 v0.1.0：** Windows 和 macOS 便携压缩包不包含安装脚本。请改用上方发布页面中的 Windows `*-setup.exe` 或 macOS `.dmg` 安装包。
 
 <details>
 <summary><strong>终端便携包安装与从源码构建</strong></summary>
 
+以下便携包命令仅适用于包含 `install.sh`（Linux/macOS）或 `install.ps1`（Windows）的包，例如从当前源码构建的包。
+
 **Linux / macOS 便携包安装：**
 
 ```sh
-sha256sum -c hycli-0.1.0-*.tar.gz.sha256   # macOS 请使用 shasum -a 256 -c
-tar -xzf hycli-0.1.0-*.tar.gz
-cd hycli-0.1.0-*
+sha256sum -c hycli-0.1.1-*.tar.gz.sha256   # macOS 请使用 shasum -a 256 -c
+tar -xzf hycli-0.1.1-*.tar.gz
+cd hycli-0.1.1-*
 ./install.sh
 hycli open
 ```
@@ -83,8 +87,8 @@ hycli open
 **Windows PowerShell 便携包安装：**
 
 ```powershell
-tar -xzf hycli-0.1.0-win32-x64.tar.gz
-cd hycli-0.1.0-win32-x64
+tar -xzf hycli-0.1.1-win32-x64.tar.gz
+cd hycli-0.1.1-win32-x64
 powershell -ExecutionPolicy Bypass -File .\install.ps1
 hycli open
 ```
@@ -180,6 +184,8 @@ Codex 登录连接在禁用文件、Shell、浏览器和外部 MCP 执行的临�
 
 将 Hycli 添加到你的 MCP 客户端（**编程代理 → 查看连接设置** 会显示当前操作系统的准确路径）：
 
+以下示例适用于接受 `mcpServers` JSON 格式的客户端。ChatGPT 和 Claude 请参阅[桌面应用设置](../../README.md#use-hycli-with-your-ai)；这与 Hycli 的 AI 提供商登录是不同的设置。
+
 ```json
 {
   "mcpServers": {
@@ -210,6 +216,8 @@ hycli check SITE
 <a id="browser-sign-in"></a>
 ## 浏览器登录
 
+原生浏览器发现是可选功能；macOS 默认关闭，包括没有已保存选择的升级。此设置也适用于使用同一数据目录的 CLI 和 MCP；现有账户和浏览器连接不受影响。 [Native discovery and recovery (English)](../../agent/AGENTS.md#native-discovery-choice-and-recovery).
+
 Hycli 会在 Windows、macOS 和 Linux 上发现本地 Chrome、Chromium、Edge、Brave、Vivaldi、Arc、Whale 和 Firefox 配置文件（以及已安装的本地隐身 Chromium 引擎），仅将所请求网站的会话导入本地加密保险库。指向同一个已验证网站账号的多个配置文件会自动合并去重。
 
 如果会话受到 Windows App-Bound 加密、隐私容器或未导入浏览器的保护，可在 **账号 → 连接账号** 中通过浏览器登录、连接[浏览器辅助扩展](../../browser-companion/guide.html)，或在仪表盘中导入 JSON/Netscape Cookie 文件（切勿将 Cookie 内容直接粘贴到 AI 聊天窗口中）。
@@ -232,7 +240,9 @@ npm --prefix dashboard ci
 npm --prefix dashboard run check
 npm --prefix dashboard run build
 cargo test --all-targets --locked
-cargo build --locked --bin hycli --example dashboard_fixture
+cargo test --locked --features dashboard-test-support --test codex_launch
+cargo build --locked --bin hycli
+cargo build --locked --features dashboard-test-support --example dashboard_fixture
 node scripts/test-e2e.mjs --full
 ```
 
@@ -251,3 +261,5 @@ Hycli 采用 [Apache-2.0](../../LICENSE) 许可证发布。请仅在你有权访
    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=Hybirdss/Hycli&type=Date" />
  </picture>
 </a>
+
+如需使用已验证账户读取单页 JSON 或 GraphQL，请参阅 [Account reads](../ACCOUNT_READ.md): `hycli accounts read ACCOUNT --request REQUEST.json`.

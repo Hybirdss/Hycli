@@ -2,9 +2,16 @@
 pub use crate::environment::BrowserProfile;
 #[cfg(test)]
 use crate::environment::firefox_profiles;
-use crate::{apperr::AppResult, runtime::Runtime, util};
+use crate::{
+    apperr::{AppError, AppResult},
+    runtime::Runtime,
+    util,
+};
+use rookie_cookies::CancellationHandle;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 pub fn discover() -> Vec<BrowserProfile> {
     crate::environment::inspect().profiles
@@ -23,6 +30,21 @@ struct ImportedSession {
     profile: BrowserProfile,
     cookies: Vec<crate::accounts::Cookie>,
     storage: crate::browser_storage::Storage,
+    complete: bool,
+}
+impl ImportedSession {
+    fn from_results(
+        profile: BrowserProfile,
+        cookies: Result<Vec<crate::accounts::Cookie>, ()>,
+        storage: Result<crate::browser_storage::Storage, ()>,
+    ) -> Self {
+        Self {
+            profile,
+            complete: cookies.is_ok() && storage.is_ok(),
+            cookies: cookies.unwrap_or_default(),
+            storage: storage.unwrap_or_default(),
+        }
+    }
 }
 struct ChromiumSnapshot(PathBuf);
 impl Drop for ChromiumSnapshot {
@@ -76,19 +98,36 @@ fn chromium_isolation_known(connection: &rusqlite::Connection) -> Result<(), ()>
         .map_err(|_| ())?;
     if invalid == 0 { Ok(()) } else { Err(()) }
 }
+#[derive(Debug, PartialEq, Eq)]
+enum CookieLoadFailure {
+    Unavailable,
+    Unresolved,
+}
+impl From<()> for CookieLoadFailure {
+    fn from(_: ()) -> Self {
+        Self::Unavailable
+    }
+}
+
 fn load_site_cookies(
     profile: &BrowserProfile,
     target: &url::Url,
-) -> Result<Vec<crate::accounts::Cookie>, ()> {
+    cancellation: &CancellationHandle,
+) -> Result<Vec<crate::accounts::Cookie>, CookieLoadFailure> {
+    if cancellation.is_cancelled() {
+        return Err(CookieLoadFailure::Unavailable);
+    }
     use rookie_cookies::{AppBoundPolicy, FromPathRequest};
     let db = if profile.browser == "Firefox" {
         profile.path.join("cookies.sqlite")
-    } else if profile.path.join("Network/Cookies").is_file() {
+    } else if crate::browser_storage::source_metadata(&profile.path.join("Network/Cookies"))?
+        .is_some_and(|meta| meta.is_file())
+    {
         profile.path.join("Network/Cookies")
     } else {
         profile.path.join("Cookies")
     };
-    if !db.is_file() {
+    if !crate::browser_storage::source_metadata(&db)?.is_some_and(|meta| meta.is_file()) {
         return Ok(vec![]);
     }
     let browser_id = match profile.browser.as_str() {
@@ -107,7 +146,9 @@ fn load_site_cookies(
         .as_ref()
         .map(|snapshot| snapshot.0.join("Cookies"))
         .unwrap_or(db);
-    let mut request = FromPathRequest::new(source).timeout(std::time::Duration::from_secs(8));
+    let mut request = FromPathRequest::new(source)
+        .timeout(std::time::Duration::from_secs(8))
+        .cancellation(cancellation.clone());
     if browser_id != "firefox" {
         #[cfg(unix)]
         {
@@ -119,8 +160,8 @@ fn load_site_cookies(
         }
     }
     // No app-bound bypass feature is compiled. Respect OS protection and skip unsupported rows.
-    let result =
-        rookie_cookies::from_path(request.app_bound(AppBoundPolicy::Disabled)).map_err(|_| ())?;
+    let result = rookie_cookies::from_path(request.app_bound(AppBoundPolicy::Disabled))
+        .map_err(|_| CookieLoadFailure::Unresolved)?;
     let mut entries = result.into_detailed_cookies();
     if snapshot.is_some() {
         for entry in &mut entries {
@@ -130,7 +171,7 @@ fn load_site_cookies(
                 .get_or_insert_with(String::new);
         }
     }
-    native_cookies(entries, target, browser_id == "firefox")
+    native_cookies(entries, target, browser_id == "firefox").map_err(Into::into)
 }
 fn native_cookies(
     entries: Vec<rookie_cookies::enums::DetailedCookie>,
@@ -204,14 +245,88 @@ fn native_cookies(
         Err(_) => Err(()),
     }
 }
+struct ScanPermit(&'static AtomicBool);
+impl Drop for ScanPermit {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::SeqCst);
+    }
+}
+
+struct CancelOnDrop(CancellationHandle);
+impl Drop for CancelOnDrop {
+    fn drop(&mut self) {
+        self.0.cancel();
+    }
+}
+
+async fn run_native_scan<T, F, P>(
+    scanning: &'static AtomicBool,
+    budget: Duration,
+    permitted: P,
+    work: F,
+) -> AppResult<T>
+where
+    T: Send + 'static,
+    F: FnOnce(CancellationHandle) -> T + Send + 'static,
+    P: Fn() -> AppResult<()>,
+{
+    permitted()?;
+    if scanning.swap(true, Ordering::SeqCst) {
+        return Err(AppError::api("browser_busy", 409));
+    }
+    let permit = ScanPermit(scanning);
+    let cancellation = CancellationHandle::new();
+    let _cancel = CancelOnDrop(cancellation.clone());
+    let mut scan = tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        work(cancellation)
+    });
+    let deadline = tokio::time::sleep(budget);
+    tokio::pin!(deadline);
+    let mut policy_check = tokio::time::interval(Duration::from_millis(100));
+    policy_check.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    loop {
+        tokio::select! {
+            result = &mut scan => {
+                let result = result.map_err(|_| AppError::api("browser_unavailable", 422))?;
+                permitted()?;
+                return Ok(result);
+            }
+            _ = &mut deadline => return Err(AppError::api("browser_unavailable", 408)),
+            _ = policy_check.tick() => permitted()?,
+        }
+    }
+}
+
+fn with_native_admission<T>(
+    root: &Path,
+    intent: crate::native_scan_admission::NativeScanIntent,
+    cancellation: &CancellationHandle,
+    work: impl FnOnce() -> T,
+) -> AppResult<T> {
+    if cancellation.is_cancelled() {
+        return Err(AppError::api("native_discovery_retry_required", 409));
+    }
+    let admission = crate::native_scan_admission::NativeScanPermit::acquire(root, intent)?;
+    let result = work();
+    if cancellation.is_cancelled() {
+        return Err(AppError::api("native_discovery_retry_required", 409));
+    }
+    admission.clean_complete()?;
+    Ok(result)
+}
+
 fn scan_site(
     target: &url::Url,
     wanted_profile: &str,
     profiles: Option<Vec<BrowserProfile>>,
+    cancellation: &CancellationHandle,
+    permitted: impl Fn() -> bool,
 ) -> (usize, usize, Vec<ImportedSession>) {
-    let mut checked = 0;
-    let mut unavailable = 0;
-    let mut found = vec![];
+    if cancellation.is_cancelled() || !permitted() {
+        cancellation.cancel();
+        return (0, 0, vec![]);
+    }
     // Local fixture/development servers do not inherit unrelated browser credentials.
     if target
         .host_str()
@@ -219,39 +334,146 @@ fn scan_site(
     {
         return (0, 0, vec![]);
     }
-    for profile in profiles
-        .unwrap_or_else(discover)
-        .into_iter()
-        .filter(|p| wanted_profile.is_empty() || p.id == wanted_profile)
-        .take(24)
-    {
+    scan_profiles(
+        profiles
+            .unwrap_or_else(discover)
+            .into_iter()
+            .filter(|p| wanted_profile.is_empty() || p.id == wanted_profile)
+            .take(24),
+        cancellation,
+        |profile| {
+            read_native_profile(
+                profile,
+                cancellation,
+                &permitted,
+                |profile| load_site_cookies(profile, target, cancellation),
+                |profile| {
+                    crate::browser_storage::load(
+                        &profile.path,
+                        profile.browser == "Firefox",
+                        &target.origin().ascii_serialization(),
+                    )
+                },
+            )
+        },
+    )
+}
+
+fn read_native_profile(
+    profile: BrowserProfile,
+    cancellation: &CancellationHandle,
+    permitted: impl Fn() -> bool,
+    load_cookies: impl FnOnce(
+        &BrowserProfile,
+    ) -> Result<Vec<crate::accounts::Cookie>, CookieLoadFailure>,
+    load_storage: impl FnOnce(&BrowserProfile) -> Result<crate::browser_storage::Storage, ()>,
+) -> ImportedSession {
+    if cancellation.is_cancelled() || !permitted() {
+        cancellation.cancel();
+        return ImportedSession::from_results(profile, Err(()), Err(()));
+    }
+    let cookies = load_cookies(&profile);
+    if matches!(cookies, Err(CookieLoadFailure::Unresolved)) {
+        // Native access errors have no reliable denial discriminator. Do not fan out
+        // to another profile or prompt after an unresolved native request.
+        cancellation.cancel();
+    }
+    if cancellation.is_cancelled() || !permitted() {
+        cancellation.cancel();
+        return ImportedSession::from_results(profile, Err(()), Err(()));
+    }
+    let storage = load_storage(&profile);
+    ImportedSession::from_results(profile, cookies.map_err(|_| ()), storage)
+}
+
+fn scan_profiles(
+    profiles: impl IntoIterator<Item = BrowserProfile>,
+    cancellation: &CancellationHandle,
+    mut read: impl FnMut(BrowserProfile) -> ImportedSession,
+) -> (usize, usize, Vec<ImportedSession>) {
+    let mut checked = 0;
+    let mut unavailable = 0;
+    let mut found = vec![];
+    for profile in profiles {
+        if cancellation.is_cancelled() {
+            return (checked, unavailable, vec![]);
+        }
         checked += 1;
-        let cookies = load_site_cookies(&profile, target);
-        let storage = crate::browser_storage::load(
-            &profile.path,
-            profile.browser == "Firefox",
-            &target.origin().ascii_serialization(),
-        );
-        if cookies.is_err() && !storage.as_ref().is_ok_and(|s| !s.is_empty()) {
+        let session = read(profile);
+        if !session.complete {
             unavailable += 1;
         }
-        found.push(ImportedSession {
-            profile,
-            cookies: cookies.unwrap_or_default(),
-            storage: storage.unwrap_or_default(),
-        });
+        if cancellation.is_cancelled() {
+            return (checked, unavailable, vec![]);
+        }
+        found.push(session);
     }
     (checked, unavailable, found)
 }
+
 impl Runtime {
+    fn native_discovery_permitted(&self) -> AppResult<()> {
+        if self.state.settings()?.native_browser_discovery {
+            Ok(())
+        } else {
+            Err(AppError::api("native_discovery_disabled", 409))
+        }
+    }
+
+    /// A failed local read is not a logout. Keep the old snapshot whole rather
+    /// than mixing cookies and storage that may belong to different sign-ins.
+    fn replace_imported_account(&self, id: &str, session: &ImportedSession) -> AppResult<bool> {
+        if !session.complete {
+            return Ok(false);
+        }
+        let (credential, changed) = self.update_credential(id, |credential| {
+            let changed = serde_json::to_value(&credential.cookies)?
+                != serde_json::to_value(&session.cookies)?
+                || credential.local_storage != session.storage;
+            credential.cookies = session.cookies.clone();
+            credential.local_storage = session.storage.clone();
+            if changed {
+                credential.headers.clear();
+            }
+            Ok(changed)
+        })?;
+        self.state.update(|d| {
+            if let Some(account) = d.accounts.get_mut(id) {
+                account.cookie_count = credential.cookies.len();
+                account.status =
+                    if credential.cookies.is_empty() && credential.local_storage.is_empty() {
+                        "expired"
+                    } else {
+                        "connected"
+                    }
+                    .into();
+                if changed {
+                    account.verified_identity = false;
+                    account.label.clear();
+                    account.email.clear();
+                    account.user_id.clear();
+                    account.name.clear();
+                }
+            }
+            Ok(())
+        })?;
+        Ok(true)
+    }
     pub async fn find_browser_accounts(
         self: &std::sync::Arc<Self>,
         site_id: &str,
         raw_url: &str,
         profile_id: &str,
     ) -> AppResult<BrowserSearch> {
-        self.import_browser_accounts(site_id, raw_url, profile_id, true, None)
-            .await
+        self.import_browser_accounts(
+            site_id,
+            raw_url,
+            profile_id,
+            true,
+            None,
+            crate::native_scan_admission::NativeScanIntent::UserRequested,
+        )
+        .await
     }
     pub(crate) async fn import_browser_accounts(
         self: &std::sync::Arc<Self>,
@@ -260,6 +482,7 @@ impl Runtime {
         profile_id: &str,
         render: bool,
         profiles: Option<Vec<BrowserProfile>>,
+        intent: crate::native_scan_admission::NativeScanIntent,
     ) -> AppResult<BrowserSearch> {
         let target = crate::net::website_url(raw_url)?;
         if !crate::policy::safe_read_url(&target) {
@@ -275,31 +498,36 @@ impl Runtime {
             }
             site_id.into()
         };
+        if !self.state.settings()?.native_browser_discovery {
+            return Err(crate::apperr::AppError::api(
+                "native_discovery_disabled",
+                409,
+            ));
+        }
         let target_copy = target.clone();
         let wanted_profile = profile_id.to_string();
-        // Serialise native keyring access. A timeout does not start competing background scans.
-        static SCANNING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-        if SCANNING.swap(true, std::sync::atomic::Ordering::SeqCst) {
-            return Err(crate::apperr::AppError::api("browser_busy", 409));
-        }
-        let scan = tokio::task::spawn_blocking(move || {
-            struct Release;
-            impl Drop for Release {
-                fn drop(&mut self) {
-                    SCANNING.store(false, std::sync::atomic::Ordering::SeqCst);
-                }
-            }
-            let _release = Release;
-            scan_site(&target_copy, &wanted_profile, profiles)
-        });
-        // Up to 24 profiles may each wait eight seconds for their OS key store.
-        // Leave room for snapshots on a busy disk instead of discarding a valid full scan.
-        let (checked, unavailable, sessions) =
-            tokio::time::timeout(std::time::Duration::from_secs(300), scan)
-                .await
-                .map_err(|_| crate::apperr::AppError::api("browser_unavailable", 408))?
-                .map_err(|_| crate::apperr::AppError::api("browser_unavailable", 422))?;
+        static SCANNING: AtomicBool = AtomicBool::new(false);
+        let policy_core = self.clone();
+        let (checked, unavailable, sessions) = run_native_scan(
+            &SCANNING,
+            Duration::from_secs(300),
+            || self.native_discovery_permitted(),
+            move |cancellation| {
+                policy_core.native_discovery_permitted()?;
+                with_native_admission(&policy_core.root, intent, &cancellation, || {
+                    scan_site(
+                        &target_copy,
+                        &wanted_profile,
+                        profiles,
+                        &cancellation,
+                        || policy_core.native_discovery_permitted().is_ok(),
+                    )
+                })
+            },
+        )
+        .await??;
         for session in sessions {
+            self.native_discovery_permitted()?;
             let existing = self
                 .state
                 .read()?
@@ -316,38 +544,9 @@ impl Runtime {
                 continue;
             }
             let id = if let Some(id) = existing {
-                let (credential, changed) = self.update_credential(&id, |credential| {
-                    let changed = serde_json::to_value(&credential.cookies)?
-                        != serde_json::to_value(&session.cookies)?
-                        || credential.local_storage != session.storage;
-                    credential.cookies = session.cookies;
-                    credential.local_storage = session.storage;
-                    if changed {
-                        credential.headers.clear();
-                    }
-                    Ok(changed)
-                })?;
-                self.state.update(|d| {
-                    if let Some(account) = d.accounts.get_mut(&id) {
-                        account.cookie_count = credential.cookies.len();
-                        account.status = if credential.cookies.is_empty()
-                            && credential.local_storage.is_empty()
-                        {
-                            "expired"
-                        } else {
-                            "connected"
-                        }
-                        .into();
-                        if changed {
-                            account.verified_identity = false;
-                            account.label.clear();
-                            account.email.clear();
-                            account.user_id.clear();
-                            account.name.clear();
-                        }
-                    }
-                    Ok(())
-                })?;
+                if !self.replace_imported_account(&id, &session)? {
+                    continue;
+                }
                 id
             } else {
                 // A not-yet-installed site has the same deterministic ID used by preparation.
@@ -361,6 +560,7 @@ impl Runtime {
                 let account = self.register_browser_credential(
                     &effective_id,
                     crate::accounts::Credential {
+                        identity_proof: String::new(),
                         origin: target.origin().ascii_serialization(),
                         cookies: session.cookies,
                         local_storage: session.storage,
@@ -377,7 +577,10 @@ impl Runtime {
                 )?;
                 // Defer selecting until all profiles have been considered.
                 self.state.update(|d| {
-                    d.sites.entry(effective_id.clone()).or_default().account_id = before;
+                    let meta = d.sites.entry(effective_id.clone()).or_default();
+                    if meta.account_selection_revision.is_empty() && meta.account_id == account.id {
+                        meta.account_id = before;
+                    }
                     Ok(())
                 })?;
                 self.update_credential(&account.id, |credential| {
@@ -417,70 +620,8 @@ impl Runtime {
                     )
                     .await
                     {
-                        let has_headers = !capture.headers.is_empty();
-                        let has_observations = !capture.observations.is_empty();
-                        let captured_headers = capture.headers;
-                        if let Some(identity) = capture.identity {
-                            let identity_url = capture.identity_url;
-                            let identity_url_for_cred = identity_url.clone();
-                            self.update_credential(&id, |c| {
-                                if has_headers {
-                                    c.headers.extend(captured_headers);
-                                }
-                                c.identity_source = identity_url_for_cred;
-                                Ok(())
-                            })?;
-                            let observations = capture.observations;
-                            self.state.update(|data| {
-                                if let Some(view) = data.accounts.get_mut(&id) {
-                                    crate::accounts::apply_identity(view, identity);
-                                    view.checked_at = util::now();
-                                }
-                                let meta = data.sites.entry(effective_id.clone()).or_default();
-                                if !identity_url.is_empty()
-                                    && !meta.identity_paths.contains(&identity_url)
-                                {
-                                    meta.identity_paths.push(identity_url);
-                                }
-                                for mut observation in observations {
-                                    observation.account_id = id.clone();
-                                    if !meta.observations.iter().any(|old| {
-                                        old.method == observation.method
-                                            && old.path == observation.path
-                                            && old.query == observation.query
-                                            && old.body == observation.body
-                                    }) {
-                                        meta.observations.push(observation);
-                                    }
-                                }
-                                Ok(())
-                            })?;
-                            // Replay the captured read through the executor before selecting it.
-                            let _ = self.refresh_account(&id).await;
-                        } else if has_headers || has_observations {
-                            if has_headers {
-                                self.update_credential(&id, |c| {
-                                    c.headers.extend(captured_headers);
-                                    Ok(())
-                                })?;
-                            }
-                            let observations = capture.observations;
-                            self.state.update(|data| {
-                                let meta = data.sites.entry(effective_id.clone()).or_default();
-                                for mut observation in observations {
-                                    observation.account_id = id.clone();
-                                    if !meta.observations.iter().any(|old| {
-                                        old.method == observation.method
-                                            && old.path == observation.path
-                                            && old.query == observation.query
-                                            && old.body == observation.body
-                                    }) {
-                                        meta.observations.push(observation);
-                                    }
-                                }
-                                Ok(())
-                            })?;
-                        }
+                        self.retain_browser_capture(&id, &credential, capture)
+                            .await?;
                     }
                 }
             }
@@ -510,6 +651,51 @@ impl Runtime {
             selected_account: selected,
             login_url: login_url(&target),
         })
+    }
+    async fn retain_browser_capture(
+        &self,
+        id: &str,
+        expected: &crate::accounts::Credential,
+        capture: crate::browser_session::Capture,
+    ) -> AppResult<()> {
+        let account = self
+            .state
+            .account(id)?
+            .ok_or_else(|| AppError::api("not_found", 404))?;
+        self.state.update(|data| {
+            let meta = data.sites.entry(account.site_id.clone()).or_default();
+            for observation in capture.observations {
+                if !meta
+                    .observations
+                    .iter()
+                    .any(|old| old.method == observation.method && old.path == observation.path)
+                {
+                    meta.observations.push(observation);
+                }
+            }
+            Ok(())
+        })?;
+        if capture.headers.is_empty() && capture.identity.is_none() {
+            return Ok(());
+        }
+        let mut candidate = expected.clone();
+        candidate.headers.extend(capture.headers);
+        let has_identity = capture.identity.is_some();
+        if has_identity {
+            candidate.identity_source = capture.identity_url;
+        }
+        let expected = self.stage_captured_credential(id, expected, candidate.clone())?;
+        if has_identity {
+            let _ = self
+                .verify_identity_candidate(
+                    id,
+                    &expected,
+                    candidate,
+                    crate::runtime::CandidateIdentityProbe::Capture,
+                )
+                .await;
+        }
+        Ok(())
     }
 }
 pub fn login_url(target: &url::Url) -> String {
@@ -543,6 +729,9 @@ pub fn published_login(target: &url::Url, html: &str) -> Option<String> {
 impl Runtime {
     /// Reuse the user's selected account first. Never silently choose between different accounts.
     pub(crate) fn browser_account_for(&self, site_id: &str, url: &str) -> AppResult<String> {
+        if let Some(snapshot) = self.selection_snapshot(site_id, url)? {
+            return Ok(snapshot.account_id);
+        }
         let target_url = crate::net::validate_url(url)?;
         let data = self.state.read()?;
         let usable = |id: &str| {
@@ -585,7 +774,11 @@ impl Runtime {
         }
         let id = accounts[0].id.clone();
         self.state.update(|state| {
-            state.sites.entry(site_id.into()).or_default().account_id = id.clone();
+            let meta = state.sites.entry(site_id.into()).or_default();
+            if !meta.account_selection_revision.is_empty() {
+                return Err(AppError::api("auth_required", 401));
+            }
+            meta.account_id = id.clone();
             Ok(())
         })?;
         Ok(id)
@@ -601,6 +794,1020 @@ fn identity_key(account: &crate::accounts::AccountView) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    struct CaptureFixture {
+        core: std::sync::Arc<Runtime>,
+        id: String,
+        origin: String,
+        saved_status: std::sync::Arc<std::sync::atomic::AtomicU16>,
+        candidate_status: std::sync::Arc<std::sync::atomic::AtomicU16>,
+        anonymous_status: std::sync::Arc<std::sync::atomic::AtomicU16>,
+        server: tokio::task::JoinHandle<()>,
+    }
+
+    impl CaptureFixture {
+        async fn new(proven: bool) -> Self {
+            use axum::{
+                Json, Router,
+                http::{HeaderMap, StatusCode},
+                routing::get,
+            };
+            use std::sync::{
+                Arc,
+                atomic::{AtomicU16, Ordering},
+            };
+            let saved_status = Arc::new(AtomicU16::new(200));
+            let candidate_status = Arc::new(AtomicU16::new(200));
+            let anonymous_status = Arc::new(AtomicU16::new(401));
+            let saved = saved_status.clone();
+            let candidate = candidate_status.clone();
+            let anonymous = anonymous_status.clone();
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let origin = format!("http://{}", listener.local_addr().unwrap());
+            let handler = move |headers: HeaderMap| {
+                let status = match headers.get("authorization").and_then(|v| v.to_str().ok()) {
+                    Some("synthetic-saved") => saved.load(Ordering::SeqCst),
+                    Some("synthetic-candidate") => candidate.load(Ordering::SeqCst),
+                    _ => anonymous.load(Ordering::SeqCst),
+                };
+                async move {
+                    (
+                        StatusCode::from_u16(status).unwrap(),
+                        Json(serde_json::json!({"id":"person", "name":"Person"})),
+                    )
+                }
+            };
+            let router = Router::new()
+                .route("/api/me", get(handler.clone()))
+                .route("/read", get(handler));
+            let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+            let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join(".cache/tests")
+                .join(util::id());
+            let core = Runtime::open(&root, None, None, false, true, false).unwrap();
+            let credential = crate::accounts::Credential {
+                origin: origin.clone(),
+                identity_source: format!("{origin}/api/me"),
+                headers: [("authorization".into(), "synthetic-saved".into())].into(),
+                ..Default::default()
+            };
+            let account = core
+                .register_browser_credential("fixture", credential.clone(), "Fixture", "Synthetic")
+                .unwrap();
+            if proven {
+                core.publish_verified_identity(
+                    &account.id,
+                    &credential,
+                    credential.clone(),
+                    crate::accounts::Identity {
+                        user_id: "person".into(),
+                        name: "Person".into(),
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+            }
+            Self {
+                core,
+                id: account.id,
+                origin,
+                saved_status,
+                candidate_status,
+                anonymous_status,
+                server,
+            }
+        }
+
+        fn capture(&self, identity: bool) -> crate::browser_session::Capture {
+            crate::browser_session::Capture {
+                headers: [("authorization".into(), "synthetic-candidate".into())].into(),
+                identity: identity.then(|| crate::accounts::Identity {
+                    user_id: "untrusted-browser-person".into(),
+                    ..Default::default()
+                }),
+                identity_url: format!("{}/api/me", self.origin),
+                ..Default::default()
+            }
+        }
+
+        fn snapshot(&self) -> serde_json::Value {
+            let state = self.core.state.read().unwrap();
+            serde_json::json!({
+                "credential": self.core.credential(&self.id).unwrap(),
+                "account": state.accounts[&self.id],
+                "generation": state.identity_generations.get(&self.id),
+                "selection": state.sites["fixture"].account_id,
+            })
+        }
+
+        async fn assert_usable(&self) {
+            assert_eq!(
+                self.core
+                    .browser_account_for("fixture", &self.origin)
+                    .unwrap(),
+                self.id
+            );
+            assert!(
+                self.core
+                    .read_page(&format!("{}/read", self.origin), &self.id)
+                    .await
+                    .unwrap()
+                    .successful()
+            );
+        }
+    }
+
+    impl Drop for CaptureFixture {
+        fn drop(&mut self) {
+            self.server.abort();
+            let _ = std::fs::remove_dir_all(&self.core.root);
+        }
+    }
+
+    #[tokio::test]
+    async fn failed_capture_after_transient_refresh_preserves_proof_and_usable_account() {
+        use std::sync::atomic::Ordering;
+        let fixture = CaptureFixture::new(true).await;
+        let before = fixture.snapshot();
+        fixture.saved_status.store(503, Ordering::SeqCst);
+        assert!(fixture.core.refresh_account(&fixture.id).await.is_err());
+        assert_eq!(fixture.snapshot(), before);
+        fixture.saved_status.store(200, Ordering::SeqCst);
+        for status in [503, 401] {
+            fixture.candidate_status.store(status, Ordering::SeqCst);
+            let expected = fixture.core.credential(&fixture.id).unwrap();
+            fixture
+                .core
+                .retain_browser_capture(&fixture.id, &expected, fixture.capture(true))
+                .await
+                .unwrap();
+            assert_eq!(fixture.snapshot(), before);
+            fixture.assert_usable().await;
+        }
+        fixture.saved_status.store(401, Ordering::SeqCst);
+        let expired = fixture.core.refresh_account(&fixture.id).await.unwrap();
+        assert_eq!(expired.status, "expired");
+        assert!(!expired.verified_identity);
+        assert!(
+            fixture
+                .core
+                .credential(&fixture.id)
+                .unwrap()
+                .identity_proof
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn header_only_capture_remains_available_to_recipe_discovery_without_replacing_proof() {
+        let fixture = CaptureFixture::new(true).await;
+        let before = fixture.snapshot();
+        let expected = fixture.core.credential(&fixture.id).unwrap();
+        let mut capture = fixture.capture(false);
+        capture
+            .headers
+            .insert("x-session".into(), "synthetic-private-pending".into());
+        fixture
+            .core
+            .retain_browser_capture(&fixture.id, &expected, capture)
+            .await
+            .unwrap();
+        assert_eq!(fixture.snapshot(), before);
+        fixture.assert_usable().await;
+        let inspected = fixture.core.inspect_account_session(&fixture.id).unwrap();
+        assert!(
+            inspected["captured_headers"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|name| name == "x-session")
+        );
+        assert!(!inspected.to_string().contains("synthetic-private-pending"));
+        {
+            let vault = fixture.core.vault.lock().unwrap();
+            assert!(!vault.keys().iter().any(|key| key.starts_with("@capture/")));
+            assert!(
+                crate::accounts::collect_redaction_secrets(&vault)
+                    .contains(&"synthetic-private-pending".into())
+            );
+        }
+        let recipe = crate::session_recipe::ConnectionRecipe {
+            identity_url: format!("{}/api/me", fixture.origin),
+            headers: vec![crate::session_recipe::HeaderSource {
+                header: "authorization".into(),
+                source: "captured_header".into(),
+                key: "authorization".into(),
+                ..Default::default()
+            }],
+            identity: crate::session_recipe::IdentityMapping {
+                user_id: "/id".into(),
+                name: "/name".into(),
+                ..Default::default()
+            },
+            evidence: "observed_browser_request".into(),
+            ..Default::default()
+        };
+        let published = fixture
+            .core
+            .verify_session_recipe(&fixture.id, &recipe)
+            .await
+            .unwrap();
+        assert!(published.verified_identity);
+        let credential = fixture.core.credential(&fixture.id).unwrap();
+        assert_eq!(credential.headers["authorization"], "synthetic-candidate");
+        assert_ne!(credential.identity_proof, expected.identity_proof);
+        let state = fixture.core.state.read().unwrap();
+        assert!(
+            credential
+                .proves_identity(&published, &state.identity_generations[&fixture.id])
+                .unwrap()
+        );
+        assert!(
+            fixture
+                .core
+                .vault
+                .lock()
+                .unwrap()
+                .get("@capture", &fixture.id)
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn saved_session_refresh_does_not_consume_pending_capture_headers() {
+        use std::sync::atomic::Ordering;
+        let fixture = CaptureFixture::new(true).await;
+        let recipe = crate::session_recipe::ConnectionRecipe {
+            identity_url: format!("{}/api/me", fixture.origin),
+            headers: vec![crate::session_recipe::HeaderSource {
+                header: "authorization".into(),
+                source: "captured_header".into(),
+                key: "authorization".into(),
+                ..Default::default()
+            }],
+            identity: crate::session_recipe::IdentityMapping {
+                user_id: "/id".into(),
+                name: "/name".into(),
+                ..Default::default()
+            },
+            evidence: "observed_browser_request".into(),
+            ..Default::default()
+        };
+        fixture
+            .core
+            .verify_session_recipe(&fixture.id, &recipe)
+            .await
+            .unwrap();
+        let expected = fixture.core.credential(&fixture.id).unwrap();
+        let mut capture = fixture.capture(false);
+        capture.observations.push(crate::accounts::Observation {
+            method: "GET".into(),
+            path: "/api/me".into(),
+            ..Default::default()
+        });
+        fixture
+            .core
+            .retain_browser_capture(&fixture.id, &expected, capture)
+            .await
+            .unwrap();
+        fixture.candidate_status.store(401, Ordering::SeqCst);
+        let before = fixture.snapshot();
+        assert_eq!(
+            fixture
+                .core
+                .verify_observed_session(&fixture.id, &recipe)
+                .await
+                .unwrap_err()
+                .public_code,
+            "auth_required"
+        );
+        assert_eq!(fixture.snapshot(), before);
+        fixture.assert_usable().await;
+        fixture
+            .core
+            .refresh_account_session(&fixture.id)
+            .await
+            .unwrap();
+        assert_eq!(
+            fixture.core.credential(&fixture.id).unwrap().headers["authorization"],
+            "synthetic-saved"
+        );
+        fixture.saved_status.store(401, Ordering::SeqCst);
+        assert_eq!(
+            fixture
+                .core
+                .refresh_account_session(&fixture.id)
+                .await
+                .unwrap_err()
+                .public_code,
+            "auth_required"
+        );
+        assert!(
+            !fixture
+                .core
+                .state
+                .account(&fixture.id)
+                .unwrap()
+                .unwrap()
+                .verified_identity
+        );
+    }
+
+    #[tokio::test]
+    async fn successful_capture_recovers_a_paused_saved_account_only_after_publication() {
+        use std::sync::atomic::Ordering;
+        let fixture = CaptureFixture::new(true).await;
+        fixture.saved_status.store(401, Ordering::SeqCst);
+        let denied = fixture
+            .core
+            .read_page(&format!("{}/read", fixture.origin), &fixture.id)
+            .await
+            .unwrap();
+        assert_eq!(denied.status, 401);
+        fixture.saved_status.store(200, Ordering::SeqCst);
+        let expected = fixture.core.credential(&fixture.id).unwrap();
+        fixture
+            .core
+            .retain_browser_capture(&fixture.id, &expected, fixture.capture(true))
+            .await
+            .unwrap();
+        let current = fixture.core.credential(&fixture.id).unwrap();
+        assert_eq!(current.headers["authorization"], "synthetic-candidate");
+        assert_ne!(current.identity_proof, expected.identity_proof);
+        assert_eq!(
+            fixture
+                .core
+                .state
+                .account(&fixture.id)
+                .unwrap()
+                .unwrap()
+                .user_id,
+            "person"
+        );
+        fixture.assert_usable().await;
+    }
+
+    #[tokio::test]
+    async fn header_only_capture_for_unverified_account_retains_headers_without_identity() {
+        let fixture = CaptureFixture::new(false).await;
+        let expected = fixture.core.credential(&fixture.id).unwrap();
+        fixture
+            .core
+            .retain_browser_capture(&fixture.id, &expected, fixture.capture(false))
+            .await
+            .unwrap();
+        let credential = fixture.core.credential(&fixture.id).unwrap();
+        assert_eq!(credential.headers["authorization"], "synthetic-candidate");
+        assert!(credential.identity_proof.is_empty());
+        let account = fixture.core.state.account(&fixture.id).unwrap().unwrap();
+        assert!(!account.verified_identity);
+        assert!(account.user_id.is_empty());
+    }
+
+    #[tokio::test]
+    async fn inconclusive_anonymous_capture_probe_and_observation_only_capture_preserve_proof() {
+        use std::sync::atomic::Ordering;
+        let fixture = CaptureFixture::new(true).await;
+        let before = fixture.snapshot();
+        let expected = fixture.core.credential(&fixture.id).unwrap();
+        for status in [503, 302, 429] {
+            fixture.anonymous_status.store(status, Ordering::SeqCst);
+            fixture
+                .core
+                .retain_browser_capture(&fixture.id, &expected, fixture.capture(true))
+                .await
+                .unwrap();
+            assert_eq!(fixture.snapshot(), before);
+            if status != 429 {
+                fixture.assert_usable().await;
+            }
+        }
+        fixture
+            .core
+            .retain_browser_capture(
+                &fixture.id,
+                &expected,
+                crate::browser_session::Capture {
+                    observations: vec![crate::accounts::Observation {
+                        method: "GET".into(),
+                        path: "/observed".into(),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(fixture.snapshot(), before);
+        assert!(
+            fixture.core.state.read().unwrap().sites["fixture"]
+                .observations
+                .iter()
+                .any(|o| o.path == "/observed")
+        );
+    }
+
+    #[tokio::test]
+    async fn removing_account_credentials_removes_private_pending_capture() {
+        let fixture = CaptureFixture::new(true).await;
+        let expected = fixture.core.credential(&fixture.id).unwrap();
+        fixture
+            .core
+            .retain_browser_capture(&fixture.id, &expected, fixture.capture(false))
+            .await
+            .unwrap();
+        let mut vault = fixture.core.vault.lock().unwrap();
+        assert!(vault.get("@capture", &fixture.id).is_some());
+        vault.delete("accounts", &fixture.id).unwrap();
+        assert!(vault.get("accounts", &fixture.id).is_none());
+        assert!(vault.get("@capture", &fixture.id).is_none());
+    }
+
+    #[tokio::test]
+    async fn stale_capture_cannot_replace_newer_proof_or_supply_recipe_headers() {
+        let fixture = CaptureFixture::new(true).await;
+        let expected = fixture.core.credential(&fixture.id).unwrap();
+        fixture
+            .core
+            .retain_browser_capture(&fixture.id, &expected, fixture.capture(false))
+            .await
+            .unwrap();
+        let candidate = fixture
+            .core
+            .capture_candidate(&fixture.id, &expected)
+            .unwrap();
+        fixture.core.refresh_account(&fixture.id).await.unwrap();
+        let before = fixture.snapshot();
+        let current = fixture.core.credential(&fixture.id).unwrap();
+        assert_eq!(
+            fixture
+                .core
+                .capture_candidate(&fixture.id, &current)
+                .unwrap()
+                .headers["authorization"],
+            "synthetic-saved"
+        );
+        assert_eq!(
+            fixture
+                .core
+                .retain_browser_capture(&fixture.id, &expected, fixture.capture(false))
+                .await
+                .unwrap_err()
+                .public_code,
+            "conflict"
+        );
+        assert_eq!(
+            fixture
+                .core
+                .verify_identity_candidate(
+                    &fixture.id,
+                    &expected,
+                    candidate,
+                    crate::runtime::CandidateIdentityProbe::Capture
+                )
+                .await
+                .err()
+                .unwrap()
+                .public_code,
+            "conflict"
+        );
+        assert_eq!(fixture.snapshot(), before);
+        fixture.assert_usable().await;
+    }
+
+    #[test]
+    fn native_scan_cancellation_stops_before_another_profile_and_discards_partial_result() {
+        let cancellation = CancellationHandle::new();
+        let mut calls = 0;
+        let (checked, _, sessions) = scan_profiles(
+            (0..4).map(|_| BrowserProfile::default()),
+            &cancellation,
+            |profile| {
+                calls += 1;
+                cancellation.cancel();
+                ImportedSession::from_results(profile, Ok(vec![]), Ok(Default::default()))
+            },
+        );
+        assert_eq!(calls, 1, "cancellation must stop further profile work");
+        assert_eq!(checked, 1);
+        assert!(sessions.is_empty(), "cancelled work must not be published");
+    }
+
+    #[test]
+    fn native_scan_already_cancelled_never_reads_profiles() {
+        let cancellation = CancellationHandle::new();
+        cancellation.cancel();
+        let (checked, unavailable, sessions) =
+            scan_profiles([BrowserProfile::default()], &cancellation, |_| {
+                panic!("cancelled scan must never read a profile")
+            });
+        assert_eq!((checked, unavailable), (0, 0));
+        assert!(sessions.is_empty());
+    }
+
+    #[test]
+    fn native_scan_unresolved_native_read_stops_profile_fanout_and_storage() {
+        let cancellation = CancellationHandle::new();
+        let mut reads = 0;
+        let (checked, _, sessions) = scan_profiles(
+            (0..3).map(|_| BrowserProfile::default()),
+            &cancellation,
+            |profile| {
+                read_native_profile(
+                    profile,
+                    &cancellation,
+                    || true,
+                    |_| {
+                        reads += 1;
+                        Err(CookieLoadFailure::Unresolved)
+                    },
+                    |_| panic!("unresolved native access must not continue to storage"),
+                )
+            },
+        );
+        assert_eq!(reads, 1);
+        assert_eq!(checked, 1);
+        assert!(sessions.is_empty());
+        assert!(cancellation.is_cancelled());
+    }
+
+    #[test]
+    fn native_scan_unresolved_result_requires_explicit_clean_retry() {
+        use crate::native_scan_admission::{NativeScanIntent, NativeScanPermit};
+        let root =
+            std::env::temp_dir().join(format!("hycli-native-unresolved-{}", crate::util::id()));
+        let cancellation = CancellationHandle::new();
+        let mut calls = 0;
+        let result =
+            with_native_admission(&root, NativeScanIntent::Preparation, &cancellation, || {
+                scan_profiles(
+                    (0..3).map(|_| BrowserProfile::default()),
+                    &cancellation,
+                    |profile| {
+                        read_native_profile(
+                            profile,
+                            &cancellation,
+                            || true,
+                            |_| {
+                                calls += 1;
+                                Err(CookieLoadFailure::Unresolved)
+                            },
+                            |_| panic!("unresolved native read must not continue to storage"),
+                        )
+                    },
+                )
+            });
+        assert_eq!(
+            result.err().unwrap().public_code,
+            "native_discovery_retry_required"
+        );
+        assert_eq!(calls, 1);
+        assert_eq!(
+            NativeScanPermit::acquire(&root, NativeScanIntent::Preparation)
+                .err()
+                .unwrap()
+                .public_code,
+            "native_discovery_retry_required"
+        );
+        with_native_admission(
+            &root,
+            NativeScanIntent::UserRequested,
+            &CancellationHandle::new(),
+            || (),
+        )
+        .unwrap();
+        NativeScanPermit::acquire(&root, NativeScanIntent::Preparation)
+            .unwrap()
+            .clean_complete()
+            .unwrap();
+    }
+
+    #[test]
+    fn native_scan_local_unavailable_does_not_trip_native_retry_breaker() {
+        let cancellation = CancellationHandle::new();
+        let (checked, unavailable, sessions) = scan_profiles(
+            (0..2).map(|_| BrowserProfile::default()),
+            &cancellation,
+            |profile| {
+                read_native_profile(
+                    profile,
+                    &cancellation,
+                    || true,
+                    |_| Err(CookieLoadFailure::Unavailable),
+                    |_| Ok(Default::default()),
+                )
+            },
+        );
+        assert_eq!((checked, unavailable), (2, 2));
+        assert_eq!(sessions.len(), 2);
+        assert!(!cancellation.is_cancelled());
+    }
+
+    #[tokio::test]
+    async fn native_scan_caller_abort_cancels_owned_worker_without_releasing_gate() {
+        static GATE: AtomicBool = AtomicBool::new(false);
+        let (started, ready) = tokio::sync::oneshot::channel();
+        let (release, wait) = std::sync::mpsc::channel();
+        let (finished, done) = tokio::sync::oneshot::channel();
+        let task = tokio::spawn(run_native_scan(
+            &GATE,
+            Duration::from_secs(10),
+            || Ok(()),
+            move |cancel| {
+                started.send(cancel.clone()).unwrap();
+                wait.recv().unwrap();
+                finished.send(()).unwrap();
+            },
+        ));
+        let cancellation = ready.await.unwrap();
+        task.abort();
+        assert!(task.await.unwrap_err().is_cancelled());
+        assert!(
+            GATE.load(Ordering::SeqCst),
+            "worker still owns the scan permit"
+        );
+        let second = run_native_scan(&GATE, Duration::from_secs(1), || Ok(()), |_| ()).await;
+        assert_eq!(second.unwrap_err().public_code, "browser_busy");
+        release.send(()).unwrap();
+        done.await.unwrap();
+        assert!(
+            cancellation.is_cancelled(),
+            "dropping the caller must cancel its native request"
+        );
+    }
+
+    #[tokio::test]
+    async fn native_scan_timeout_cancels_owned_worker() {
+        static GATE: AtomicBool = AtomicBool::new(false);
+        let (started, ready) = tokio::sync::oneshot::channel();
+        let (release, wait) = std::sync::mpsc::channel();
+        let (finished, done) = tokio::sync::oneshot::channel();
+        let task = tokio::spawn(run_native_scan(
+            &GATE,
+            Duration::from_millis(100),
+            || Ok(()),
+            move |cancel| {
+                started.send(cancel.clone()).unwrap();
+                wait.recv().unwrap();
+                finished.send(()).unwrap();
+            },
+        ));
+        let cancellation = ready.await.unwrap();
+        assert_eq!(task.await.unwrap().unwrap_err().http_status, 408);
+        assert!(
+            GATE.load(Ordering::SeqCst),
+            "timeout must not release a running worker's permit"
+        );
+        release.send(()).unwrap();
+        done.await.unwrap();
+        assert!(
+            cancellation.is_cancelled(),
+            "timeout must cancel its native request"
+        );
+    }
+
+    #[tokio::test]
+    async fn native_scan_http_disconnect_cancels_worker_without_releasing_admission() {
+        use crate::native_scan_admission::{NativeScanIntent, NativeScanPermit};
+        use tokio::io::AsyncWriteExt;
+        static GATE: AtomicBool = AtomicBool::new(false);
+        let root = std::env::temp_dir().join(format!("hycli-disconnect-{}", util::id()));
+        let (started, ready) = tokio::sync::oneshot::channel();
+        let (release, wait) = std::sync::mpsc::channel();
+        let (finished, done) = tokio::sync::oneshot::channel();
+        let fixture = std::sync::Arc::new(std::sync::Mutex::new(Some((started, wait, finished))));
+        let worker_root = root.clone();
+        let app = axum::Router::new().route(
+            "/synthetic-scan",
+            axum::routing::get(move || {
+                let fixture = fixture.clone();
+                let worker_root = worker_root.clone();
+                async move {
+                    let (started, wait, finished) = fixture.lock().unwrap().take().unwrap();
+                    let result = run_native_scan(
+                        &GATE,
+                        Duration::from_secs(10),
+                        || Ok(()),
+                        move |cancel| {
+                            let mut reads = 0;
+                            let mut published = 0;
+                            let result = with_native_admission(
+                                &worker_root,
+                                NativeScanIntent::Preparation,
+                                &cancel,
+                                || {
+                                    let mut started = Some(started);
+                                    let (_, _, sessions) = scan_profiles(
+                                        (0..2).map(|_| BrowserProfile::default()),
+                                        &cancel,
+                                        |profile| {
+                                            read_native_profile(
+                                                profile,
+                                                &cancel,
+                                                || true,
+                                                |_| {
+                                                    reads += 1;
+                                                    if let Some(started) = started.take() {
+                                                        started.send(cancel.clone()).unwrap();
+                                                        wait.recv().unwrap();
+                                                    }
+                                                    Ok(vec![])
+                                                },
+                                                |_| panic!("disconnected caller must not continue to storage"),
+                                            )
+                                        },
+                                    );
+                                    published = sessions.len();
+                                },
+                            );
+                            finished
+                                .send((reads, published, result.err().map(|e| e.public_code)))
+                                .unwrap();
+                        },
+                    )
+                    .await;
+                    if result.is_ok() {
+                        axum::http::StatusCode::OK
+                    } else {
+                        axum::http::StatusCode::CONFLICT
+                    }
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let mut connection = tokio::net::TcpStream::connect(address).await.unwrap();
+        connection
+            .write_all(
+                b"GET /synthetic-scan HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+            )
+            .await
+            .unwrap();
+        let cancellation = tokio::time::timeout(Duration::from_secs(2), ready)
+            .await
+            .unwrap()
+            .unwrap();
+        drop(connection);
+        let cancelled = tokio::time::timeout(Duration::from_secs(2), async {
+            while !cancellation.is_cancelled() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .is_ok();
+        let held = NativeScanPermit::acquire(&root, NativeScanIntent::UserRequested)
+            .err()
+            .map(|e| e.public_code);
+        let gate_held = GATE.load(Ordering::SeqCst);
+        release.send(()).unwrap();
+        let outcome = tokio::time::timeout(Duration::from_secs(2), done).await;
+        server.abort();
+        assert!(
+            cancelled,
+            "HTTP disconnect must drop the caller and cancel native work"
+        );
+        assert_eq!(held.as_deref(), Some("browser_busy"));
+        assert!(gate_held);
+        assert_eq!(
+            outcome.unwrap().unwrap(),
+            (1, 0, Some("native_discovery_retry_required".into()))
+        );
+        assert_eq!(
+            NativeScanPermit::acquire(&root, NativeScanIntent::Preparation)
+                .err()
+                .unwrap()
+                .public_code,
+            "native_discovery_retry_required"
+        );
+    }
+
+    #[tokio::test]
+    async fn native_scan_policy_revocation_cancels_pending_worker() {
+        static GATE: AtomicBool = AtomicBool::new(false);
+        let root = std::env::temp_dir().join(format!("hycli-native-policy-{}", crate::util::id()));
+        let core = Runtime::open(&root, None, None, false, true, false).unwrap();
+        core.state
+            .update(|data| {
+                data.settings.native_browser_discovery = true;
+                Ok(())
+            })
+            .unwrap();
+        let external = crate::state::StateStore::open(&root.join("dashboard.json")).unwrap();
+        let policy = core.clone();
+        let (started, ready) = tokio::sync::oneshot::channel();
+        let (release, wait) = std::sync::mpsc::channel();
+        let (finished, done) = tokio::sync::oneshot::channel();
+        let task = tokio::spawn(run_native_scan(
+            &GATE,
+            Duration::from_secs(10),
+            move || policy.native_discovery_permitted(),
+            move |cancel| {
+                started.send(cancel.clone()).unwrap();
+                wait.recv().unwrap();
+                finished.send(()).unwrap();
+            },
+        ));
+        let cancellation = ready.await.unwrap();
+        external
+            .update(|data| {
+                data.settings.native_browser_discovery = false;
+                Ok(())
+            })
+            .unwrap();
+        let result = tokio::time::timeout(Duration::from_secs(2), task).await;
+        let cancelled = cancellation.is_cancelled();
+        let still_running = GATE.load(Ordering::SeqCst);
+        release.send(()).unwrap();
+        done.await.unwrap();
+        assert_eq!(
+            result.unwrap().unwrap().unwrap_err().public_code,
+            "native_discovery_disabled"
+        );
+        assert!(cancelled);
+        assert!(still_running);
+    }
+
+    #[tokio::test]
+    async fn native_scan_disabled_policy_never_starts_worker() {
+        static GATE: AtomicBool = AtomicBool::new(false);
+        let result = run_native_scan(
+            &GATE,
+            Duration::from_secs(1),
+            || Err(AppError::api("native_discovery_disabled", 409)),
+            |_| panic!("disabled policy must not start native work"),
+        )
+        .await;
+        assert_eq!(result.unwrap_err().public_code, "native_discovery_disabled");
+        assert!(!GATE.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn native_scan_completion_releases_gate_and_preserves_result() {
+        static GATE: AtomicBool = AtomicBool::new(false);
+        assert_eq!(
+            run_native_scan(&GATE, Duration::from_secs(1), || Ok(()), |_| 7)
+                .await
+                .unwrap(),
+            7
+        );
+        assert!(!GATE.load(Ordering::SeqCst));
+        assert_eq!(
+            run_native_scan(&GATE, Duration::from_secs(1), || Ok(()), |_| 9)
+                .await
+                .unwrap(),
+            9
+        );
+    }
+
+    #[test]
+    fn native_reimport_read_failures_preserve_the_whole_verified_session() {
+        use crate::accounts::{Credential, Identity};
+        use serde_json::json;
+        let root = std::env::var_os("HYCLI_TEST_DATA")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(".cache/tests"))
+            .join(util::id());
+        let core = Runtime::open(&root, None, None, false, true, false).unwrap();
+        let credential: Credential = serde_json::from_value(json!({
+            "origin":"https://example.com",
+            "source_profile":"synthetic-profile",
+            "cookies":[{"name":"sid","value":"synthetic-cookie","domain":"example.com","path":"/"}],
+            "local_storage":{"session":"synthetic-storage"},
+            "headers":{"authorization":"Bearer synthetic-header"}
+        }))
+        .unwrap();
+        let account = core
+            .register_browser_credential("fixture", credential.clone(), "Fixture", "Synthetic")
+            .unwrap();
+        core.publish_verified_identity(
+            &account.id,
+            &credential,
+            credential.clone(),
+            Identity {
+                user_id: "original-person".into(),
+                name: "Original Person".into(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let profile = || BrowserProfile {
+            id: "synthetic-profile".into(),
+            ..Default::default()
+        };
+        let snapshot = || {
+            let state = core.state.read().unwrap();
+            (
+                serde_json::to_value(core.credential(&account.id).unwrap()).unwrap(),
+                serde_json::to_value(&state).unwrap(),
+                state.identity_generations.clone(),
+                state.sites["fixture"].account_selection_revision.clone(),
+                serde_json::to_value(&state.sites["fixture"].account_binding).unwrap(),
+            )
+        };
+        let before = snapshot();
+        // Exercise real readers using isolated corrupt fixtures, never installed browsers.
+        for cookie_failure in [true, false] {
+            let path = root.join(if cookie_failure {
+                "broken-cookies"
+            } else {
+                "broken-storage"
+            });
+            let broken = if cookie_failure {
+                path.join("cookies.sqlite")
+            } else {
+                path.join("storage/default/https+++example.com/ls/data.sqlite")
+            };
+            std::fs::create_dir_all(broken.parent().unwrap()).unwrap();
+            std::fs::write(&broken, b"not a sqlite database").unwrap();
+            let cancellation = CancellationHandle::new();
+            let (checked, unavailable, sessions) = scan_site(
+                &url::Url::parse("https://example.com/").unwrap(),
+                "",
+                Some(vec![BrowserProfile {
+                    path,
+                    browser: "Firefox".into(),
+                    ..profile()
+                }]),
+                &cancellation,
+                || true,
+            );
+            assert_eq!((checked, unavailable), (1, 1));
+            let accepted = if cookie_failure {
+                assert!(
+                    cancellation.is_cancelled(),
+                    "unresolved native read stops the entire scan"
+                );
+                assert!(
+                    sessions.is_empty(),
+                    "unresolved native reads must not publish partial snapshots"
+                );
+                false
+            } else {
+                assert!(!cancellation.is_cancelled());
+                assert_eq!(sessions.len(), 1);
+                core.replace_imported_account(&account.id, &sessions[0])
+                    .unwrap()
+            };
+            assert_eq!(
+                snapshot(),
+                before,
+                "reader failure must preserve the existing session"
+            );
+            assert!(!accepted);
+        }
+        let different_storage =
+            std::collections::BTreeMap::from([("session".into(), "different-person".into())]);
+        for (cookies, storage) in [
+            (Err(()), Ok(Default::default())),
+            (Err(()), Ok(different_storage.clone())),
+            (Ok(credential.cookies.clone()), Err(())),
+            (Ok(vec![]), Err(())),
+            (Err(()), Err(())),
+        ] {
+            let imported = ImportedSession::from_results(profile(), cookies, storage);
+            assert!(!imported.complete);
+            let accepted = core
+                .replace_imported_account(&account.id, &imported)
+                .unwrap();
+            assert_eq!(
+                snapshot(),
+                before,
+                "local read failure must not replace any part of the session"
+            );
+            assert!(
+                !accepted,
+                "failed snapshot must skip refresh as well as replacement"
+            );
+        }
+        // The next complete scan still works, without borrowing values from the old person.
+        let replacement =
+            ImportedSession::from_results(profile(), Ok(vec![]), Ok(different_storage));
+        assert!(
+            core.replace_imported_account(&account.id, &replacement)
+                .unwrap()
+        );
+        let current = core.credential(&account.id).unwrap();
+        assert!(current.cookies.is_empty());
+        assert!(current.headers.is_empty());
+        assert!(current.identity_proof.is_empty());
+        assert_eq!(current.local_storage["session"], "different-person");
+        let view = core.state.account(&account.id).unwrap().unwrap();
+        assert!(!view.verified_identity);
+        assert!(view.user_id.is_empty());
+        assert_eq!(view.status, "connected");
+        // Authoritative empty results are different from an unreadable profile.
+        let empty = ImportedSession::from_results(profile(), Ok(vec![]), Ok(Default::default()));
+        assert!(core.replace_imported_account(&account.id, &empty).unwrap());
+        assert_eq!(
+            core.state.account(&account.id).unwrap().unwrap().status,
+            "expired"
+        );
+        drop(core);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
     #[test]
     fn chromium_partition_projection_requires_known_source_metadata() {
         let database = rusqlite::Connection::open_in_memory().unwrap();
@@ -699,6 +1906,8 @@ mod tests {
             &url::Url::parse("http://127.0.0.1:1234/").unwrap(),
             "",
             None,
+            &CancellationHandle::new(),
+            || true,
         );
         assert_eq!(checked, 0);
         assert_eq!(unavailable, 0);

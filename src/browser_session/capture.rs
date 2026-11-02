@@ -182,28 +182,22 @@ pub(crate) fn is_safe_graphql_read_post(url: &url::Url, post_data: Option<&str>)
     let Ok(val) = serde_json::from_str::<Value>(raw) else {
         return false;
     };
-
-    if val.get("query").is_some_and(|query| !query.is_null()) {
-        if persisted_graphql_route(url).is_some() && !is_known_persisted_graphql_read(url) {
-            return false;
-        }
-        let Some(query) = val.get("query").and_then(Value::as_str) else {
-            return false;
-        };
-        use graphql_parser::query::{Definition, OperationDefinition};
-        let Ok(doc) = graphql_parser::parse_query::<&str>(query) else {
-            return false;
-        };
-        let mut has_query = false;
-        for def in &doc.definitions {
-            if let Definition::Operation(op) = def {
-                match op {
-                    OperationDefinition::Mutation(_) | OperationDefinition::Subscription(_) => {
-                        return false;
-                    }
-                    OperationDefinition::Query(_) | OperationDefinition::SelectionSet(_) => {
-                        has_query = true;
-                    }
+    let Some(query) = val.get("query").and_then(Value::as_str) else {
+        return false;
+    };
+    use graphql_parser::query::{Definition, OperationDefinition};
+    let Some(doc) = crate::policy::parse_graphql_bounded(query) else {
+        return false;
+    };
+    let mut has_query = false;
+    for def in &doc.definitions {
+        if let Definition::Operation(op) = def {
+            match op {
+                OperationDefinition::Mutation(_) | OperationDefinition::Subscription(_) => {
+                    return false;
+                }
+                OperationDefinition::Query(_) | OperationDefinition::SelectionSet(_) => {
+                    has_query = true;
                 }
             }
         }

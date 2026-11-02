@@ -18,9 +18,12 @@ use std::{
 };
 
 async fn cli(root: &Path, args: &[&str]) -> Output {
-    tokio::process::Command::new(env!("CARGO_BIN_EXE_hycli"))
+    let executable = std::env::var_os("HYCLI_TEST_EXECUTABLE")
+        .unwrap_or_else(|| env!("CARGO_BIN_EXE_hycli").into());
+    tokio::process::Command::new(executable)
         .args(args)
         .env("HYCLI_DATA_DIR", root)
+        .env("HYCLI_TEST_DATA", root)
         .env("HYCLI_SPECS", root.join("specs"))
         .env("HYCLI_KB", root.join("kb.db"))
         .current_dir(env!("CARGO_MANIFEST_DIR"))
@@ -39,11 +42,53 @@ fn ok(out: Output) -> Value {
 
 #[tokio::test]
 async fn session_cli_inspects_observes_and_verifies_without_exposing_secrets() {
+    use axum::response::IntoResponse;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("http://{}", listener.local_addr().unwrap());
+    let requests = Arc::new(AtomicUsize::new(0));
+    let request_count = requests.clone();
+    let unsafe_requests = Arc::new(AtomicUsize::new(0));
+    let unsafe_count = unsafe_requests.clone();
+    let response_mode = Arc::new(AtomicUsize::new(0));
+    let mode = response_mode.clone();
     let router = Router::new()
+        .route("/current-context",get(move |headers:HeaderMap,Query(query):Query<BTreeMap<String,String>>| {
+            let mode=mode.clone();
+            async move {
+                if mode.load(Ordering::SeqCst)==2 {
+                    return axum::response::Redirect::temporary("/context?variables=%7B%22action%22%3A%22delete%22%7D").into_response();
+                }
+                if headers.get("cookie").and_then(|v|v.to_str().ok()).is_some_and(|v|v.contains("sid=synthetic-session-secret")) {
+                    let id=if mode.load(Ordering::SeqCst)==1 {json!("synthetic-session-secret")}
+                        else if query.get("numeric").is_some_and(|value|value=="1") {json!(1)} else {json!("person-one")};
+                    (StatusCode::OK,Json(json!({"id":id,"name":"Private Person","synthetic-session-secret":1}))).into_response()
+                } else {(StatusCode::UNAUTHORIZED,Json(json!({"error":"sign in"}))).into_response()}
+            }
+        }))
         .route(
-            "/current-context",
+            "/public-profile",
+            get(|| async { Json(json!({"id":"person-one","name":"Private Person"})) }),
+        )
+        .route(
+            "/redirect-context",
+            get(|| async {
+                axum::response::Redirect::temporary(
+                    "/context?variables=%7B%22action%22%3A%22delete%22%7D",
+                )
+            }),
+        )
+        .route(
+            "/context",
+            get(move || {
+                let count = unsafe_count.clone();
+                async move {
+                    count.fetch_add(1, Ordering::SeqCst);
+                    Json(json!({"id":"unexpected"}))
+                }
+            }),
+        )
+        .route(
+            "/credential-echo",
             get(|headers: HeaderMap| async move {
                 if headers
                     .get("cookie")
@@ -52,24 +97,29 @@ async fn session_cli_inspects_observes_and_verifies_without_exposing_secrets() {
                 {
                     (
                         StatusCode::OK,
-                        Json(json!({"id":"person-one","name":"Private Person"})),
+                        Json(json!({"id":"synthetic-session-secret","name":"Private Person"})),
                     )
                 } else {
                     (StatusCode::UNAUTHORIZED, Json(json!({"error":"sign in"})))
                 }
             }),
         )
-        .route(
-            "/public-profile",
-            get(|| async { Json(json!({"id":"person-one","name":"Private Person"})) }),
-        );
+        .layer(axum::middleware::from_fn(
+            move |request: axum::extract::Request, next: axum::middleware::Next| {
+                let count = request_count.clone();
+                async move {
+                    count.fetch_add(1, Ordering::SeqCst);
+                    next.run(request).await
+                }
+            },
+        ));
     let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
     let root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join(".cache/cli-tests")
         .join(util::id());
     let core = Runtime::open(&root, None, None, false, true, false).unwrap();
     let cookies = hycli::accounts::parse_cookies(
-        &json!([{"name":"sid","value":"synthetic-session-secret","domain":"127.0.0.1","path":"/"}])
+        &json!([{"name":"sid","value":"synthetic-session-secret","domain":"127.0.0.1","path":"/"},{"name":"showTips","value":"1","domain":"127.0.0.1","path":"/"},{"name":"user_id","value":"person-one","domain":"127.0.0.1","path":"/"}])
             .to_string(),
         &url,
     )
@@ -78,7 +128,18 @@ async fn session_cli_inspects_observes_and_verifies_without_exposing_secrets() {
         .connect_account("", &url, cookies, "Fixture", "Manual session", "")
         .unwrap();
     let inspect = ok(cli(&root, &["accounts", "inspect", &account.id]).await);
-    assert_eq!(inspect["cookie_names"], json!(["sid"]));
+    assert!(
+        inspect["cookie_names"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("sid"))
+    );
+    assert!(
+        inspect["cookie_names"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("showTips"))
+    );
     assert!(!inspect.to_string().contains("synthetic-session-secret"));
     assert!(
         !core
@@ -89,20 +150,33 @@ async fn session_cli_inspects_observes_and_verifies_without_exposing_secrets() {
             .verified_identity
     );
 
-    let unauthenticated = cli(
+    let no_local = cli(
         &root,
         &[
-            "--allow-local",
             "accounts",
-            "read",
+            "observe",
             &account.id,
             &format!("{url}/current-context"),
         ],
     )
     .await;
-    assert!(!unauthenticated.status.success());
-    assert!(String::from_utf8_lossy(&unauthenticated.stderr).contains("auth_required"));
-
+    assert!(!no_local.status.success());
+    assert!(String::from_utf8_lossy(&no_local.stderr).contains("unsafe_target"));
+    let missing = cli(&root, &["accounts", "inspect", "missing-account"]).await;
+    assert!(!missing.status.success());
+    assert!(String::from_utf8_lossy(&missing.stderr).contains("not_found"));
+    let selected = ok(cli(
+        &root,
+        &[
+            "accounts",
+            "--site",
+            &account.site_id,
+            "inspect",
+            &account.id,
+        ],
+    )
+    .await);
+    assert_eq!(selected["account_id"], account.id);
     let recipe_path = root.join("recipe.json");
     let recipe = json!({"identity_url":format!("{url}/current-context"),"identity":{"user_id":"/id","name":"/name"},"evidence":"observed_browser_request"});
     std::fs::write(&recipe_path, recipe.to_string()).unwrap();
@@ -121,6 +195,7 @@ async fn session_cli_inspects_observes_and_verifies_without_exposing_secrets() {
     .await;
     assert!(!unobserved.status.success());
     assert!(String::from_utf8_lossy(&unobserved.stderr).contains("unsupported_evidence"));
+    assert_eq!(requests.load(Ordering::SeqCst), 0);
 
     let observe = ok(cli(
         &root,
@@ -161,78 +236,72 @@ async fn session_cli_inspects_observes_and_verifies_without_exposing_secrets() {
     assert_eq!(verified["verified_identity"], true);
     assert_eq!(verified["user_id"], "person-one");
     assert!(!verified.to_string().contains("synthetic-session-secret"));
-    let read_reference = verified["read_observations"][0]["reference"]
-        .as_str()
-        .unwrap();
-    let reference_descriptor = root.join("reference-request.json");
-    std::fs::write(
-        &reference_descriptor,
-        json!({
-            "version": 1,
-            "request": {"method":"GET", "url":format!("{url}/current-context")},
-            "evidence": {"observation":read_reference}
-        })
-        .to_string(),
-    )
-    .unwrap();
-    let reference_read = ok(cli(
-        &root,
-        &[
-            "--allow-local",
-            "accounts",
-            "read",
-            &account.id,
-            "--request",
-            reference_descriptor.to_str().unwrap(),
-        ],
-    )
-    .await);
-    assert_eq!(reference_read["body"]["id"], "person-one");
-    assert!(
-        !reference_read
-            .to_string()
-            .contains("synthetic-session-secret")
-    );
-    let private = ok(cli(
-        &root,
-        &[
-            "--allow-local",
-            "accounts",
-            "read",
-            &account.id,
-            &format!("{url}/current-context"),
-        ],
-    )
-    .await);
-    assert_eq!(private["id"], "person-one");
-    assert!(!private.to_string().contains("synthetic-session-secret"));
-    let unobserved_read = cli(
-        &root,
-        &[
-            "--allow-local",
-            "accounts",
-            "read",
-            &account.id,
-            &format!("{url}/unobserved"),
-        ],
-    )
-    .await;
-    assert!(!unobserved_read.status.success());
-    assert!(String::from_utf8_lossy(&unobserved_read.stderr).contains("unsupported_evidence"));
-    let change = cli(
+    let redirect = ok(cli(
         &root,
         &[
             "--allow-local",
             "accounts",
             "observe",
             &account.id,
-            &format!("{url}/current-context?variables=%7B%22action%22%3A%22delete%22%7D"),
+            &format!("{url}/redirect-context"),
         ],
     )
-    .await;
-    assert!(!change.status.success());
-    assert!(String::from_utf8_lossy(&change.stderr).contains("unsafe_target"));
-
+    .await);
+    assert_eq!(redirect["observation"]["status"], 307);
+    assert_eq!(unsafe_requests.load(Ordering::SeqCst), 0);
+    let before = requests.load(Ordering::SeqCst);
+    for (suffix, expected_error) in [
+        ("/graphql?extensions=%7B%7D", "unsafe_target"),
+        (
+            "/current-context?query=reference&payload=%7B%22query%22%3A%22mutation%20%7B%20erase%20%7D%22%7D",
+            "unsafe_target",
+        ),
+        (
+            "/current-context?query=reference&extensions=%7B%7D",
+            "unsafe_target",
+        ),
+        ("/gql?extensions=%7B%7D", "unsafe_target"),
+        (
+            "/current-context?payload=%7B%22query%22%3A%22mutation%20%7B%20erase%20%7D%22%7D",
+            "unsafe_target",
+        ),
+        (
+            "/current-context?variables=%7B%22action%22%3A%22delete%22%7D",
+            "unsafe_target",
+        ),
+        (
+            "/current-context?variables=%7B%22action%22%3A%22delete%22%7D&variables=%7B%7D",
+            "unsafe_target",
+        ),
+        (
+            "/current-context?query=mutation%20%7B%20erase%20%7D",
+            "unsafe_target",
+        ),
+        (
+            "/graphql?query=fragment%20Part%20on%20User%20%7B%20id%20%7D",
+            "unsafe_target",
+        ),
+        ("/current-context?token=synthetic-session-secret", "bad_url"),
+        ("/logout", "unsafe_target"),
+    ] {
+        let rejected = cli(
+            &root,
+            &[
+                "--allow-local",
+                "accounts",
+                "observe",
+                &account.id,
+                &format!("{url}{suffix}"),
+            ],
+        )
+        .await;
+        assert!(!rejected.status.success(), "allowed {suffix}");
+        assert!(
+            String::from_utf8_lossy(&rejected.stderr).contains(expected_error),
+            "{suffix}: {}",
+            String::from_utf8_lossy(&rejected.stderr)
+        );
+    }
     let other_origin = cli(
         &root,
         &[
@@ -246,6 +315,54 @@ async fn session_cli_inspects_observes_and_verifies_without_exposing_secrets() {
     .await;
     assert!(!other_origin.status.success());
     assert!(String::from_utf8_lossy(&other_origin.stderr).contains("unsafe_target"));
+    let wrong_site = cli(
+        &root,
+        &[
+            "accounts",
+            "--site",
+            "not-this-site",
+            "inspect",
+            &account.id,
+        ],
+    )
+    .await;
+    assert!(!wrong_site.status.success());
+    assert!(String::from_utf8_lossy(&wrong_site.stderr).contains("not_found"));
+    let mut unsupported = recipe.clone();
+    unsupported["identity_url"] = json!(format!("{url}/current-context?scope=current"));
+    std::fs::write(&recipe_path, unsupported.to_string()).unwrap();
+    let wrong_query = cli(
+        &root,
+        &[
+            "--allow-local",
+            "accounts",
+            "verify",
+            &account.id,
+            "--recipe",
+            recipe_file,
+        ],
+    )
+    .await;
+    assert!(!wrong_query.status.success());
+    assert!(String::from_utf8_lossy(&wrong_query.stderr).contains("unsupported_evidence"));
+    unsupported = recipe.clone();
+    unsupported["evidence"] = json!("invented-evidence");
+    std::fs::write(&recipe_path, unsupported.to_string()).unwrap();
+    let no_evidence = cli(
+        &root,
+        &[
+            "--allow-local",
+            "accounts",
+            "verify",
+            &account.id,
+            "--recipe",
+            recipe_file,
+        ],
+    )
+    .await;
+    assert!(!no_evidence.status.success());
+    assert!(String::from_utf8_lossy(&no_evidence.stderr).contains("unsupported_evidence"));
+    assert_eq!(requests.load(Ordering::SeqCst), before);
     ok(cli(
         &root,
         &[
@@ -278,42 +395,490 @@ async fn session_cli_inspects_observes_and_verifies_without_exposing_secrets() {
         ok(cli(&root, &["accounts", "inspect", &account.id]).await)["saved_recipe"]["identity_url"],
         recipe["identity_url"]
     );
+    let plain_query = ok(cli(
+        &root,
+        &[
+            "--allow-local",
+            "accounts",
+            "observe",
+            &account.id,
+            &format!("{url}/current-context?query=reference"),
+        ],
+    )
+    .await);
+    assert_eq!(plain_query["observation"]["status"], 200);
+    let explicit_query = ok(cli(
+        &root,
+        &[
+            "--allow-local",
+            "accounts",
+            "observe",
+            &account.id,
+            &format!("{url}/current-context?query=query%20%7B%20viewer%20%7B%20id%20%7D%20%7D"),
+        ],
+    )
+    .await);
+    assert_eq!(explicit_query["observation"]["status"], 200);
+    // Preserve evidence for multiple query-key shapes at the same path.
+    ok(cli(
+        &root,
+        &[
+            "--allow-local",
+            "accounts",
+            "observe",
+            &account.id,
+            &format!("{url}/current-context?scope=one&fields=id"),
+        ],
+    )
+    .await);
+    ok(cli(
+        &root,
+        &[
+            "--allow-local",
+            "accounts",
+            "observe",
+            &account.id,
+            &format!("{url}/current-context"),
+        ],
+    )
+    .await);
+    let mut with_query = recipe.clone();
+    with_query["identity_url"] = json!(format!("{url}/current-context?fields=core&scope=current"));
+    std::fs::write(&recipe_path, with_query.to_string()).unwrap();
+    assert_eq!(
+        ok(cli(
+            &root,
+            &[
+                "--allow-local",
+                "accounts",
+                "verify",
+                &account.id,
+                "--recipe",
+                recipe_file
+            ]
+        )
+        .await)["verified_identity"],
+        true
+    );
+    std::fs::write(&recipe_path, recipe.to_string()).unwrap();
+    ok(cli(
+        &root,
+        &[
+            "--allow-local",
+            "accounts",
+            "verify",
+            &account.id,
+            "--recipe",
+            recipe_file,
+        ],
+    )
+    .await);
+    // Numeric identity must not collide with an unrelated one-character preference cookie.
+    ok(cli(
+        &root,
+        &[
+            "--allow-local",
+            "accounts",
+            "observe",
+            &account.id,
+            &format!("{url}/current-context?numeric=1"),
+        ],
+    )
+    .await);
+    let mut numeric = recipe.clone();
+    numeric["identity_url"] = json!(format!("{url}/current-context?numeric=1"));
+    std::fs::write(&recipe_path, numeric.to_string()).unwrap();
+    let numeric_view = ok(cli(
+        &root,
+        &[
+            "--allow-local",
+            "accounts",
+            "verify",
+            &account.id,
+            "--recipe",
+            recipe_file,
+        ],
+    )
+    .await);
+    assert_eq!(numeric_view["user_id"], "1");
+    assert_eq!(
+        ok(cli(
+            &root,
+            &["--allow-local", "accounts", "refresh", &account.id]
+        )
+        .await)["user_id"],
+        "1"
+    );
+    std::fs::write(&recipe_path, recipe.to_string()).unwrap();
+    ok(cli(
+        &root,
+        &[
+            "--allow-local",
+            "accounts",
+            "verify",
+            &account.id,
+            "--recipe",
+            recipe_file,
+        ],
+    )
+    .await);
+    // A saved recipe is executable local state, but diagnostics must redact a secret prefix.
+    let mut private_recipe = recipe.clone();
+    private_recipe["headers"] = json!([{"header":"X-Context","source":"cookie","key":"sid","prefix":"synthetic-session-secret"}]);
+    std::fs::write(&recipe_path, private_recipe.to_string()).unwrap();
+    ok(cli(
+        &root,
+        &[
+            "--allow-local",
+            "accounts",
+            "verify",
+            &account.id,
+            "--recipe",
+            recipe_file,
+        ],
+    )
+    .await);
+    let inspected = ok(cli(&root, &["accounts", "inspect", &account.id]).await);
+    assert!(!inspected.to_string().contains("synthetic-session-secret"));
+    std::fs::write(&recipe_path, recipe.to_string()).unwrap();
+    ok(cli(
+        &root,
+        &[
+            "--allow-local",
+            "accounts",
+            "verify",
+            &account.id,
+            "--recipe",
+            recipe_file,
+        ],
+    )
+    .await);
+    // Identity extraction must reject credentials before storing AccountView metadata.
+    ok(cli(
+        &root,
+        &[
+            "--allow-local",
+            "accounts",
+            "observe",
+            &account.id,
+            &format!("{url}/credential-echo"),
+        ],
+    )
+    .await);
+    let mut echoed = recipe.clone();
+    echoed["identity_url"] = json!(format!("{url}/credential-echo"));
+    std::fs::write(&recipe_path, echoed.to_string()).unwrap();
+    let rejected_echo = cli(
+        &root,
+        &[
+            "--allow-local",
+            "accounts",
+            "verify",
+            &account.id,
+            "--recipe",
+            recipe_file,
+        ],
+    )
+    .await;
+    assert!(!rejected_echo.status.success());
+    assert!(String::from_utf8_lossy(&rejected_echo.stderr).contains("identity_unavailable"));
+    assert!(!String::from_utf8_lossy(&rejected_echo.stdout).contains("synthetic-session-secret"));
+    let preserved = ok(cli(&root, &["accounts", "inspect", &account.id]).await);
+    assert_eq!(
+        preserved["saved_recipe"]["identity_url"],
+        recipe["identity_url"]
+    );
+    // Bad recipe input is rejected before any network request.
+    let before_invalid = requests.load(Ordering::SeqCst);
+    let invalid = root.join("invalid-recipe.json");
+    let no_file = cli(
+        &root,
+        &[
+            "--allow-local",
+            "accounts",
+            "verify",
+            &account.id,
+            "--recipe",
+            invalid.to_str().unwrap(),
+        ],
+    )
+    .await;
+    assert!(!no_file.status.success());
+    assert!(String::from_utf8_lossy(&no_file.stderr).contains("data_invalid"));
+    for data in [
+        "{".to_string(),
+        format!("{}{}", recipe, " ".repeat(128 * 1024)),
+    ] {
+        std::fs::write(&invalid, data).unwrap();
+        let bad = cli(
+            &root,
+            &[
+                "--allow-local",
+                "accounts",
+                "verify",
+                &account.id,
+                "--recipe",
+                invalid.to_str().unwrap(),
+            ],
+        )
+        .await;
+        assert!(!bad.status.success());
+        assert!(String::from_utf8_lossy(&bad.stderr).contains("data_invalid"));
+    }
+    assert_eq!(requests.load(Ordering::SeqCst), before_invalid);
     let refreshed = ok(cli(
         &root,
         &["--allow-local", "accounts", "refresh", &account.id],
     )
     .await);
     assert_eq!(refreshed["verified_identity"], true);
+    // A previously verified endpoint cannot redirect refresh into a changed request.
+    response_mode.store(2, Ordering::SeqCst);
+    let redirected_refresh = cli(
+        &root,
+        &["--allow-local", "accounts", "refresh", &account.id],
+    )
+    .await;
+    assert!(!redirected_refresh.status.success());
+    assert_eq!(unsafe_requests.load(Ordering::SeqCst), 0);
+    response_mode.store(1, Ordering::SeqCst);
+    let unsafe_refresh = cli(
+        &root,
+        &["--allow-local", "accounts", "refresh", &account.id],
+    )
+    .await;
+    assert!(!unsafe_refresh.status.success());
+    assert!(String::from_utf8_lossy(&unsafe_refresh.stderr).contains("identity_unavailable"));
+    assert!(!String::from_utf8_lossy(&unsafe_refresh.stdout).contains("synthetic-session-secret"));
+    let listed = ok(cli(&root, &["accounts"]).await);
+    let refreshed_view = listed
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|view| view["id"] == account.id)
+        .unwrap();
+    assert_eq!(refreshed_view["verified_identity"], false);
+    assert!(refreshed_view.get("user_id").is_none());
+
     server.abort();
     drop(core);
     std::fs::remove_dir_all(root).unwrap();
 }
 
 #[tokio::test]
-async fn account_read_replays_observed_persisted_graphql_post_read_only() {
-    let requests = Arc::new(AtomicUsize::new(0));
-    let seen = requests.clone();
+async fn session_cli_does_not_store_new_short_credential_sources_as_identity() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("http://{}", listener.local_addr().unwrap());
-    let graphql_path = "/i/api/graphql/VjWsfItbiMLeajpZ90NJeg/Bookmarks";
-    let router = Router::new().route(
-        graphql_path,
-        post(move |headers: HeaderMap, Json(body): Json<Value>| {
-            let seen = seen.clone();
-            async move {
-                assert_eq!(
-                    headers.get("content-type").and_then(|v| v.to_str().ok()),
-                    Some("application/json")
-                );
-                assert_eq!(body["variables"]["count"], 20);
-                assert_eq!(body["features"], json!({}));
-                let previous = seen.fetch_add(1, Ordering::SeqCst);
-                if previous == 0 {
-                    assert!(body["variables"].get("cursor").is_none());
+    let router = Router::new()
+        .route(
+            "/profile",
+            get(|headers: HeaderMap| async move {
+                if headers.get("x-context").and_then(|v| v.to_str().ok()) == Some("ABC123") {
+                    (StatusCode::OK, Json(json!({"id":"short-account"})))
                 } else {
-                    assert_eq!(body["variables"]["cursor"], "raw-x-cursor");
+                    (StatusCode::UNAUTHORIZED, Json(json!({"error":"sign in"})))
                 }
-                Json(json!({"data":{"bookmark_timeline_v2":{"timeline":{"instructions":[{"type":"TimelineAddEntries","entries":[{"content":{"cursorType":"Bottom","value":"raw-x-cursor"}}]}]}}}}))
+            }),
+        )
+        .route(
+            "/echo",
+            get(|headers: HeaderMap| async move {
+                if headers.get("x-context").and_then(|v| v.to_str().ok()) == Some("ABC123") {
+                    (StatusCode::OK, Json(json!({"id":"ABC123"})))
+                } else {
+                    (StatusCode::UNAUTHORIZED, Json(json!({"error":"sign in"})))
+                }
+            }),
+        );
+    let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join(".cache/cli-tests")
+        .join(util::id());
+    let core = Runtime::open(&root, None, None, false, true, false).unwrap();
+    let cookies = hycli::accounts::parse_cookies(
+        &json!([{"name":"ctx","value":"ABC123","domain":"127.0.0.1","path":"/"}]).to_string(),
+        &url,
+    )
+    .unwrap();
+    let account = core
+        .connect_account("", &url, cookies, "Fixture", "Short source", "")
+        .unwrap();
+    ok(cli(
+        &root,
+        &[
+            "--allow-local",
+            "accounts",
+            "observe",
+            &account.id,
+            &format!("{url}/profile"),
+        ],
+    )
+    .await);
+    let file = root.join("recipe.json");
+    let mut recipe = json!({"identity_url":format!("{url}/profile"),"headers":[{"header":"X-Context","source":"cookie","key":"ctx","prefix":""}],"identity":{"user_id":"/id"},"evidence":"observed_browser_request"});
+    std::fs::write(&file, recipe.to_string()).unwrap();
+    assert_eq!(
+        ok(cli(
+            &root,
+            &[
+                "--allow-local",
+                "accounts",
+                "verify",
+                &account.id,
+                "--recipe",
+                file.to_str().unwrap()
+            ]
+        )
+        .await)["user_id"],
+        "short-account"
+    );
+    // Keep the actual captured header but no old recipe source that could mask the new-source bug.
+    recipe["headers"] = json!([]);
+    std::fs::write(&file, recipe.to_string()).unwrap();
+    ok(cli(
+        &root,
+        &[
+            "--allow-local",
+            "accounts",
+            "verify",
+            &account.id,
+            "--recipe",
+            file.to_str().unwrap(),
+        ],
+    )
+    .await);
+    ok(cli(
+        &root,
+        &[
+            "--allow-local",
+            "accounts",
+            "observe",
+            &account.id,
+            &format!("{url}/echo"),
+        ],
+    )
+    .await);
+    for (source, key) in [("cookie", "ctx"), ("captured_header", "X-cOnTeXt")] {
+        let mut candidate = recipe.clone();
+        candidate["identity_url"] = json!(format!("{url}/echo"));
+        candidate["headers"] =
+            json!([{"header":"X-Context","source":source,"key":key,"prefix":""}]);
+        std::fs::write(&file, candidate.to_string()).unwrap();
+        let rejected = cli(
+            &root,
+            &[
+                "--allow-local",
+                "accounts",
+                "verify",
+                &account.id,
+                "--recipe",
+                file.to_str().unwrap(),
+            ],
+        )
+        .await;
+        assert!(
+            !rejected.status.success(),
+            "accepted {source}:{key} credential echo"
+        );
+        assert!(String::from_utf8_lossy(&rejected.stderr).contains("identity_unavailable"));
+        let accounts = ok(cli(&root, &["accounts"]).await);
+        assert!(!accounts.to_string().contains("ABC123"));
+        assert_eq!(
+            accounts
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|view| view["id"] == account.id)
+                .unwrap()["user_id"],
+            "short-account"
+        );
+        assert_eq!(
+            ok(cli(&root, &["accounts", "inspect", &account.id]).await)["saved_recipe"]["identity_url"],
+            recipe["identity_url"]
+        );
+    }
+    server.abort();
+    drop(core);
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[tokio::test]
+async fn session_cli_rejects_sibling_origins_and_mismatched_saved_sources() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join(".cache/cli-tests")
+        .join(util::id());
+    let core = Runtime::open(&root, None, None, false, true, false).unwrap();
+    let account = core
+        .connect_account(
+            "",
+            "https://app.example.test",
+            hycli::accounts::parse_cookies(&json!([{"name":"sid","value":"synthetic-origin-check","domain":"app.example.test","path":"/"}]).to_string(), "https://app.example.test").unwrap(),
+            "Fixture",
+            "Origin",
+            "",
+        )
+        .unwrap();
+    let sibling = cli(
+        &root,
+        &[
+            "accounts",
+            "observe",
+            &account.id,
+            "https://api.example.test/current-context",
+        ],
+    )
+    .await;
+    assert!(!sibling.status.success());
+    assert!(String::from_utf8_lossy(&sibling.stderr).contains("unsafe_target"));
+    let wrong_site = cli(
+        &root,
+        &[
+            "accounts",
+            "--site",
+            "different-owner",
+            "inspect",
+            &account.id,
+        ],
+    )
+    .await;
+    assert!(!wrong_site.status.success());
+    assert!(String::from_utf8_lossy(&wrong_site.stderr).contains("not_found"));
+    core.update_credential(&account.id, |credential| {
+        credential.origin = "https://other.example.test".into();
+        Ok(())
+    })
+    .unwrap();
+    for args in [
+        vec!["accounts", "inspect", &account.id],
+        vec![
+            "accounts",
+            "observe",
+            &account.id,
+            "https://app.example.test/current-context",
+        ],
+        vec!["accounts", "refresh", &account.id],
+    ] {
+        let rejected = cli(&root, &args).await;
+        assert!(!rejected.status.success());
+        assert!(String::from_utf8_lossy(&rejected.stderr).contains("unsafe_target"));
+    }
+    drop(core);
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[tokio::test]
+async fn session_cli_browser_diagnostics_fail_closed_without_requests_or_state_changes() {
+    let requests = Arc::new(AtomicUsize::new(0));
+    let count = requests.clone();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let router = Router::new().route(
+        "/account",
+        get(move || {
+            let count = count.clone();
+            async move {
+                count.fetch_add(1, Ordering::SeqCst);
+                Json(json!({"id":"synthetic"}))
             }
         }),
     );
@@ -323,122 +888,50 @@ async fn account_read_replays_observed_persisted_graphql_post_read_only() {
         .join(util::id());
     let core = Runtime::open(&root, None, None, false, true, false).unwrap();
     let cookies = hycli::accounts::parse_cookies(
-        &json!([{"name":"sid","value":"synthetic-session-secret","domain":"127.0.0.1","path":"/"}])
+        &json!([{"name":"sid","value":"synthetic-session","domain":"127.0.0.1","path":"/"}])
             .to_string(),
         &url,
     )
     .unwrap();
     let account = core
-        .connect_account("", &url, cookies, "Fixture", "POST read", "")
+        .connect_account("", &url, cookies, "Fixture", "Diagnostic", "")
         .unwrap();
-    let observation = hycli::accounts::Observation {
-        method: "POST".into(),
-        path: graphql_path.into(),
-        body: [
-            ("features".into(), "object".into()),
-            ("variables".into(), "object".into()),
-        ]
-        .into_iter()
-        .collect(),
-        status: 200,
-        observed_at: util::now(),
-        ..Default::default()
-    };
-    let account_id = account.id.clone();
-    let site_id = account.site_id.clone();
-    core.state
-        .update(|data| {
-            data.accounts
-                .get_mut(&account_id)
-                .unwrap()
-                .verified_identity = true;
-            data.accounts.get_mut(&account_id).unwrap().user_id = "person-one".into();
-            data.accounts.get_mut(&account_id).unwrap().name = "Private Person".into();
-            data.sites
-                .get_mut(&site_id)
-                .unwrap()
-                .observations
-                .push(observation);
-            Ok(())
-        })
-        .unwrap();
-    let descriptor_path = root.join("bookmarks-request.json");
-    let descriptor = json!({
-        "version": 1,
-        "request": {
-            "method": "POST",
-            "url": format!("{url}{graphql_path}"),
-            "json": {"variables":{"count":20},"features":{}}
-        },
-        "evidence": {"observation":"observed"},
-        "pagination": {"variable":"cursor","next":"$x_timeline_bottom"}
-    });
-    std::fs::write(&descriptor_path, descriptor.to_string()).unwrap();
-    let result = ok(cli(
-        &root,
-        &[
-            "--allow-local",
-            "accounts",
-            "read",
-            &account.id,
-            "--request",
-            descriptor_path.to_str().unwrap(),
-        ],
-    )
-    .await);
-    assert_eq!(result["status"], 200);
-    assert_eq!(
-        result["body"]["data"]["bookmark_timeline_v2"]["timeline"]["instructions"][0]["entries"][0]
-            ["content"]["value"],
-        Value::Null
-    );
-    let cursor = result["next_cursor"].as_str().unwrap().to_owned();
-    assert!(cursor.starts_with("rc_"));
-    assert!(!result.to_string().contains("raw-x-cursor"));
-    assert_eq!(requests.load(Ordering::SeqCst), 1);
-    assert!(!result.to_string().contains("synthetic-session-secret"));
-
-    let second = ok(cli(
-        &root,
-        &[
-            "--allow-local",
-            "accounts",
-            "read",
-            &account.id,
-            "--request",
-            descriptor_path.to_str().unwrap(),
-            "--cursor",
-            &cursor,
-        ],
-    )
-    .await);
-    assert_eq!(requests.load(Ordering::SeqCst), 2);
-    assert!(!second.to_string().contains("raw-x-cursor"));
-
-    let mutation_path = root.join("mutation.json");
-    let mut mutation = descriptor.clone();
-    mutation["request"]["json"]["query"] = json!("mutation { deleteBookmark }");
-    std::fs::write(&mutation_path, mutation.to_string()).unwrap();
+    let before_credential = serde_json::to_value(core.credential(&account.id).unwrap()).unwrap();
+    let before_accounts = ok(cli(&root, &["accounts"]).await);
     let rejected = cli(
         &root,
         &[
             "--allow-local",
             "accounts",
-            "read",
+            "observe",
             &account.id,
-            "--request",
-            mutation_path.to_str().unwrap(),
+            &format!("{url}/account"),
+            "--browser",
         ],
     )
     .await;
     assert!(!rejected.status.success());
-    assert!(String::from_utf8_lossy(&rejected.stderr).contains("unsupported_evidence"));
+    assert!(String::from_utf8_lossy(&rejected.stderr).contains("browser_diagnostic_unsupported"));
+    assert_eq!(requests.load(Ordering::SeqCst), 0);
     assert_eq!(
-        requests.load(Ordering::SeqCst),
-        2,
-        "mutation must not reach the fixture"
+        serde_json::to_value(core.credential(&account.id).unwrap()).unwrap(),
+        before_credential
     );
-
+    assert_eq!(ok(cli(&root, &["accounts"]).await), before_accounts);
+    // The supported alternative remains functional after the rejected mode.
+    let observed = ok(cli(
+        &root,
+        &[
+            "--allow-local",
+            "accounts",
+            "observe",
+            &account.id,
+            &format!("{url}/account"),
+        ],
+    )
+    .await);
+    assert_eq!(observed["observation"]["status"], 200);
+    assert_eq!(requests.load(Ordering::SeqCst), 1);
     server.abort();
     drop(core);
     std::fs::remove_dir_all(root).unwrap();
@@ -976,4 +1469,141 @@ async fn feedback_does_not_claim_a_page_opened_on_windows() {
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
     }
     assert!(!root.exists(), "synthetic Windows launcher did not exit");
+}
+
+#[tokio::test]
+async fn explicit_pagination_explains_handles_and_version_mismatches() {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join(".cache/cli-tests")
+        .join(util::id());
+    std::fs::create_dir_all(&root).unwrap();
+    let file = root.join("fixture.json");
+    let mut value = json!({"spec_version":3,"site":{"name":"cursor-help","base_url":"https://example.com"},"operations":[{"name":"list-items","method":"GET","path":"/items","effect":"read","evidence":"Synthetic documented pagination","pagination":{"input":"page","query":"pageToken","next":"/nextPageToken"}}]});
+    std::fs::write(&file, value.to_string()).unwrap();
+    ok(cli(
+        &root,
+        &[
+            "--format",
+            "json",
+            "spec",
+            "install",
+            file.to_str().unwrap(),
+        ],
+    )
+    .await);
+    let action = ok(cli(
+        &root,
+        &["--format", "json", "describe", "cursor-help", "list-items"],
+    )
+    .await);
+    assert!(
+        action["inputs"][0]["hint"]
+            .as_str()
+            .unwrap()
+            .contains("next_cursor")
+    );
+    assert!(
+        action["inputs"][0]["hint"]
+            .as_str()
+            .unwrap()
+            .contains("15 minutes")
+    );
+    assert!(action["output"].as_str().unwrap().contains("next_cursor"));
+    let help = cli(&root, &["cursor-help", "list-items", "--help"]).await;
+    assert!(help.status.success());
+    assert!(String::from_utf8_lossy(&help.stdout).contains("next_cursor"));
+    value["spec_version"] = json!(2);
+    std::fs::write(&file, value.to_string()).unwrap();
+    let invalid = cli(
+        &root,
+        &[
+            "--format",
+            "json",
+            "spec",
+            "validate",
+            file.to_str().unwrap(),
+        ],
+    )
+    .await;
+    assert!(!invalid.status.success());
+    let issues: Value = serde_json::from_slice(&invalid.stdout).unwrap();
+    assert!(issues["issues"].as_array().unwrap().iter().any(|issue| {
+        issue["field"] == "spec_version"
+            && issue["remedy"]
+                .as_str()
+                .is_some_and(|v| v.contains("spec_version to 3"))
+    }));
+}
+
+// Exercise the shipped entry point, not just an async future-size estimate.
+// Linux can reproduce the small default Windows main stack without changing
+// the product's stack reservation or weakening the native Windows contract.
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn installed_cli_read_runs_on_a_one_mebibyte_main_stack() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let origin = format!("http://{}", listener.local_addr().unwrap());
+    let router = Router::new().route(
+        "/items",
+        get(|| async { Json(json!({"items":["synthetic-item"]})) }),
+    );
+    let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join(".cache/cli-tests")
+        .join(util::id());
+    let core = Runtime::open(&root, None, None, false, true, false).unwrap();
+    core.install(&spec::parse(json!({"site":{"name":"bounded-stack","base_url":origin},"operations":[{"name":"read-items","method":"GET","path":"/items","effect":"read","evidence":"Owned synthetic fixture"}]}).to_string().as_bytes()).unwrap()).unwrap();
+    let executable = std::env::var_os("HYCLI_TEST_EXECUTABLE")
+        .unwrap_or_else(|| env!("CARGO_BIN_EXE_hycli").into());
+    let out = tokio::process::Command::new("sh")
+        .args([
+            "-c",
+            "ulimit -c 0; ulimit -s 1024 || exit; exec \"$@\"",
+            "bounded-stack-fixture",
+        ])
+        .arg(executable)
+        .args(["bounded-stack", "read-items", "--allow-local"])
+        .env("HYCLI_DATA_DIR", &root)
+        .env("HYCLI_TEST_DATA", &root)
+        .env("HYCLI_SPECS", root.join("specs"))
+        .env("HYCLI_KB", root.join("kb.db"))
+        .output()
+        .await
+        .unwrap();
+    assert_eq!(ok(out)["items"], json!(["synthetic-item"]));
+    server.abort();
+    drop(core);
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[tokio::test]
+async fn jobs_show_preserves_provider_failure_codes_notes_and_exit_classes() {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join(".cache/provider-cli-tests")
+        .join(util::id());
+    let core = Runtime::open(&root, None, None, false, true, false).unwrap();
+    for (code, exit) in [
+        ("ai_response_incomplete", 1),
+        ("ai_response_invalid", 1),
+        ("ai_connection_failed", 1),
+        ("rate_limited", 4),
+    ] {
+        let mut job = hycli::state::Job::new("prepare", "en");
+        job.status = "failed".into();
+        job.error_code = code.into();
+        job.note(&format!("agent_failed_{code}"), "explore", 0, "");
+        core.state.add_job(job.clone()).unwrap();
+        let result = cli(&root, &["jobs", "show", &job.id]).await;
+        assert_eq!(
+            result.status.code(),
+            Some(exit),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        let value: Value = serde_json::from_slice(&result.stdout).unwrap();
+        assert_eq!(value["error_code"], code);
+        assert_eq!(value["notes"][0]["code"], format!("agent_failed_{code}"));
+        assert!(!value["notes"][0]["message"].as_str().unwrap().is_empty());
+        assert!(!String::from_utf8_lossy(&result.stderr).contains("private-"));
+    }
 }

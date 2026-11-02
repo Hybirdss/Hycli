@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Hybirdss/Hycli/releases/tag/v0.1.0">Télécharger (Windows · macOS · Linux)</a> ·
+  <a href="https://github.com/Hybirdss/Hycli/releases/tag/v0.1.1">Télécharger (Windows · macOS · Linux)</a> ·
   <a href="https://github.com/Hybirdss/Hycli/issues">Obtenir de l’aide sur GitHub</a> ·
   <a href="#try-it-in-30-seconds">Essayer en 30 secondes</a> ·
   <a href="#get-started">Démarrer</a> ·
@@ -59,23 +59,27 @@ Hycli est distribué sous la forme d'un binaire natif unique contenant à la foi
 
 ### Télécharger et lancer (Windows, macOS, Linux)
 
-Téléchargez l'installateur natif ou l'archive portable correspondant à votre plateforme depuis **[GitHub Releases (v0.1.0)](https://github.com/Hybirdss/Hycli/releases/tag/v0.1.0)** :
+Téléchargez l'installateur natif ou l'archive portable correspondant à votre plateforme depuis **[GitHub Releases (v0.1.1)](https://github.com/Hybirdss/Hycli/releases/tag/v0.1.1)** :
 
 | Plateforme | Architecture | Installateur natif | Archive portable | Comment démarrer |
 | --- | --- | --- | --- | --- |
-| **Windows 10/11** | x64 et ARM64 | `hycli-0.1.0-win32-*-setup.exe` | `hycli-0.1.0-win32-*.tar.gz` | Exécutez `*-setup.exe` (ajoute `hycli` au `PATH` utilisateur et au menu Démarrer sans droits administrateur), puis lancez **Hycli** ou exécutez `hycli open` dans PowerShell. |
-| **macOS 13+** | Apple Silicon (`arm64`) et Intel (`x64`) | `hycli-0.1.0-darwin-*.dmg` | `hycli-0.1.0-darwin-*.tar.gz` | Ouvrez le `.dmg`, faites glisser **Hycli.app** dans **Applications**, puis ouvrez-le (crée automatiquement le lien `hycli` dans `~/.local/bin`). |
-| **Linux** | x64 et ARM64 | `hycli-0.1.0-linux-*.deb` | `hycli-0.1.0-linux-*.tar.gz` | Installez le `.deb` (`sudo apt install ./hycli-*.deb`) ou extrayez le `.tar.gz` et lancez `./install.sh`, puis exécutez `hycli open`. |
+| **Windows 10/11** | x64 et ARM64 | `hycli-0.1.1-win32-*-setup.exe` | `hycli-0.1.1-win32-*.tar.gz` | Exécutez `*-setup.exe` (ajoute `hycli` au `PATH` utilisateur et au menu Démarrer sans droits administrateur), puis lancez **Hycli** ou exécutez `hycli open` dans PowerShell. |
+| **macOS 13+** | Apple Silicon (`arm64`) et Intel (`x64`) | `hycli-0.1.1-darwin-*.dmg` | `hycli-0.1.1-darwin-*.tar.gz` | Ouvrez le `.dmg`, faites glisser **Hycli.app** dans **Applications**, puis ouvrez-le (crée automatiquement le lien `hycli` dans `~/.local/bin`). |
+| **Linux** | x64 et ARM64 | `hycli-0.1.1-linux-*.deb` | `hycli-0.1.1-linux-*.tar.gz` | Installez le `.deb` (`sudo apt install ./hycli-*.deb`) ou extrayez le `.tar.gz` et lancez `./install.sh`, puis exécutez `hycli open`. |
+
+**Version publiée v0.1.0 :** Les archives portables Windows et macOS ne contiennent pas de scripts d'installation. Utilisez plutôt l'installateur Windows `*-setup.exe` ou macOS `.dmg` de la version liée ci-dessus.
 
 <details>
 <summary><strong>Installation rapide depuis le terminal et compilation depuis les sources</strong></summary>
 
+Les commandes ci-dessous nécessitent une archive contenant `install.sh` (Linux/macOS) ou `install.ps1` (Windows), par exemple une archive construite à partir des sources actuelles.
+
 **Archive portable Linux / macOS :**
 
 ```sh
-sha256sum -c hycli-0.1.0-*.tar.gz.sha256   # ou sur macOS : shasum -a 256 -c
-tar -xzf hycli-0.1.0-*.tar.gz
-cd hycli-0.1.0-*
+sha256sum -c hycli-0.1.1-*.tar.gz.sha256   # ou sur macOS : shasum -a 256 -c
+tar -xzf hycli-0.1.1-*.tar.gz
+cd hycli-0.1.1-*
 ./install.sh
 hycli open
 ```
@@ -83,8 +87,8 @@ hycli open
 **Archive portable Windows PowerShell :**
 
 ```powershell
-tar -xzf hycli-0.1.0-win32-x64.tar.gz
-cd hycli-0.1.0-win32-x64
+tar -xzf hycli-0.1.1-win32-x64.tar.gz
+cd hycli-0.1.1-win32-x64
 powershell -ExecutionPolicy Bypass -File .\install.ps1
 hycli open
 ```
@@ -180,6 +184,8 @@ La connexion via Codex s'exécute dans un fil éphémère où l'accès aux fichi
 
 Ajoutez Hycli à votre client MCP (**Agents de programmation → Voir les paramètres de connexion** affiche le chemin exact pour votre système d'exploitation) :
 
+L’exemple ci-dessous concerne les clients qui acceptent le format JSON `mcpServers`. Pour ChatGPT et Claude, consultez la [configuration des applications de bureau](../../README.md#use-hycli-with-your-ai), distincte de la connexion au fournisseur d’IA dans Hycli.
+
 ```json
 {
   "mcpServers": {
@@ -210,6 +216,8 @@ hycli check SITE
 <a id="browser-sign-in"></a>
 ## Connexion au navigateur
 
+La détection native est facultative et désactivée par défaut sur macOS, y compris après une mise à niveau sans choix enregistré. Ce réglage est partagé avec CLI et MCP utilisant le même répertoire de données ; les comptes et connexions navigateur existants sont conservés. [Native discovery and recovery (English)](../../agent/AGENTS.md#native-discovery-choice-and-recovery).
+
 Hycli détecte les profils locaux de Chrome, Chromium, Edge, Brave, Vivaldi, Arc, Whale et Firefox (ainsi que les binaires locaux de Chromium furtif lorsqu'ils sont installés) sous Windows, macOS et Linux, et n'importe que la session du site web demandé dans le coffre-fort local. Les profils partageant le même compte vérifié sur un site web sont automatiquement dédupliqués.
 
 Si une session est protégée par le chiffrement App-Bound de Windows, des conteneurs privés ou un navigateur non importé, utilisez **Comptes → Connecter un compte** pour vous connecter via votre navigateur, associez l'[extension compagnon de navigateur](../../browser-companion/guide.html) ou importez un fichier de cookies JSON/Netscape dans le tableau de bord (ne collez jamais de cookies dans une conversation avec une IA).
@@ -232,7 +240,9 @@ npm --prefix dashboard ci
 npm --prefix dashboard run check
 npm --prefix dashboard run build
 cargo test --all-targets --locked
-cargo build --locked --bin hycli --example dashboard_fixture
+cargo test --locked --features dashboard-test-support --test codex_launch
+cargo build --locked --bin hycli
+cargo build --locked --features dashboard-test-support --example dashboard_fixture
 node scripts/test-e2e.mjs --full
 ```
 
@@ -251,3 +261,5 @@ Hycli est distribué sous licence [Apache-2.0](../../LICENSE). Utilisez-le uniqu
    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=Hybirdss/Hycli&type=Date" />
  </picture>
 </a>
+
+Pour lire une page JSON ou GraphQL avec un compte vérifié sans installer une action, consultez [Account reads](../ACCOUNT_READ.md): `hycli accounts read ACCOUNT --request REQUEST.json`.

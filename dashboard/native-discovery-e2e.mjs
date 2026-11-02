@@ -1,0 +1,61 @@
+import {chromium,expect} from '@playwright/test';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+import assert from 'node:assert/strict';
+import {startDiscoveryFixture} from './native-discovery-fixture.mjs';
+const root=fileURLToPath(new URL('..',import.meta.url));
+const baseline=process.env.DISCOVERY_BASELINE==='1';
+const en=JSON.parse(await fs.readFile(path.join(root,'dashboard/src/locales/en.json'),'utf8'));
+const reportDir=path.join(root,'test-results/native-discovery');await fs.mkdir(reportDir,{recursive:true});
+const fixture=await startDiscoveryFixture({web:process.env.DISCOVERY_WEB||path.join(root,'web')});
+const count=endpoint=>fixture.evidence().requests.filter(r=>r.path===endpoint).length;
+const checks=[];let browser;
+try {
+  browser=await chromium.launch({headless:true,chromiumSandbox:true,executablePath:process.env.BROWSER_BIN});
+  const context=await browser.newContext();await context.route('**/*',route=>new URL(route.request().url()).origin===fixture.origin?route.continue():route.abort());
+  const page=await context.newPage();page.setDefaultTimeout(10000);const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  const button=key=>page.getByRole('dialog').getByRole('button',{name:en[key],exact:true});
+  const open=async()=>{await page.getByRole('button',{name:en['accounts.add'],exact:true}).first().click();await button('accounts.openLogin').waitFor();};
+  await page.goto(fixture.origin+'/#accounts');await open();
+  if(baseline){
+    await expect.poll(()=>count('/api/browser/find')).toBe(1);
+    await button('accounts.openLogin').click();await button('accounts.companion').click();
+    await expect.poll(()=>count('/api/browser/find'),{timeout:18000}).toBeGreaterThanOrEqual(3);
+    checks.push('Opening account dialog starts native scan; sign-in waiting repeats denied native scans even on companion tab');
+    await page.screenshot({path:path.join(reportDir,'baseline.png')});
+    console.log('EXPECTED RED: passive sign-in waiting repeats denied native discovery on companion tab.');
+  }else{
+    await page.waitForTimeout(500);assert.equal(count('/api/browser/find'),0,'Dialog mount does not access native profiles');
+    await button('accounts.openLogin').click();await button('accounts.companion').click();
+    await page.waitForTimeout(15000);assert.equal(count('/api/browser/find'),0,'Passive waiting never starts native discovery');
+    checks.push('open dialog, open sign-in and companion waiting make no native requests');
+    await button('common.close').click();await open();assert.equal(count('/api/browser/find'),0,'Reopening is passive');
+    await button('accounts.autoFind').last().click();await expect.poll(()=>count('/api/browser/find')).toBe(1);
+    await expect(page.getByRole('alert')).toBeVisible();await page.waitForTimeout(8000);assert.equal(count('/api/browser/find'),1,'Denied explicit scan never retries itself');
+    checks.push('explicit denied discovery makes one request with no automatic retry');
+    fixture.control('Hold native request');await button('accounts.autoFind').last().dblclick();await expect.poll(()=>count('/api/browser/find')).toBe(2);
+    await expect(button('accounts.searching')).toBeDisabled();
+    fixture.control('Empty native result');await button('accounts.recheck').waitFor();assert.equal(count('/api/browser/find'),2);
+    checks.push('pending discovery is disabled and a settled failure permits explicit retry');
+    const setting=page.getByRole('dialog').getByRole('switch',{name:en['settings.nativeDiscovery'],exact:true});
+    await setting.click();await expect(setting).toHaveAttribute('aria-checked','false');await expect(button('accounts.recheck')).toBeDisabled();
+    await setting.click();await expect(setting).toHaveAttribute('aria-checked','true');assert.equal(count('/api/browser/find'),2,'Enabling never starts a scan');
+    checks.push('persistent opt-out disables native discovery; enabling requires a separate explicit scan');
+    fixture.control('Hold native request');await button('accounts.recheck').dblclick();await expect.poll(()=>count('/api/browser/find')).toBe(3);
+    await button('common.close').click();
+    await expect.poll(()=>fixture.evidence().connections.filter(c=>!c.completed).length).toBe(1);
+    await open();assert.equal(count('/api/browser/find'),3,'Closing cancels the request; reopening is passive');
+    await expect(page.getByRole('alert')).toHaveCount(0);
+    fixture.control('Empty native result');
+    checks.push('closing a pending discovery closes its real HTTP response; reopening neither retries nor shows a cancellation error');
+    await button('accounts.openLogin').click();await button('accounts.companion').click();await button('browser.connect').click();
+    fixture.control('Show verified account');await expect(page.getByRole('dialog')).toHaveCount(0);
+    assert.equal(count('/api/browser/find'),3);assert.equal(count('/api/browser/select'),1);assert.equal(count('/api/sites/prepare'),1);
+    checks.push('verified companion snapshot continues once without native discovery or reauthentication');
+    await page.screenshot({path:path.join(reportDir,'head.png')});
+    console.log('PASS: passive connection waiting avoids native scans; explicit discovery and verified companion continuation remain usable.');
+  }
+  assert.deepEqual(errors,[]);await fs.writeFile(path.join(reportDir,baseline?'baseline.json':'head.json'),JSON.stringify({result:baseline?'expected-failure-reproduced':'passed',checks,...fixture.evidence()},null,2));
+  await context.close();
+}finally{await browser?.close();await fixture.close();}

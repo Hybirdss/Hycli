@@ -11,9 +11,9 @@ node scripts/build.mjs
 node scripts/package.mjs
 npm install --prefix .cache/mcpb --no-save "@anthropic-ai/mcpb@2.1.2"
 node scripts/mcpb.mjs
-node scripts/smoke-mcpb.mjs dist/artifacts/hycli-mcp-0.1.0-linux-x64.mcpb
+node scripts/smoke-mcpb.mjs dist/artifacts/hycli-mcp-0.1.1-linux-x64.mcpb
 node scripts/package.mjs --source
-node scripts/smoke-package.mjs dist/artifacts/hycli-0.1.0-linux-x64.tar.gz
+node scripts/smoke-package.mjs dist/artifacts/hycli-0.1.1-linux-x64.tar.gz
 ```
 
 Use the archives matching the current native platform for both smoke commands. Archives and their SHA-256 sidecars are under `dist/artifacts/`. Each archive also includes checksums for its individual files. `*.manifest.json` records the exact packaged file list. `node scripts/mcpb.mjs` wraps that archive into the MCP bundle the official registry links to; see [REGISTRY.md](REGISTRY.md) for the registry entry, the measured checks and the publish order.
@@ -25,6 +25,12 @@ Packaging requires GNU tar or bsdtar (libarchive). Archive ownership is normaliz
 The smoke script extracts the package into a new directory, checks every checksum, starts the CLI and embedded dashboard with fresh data, loads the built assets, initializes MCP and checks that no sites or accounts are preinstalled. The runtime PATH contains only the extracted package directory. Node and the archive utility are test tools, not runtime dependencies.
 
 ## Native CI and publication
+
+### v0.1.1 native browser acceptance exception
+
+The user explicitly waived native browser acceptance for v0.1.1 on 2026-10-29 while retaining the #54 authentication fix. Native private-file handoff, authenticated cross-origin shutdown rejection, saved-settings persistence through restart, and browser Quit are **NOT RUN and unverified**, not passed. The workflow runs the non-browser desktop lifecycle check and records this exception separately. The explicit `--browser` smoke request remains fail-closed; the exception does not authorize running a denied transport or weakening authentication.
+
+Release notes must disclose these four unverified criteria. All six native builds, package and installer checks, actual CLI/MCP smoke, independent final-source review, and source/artifact integrity remain required. Synthetic browser fixtures are separate coverage. This exception is specific to v0.1.1 and must be reconsidered before a later release.
 
 The verification workflow defines native x64 and ARM64 jobs on Linux, macOS and Windows. Each job builds its own executable and checks its extracted package. Linux x64 additionally runs the full browser fixture suite. A workflow definition is not evidence that a runner passed: use the actual CI result for each published platform.
 

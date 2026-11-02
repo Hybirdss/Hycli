@@ -16,6 +16,62 @@ use super::{
 };
 
 impl StateStore {
+    /// Configuration intent metadata is not live account verification. Keep its
+    /// tombstone after removal so work in another process cannot restore a provider.
+    pub(crate) fn provider_revision(&self, id: &str) -> AppResult<u64> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| AppError::api("internal", 500))?;
+        let value: Option<String> = conn
+            .query_row(
+                "SELECT value FROM state_meta WHERE key = ?1",
+                params![format!("provider_revision:{id}")],
+                |row| row.get(0),
+            )
+            .optional()?;
+        value
+            .map(|value| {
+                value
+                    .parse::<u64>()
+                    .map_err(|_| AppError::api("data_invalid", 500))
+            })
+            .transpose()
+            .map(|value| value.unwrap_or_default())
+    }
+    pub(crate) fn advance_provider_revision(&self, id: &str) -> AppResult<u64> {
+        let mut conn = self
+            .conn
+            .lock()
+            .map_err(|_| AppError::api("internal", 500))?;
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let key = format!("provider_revision:{id}");
+        let value: Option<String> = tx
+            .query_row(
+                "SELECT value FROM state_meta WHERE key = ?1",
+                params![key],
+                |row| row.get(0),
+            )
+            .optional()?;
+        let revision = value
+            .map(|value| {
+                value
+                    .parse::<u64>()
+                    .map_err(|_| AppError::api("data_invalid", 500))
+            })
+            .transpose()?
+            .unwrap_or_default()
+            .checked_add(1)
+            .ok_or_else(|| AppError::api("data_invalid", 500))?;
+        tx.execute(
+            "INSERT INTO state_meta (key, value) VALUES (?1, ?2)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            params![key, revision.to_string()],
+        )?;
+        tx.commit()?;
+        Ok(revision)
+    }
+
     pub fn has_job_result(&self, id: &str) -> AppResult<bool> {
         let conn = self
             .conn
@@ -61,7 +117,7 @@ impl StateStore {
                 "SELECT workflows_complete, pinned, title, created_at, updated_at, last_used,
                         account_id, descriptions_json, verified_json, identity_paths_json,
                         observations_json, connection_recipe_json, preparation_json,
-                        icon_type, icon_source, writes, smoke_json
+                        icon_type, icon_source, writes, smoke_json, account_binding_json, account_selection_revision
                  FROM sites WHERE id = ?1",
                 params![id],
                 |r| SiteRow::from_row(r, 0),
@@ -227,6 +283,31 @@ impl StateStore {
         Self::load_single_job(&tx, id, true)
     }
 
+    /// Publish a result and its typed artifact in the same conditional transaction.
+    /// Cancellation wins if it has already made the job terminal.
+    pub(crate) fn complete_action(
+        &self,
+        id: &str,
+        result: Option<serde_json::Value>,
+        artifact: Option<crate::artifacts::CompletedArtifact>,
+    ) -> AppResult<bool> {
+        let mut completed = false;
+        self.update_job(id, |job| {
+            if job.kind != "action" || job.status != "running" {
+                return;
+            }
+            job.status = "completed".into();
+            job.phase = "ready".into();
+            job.finished_at = util::now();
+            job.progress_done = job.progress_total;
+            job.result = result;
+            job.artifact = artifact;
+            job.note("completed", "", 0, "");
+            completed = true;
+        })?;
+        Ok(completed)
+    }
+
     pub fn update_job(&self, id: &str, apply: impl FnOnce(&mut Job)) -> AppResult<()> {
         let mut conn = self
             .conn
@@ -246,7 +327,7 @@ impl StateStore {
     pub(super) fn load_settings(conn: &Connection) -> AppResult<Settings> {
         let settings = conn
             .query_row(
-                "SELECT locale, theme, reduce_motion, notifications, default_provider, engine_path
+                "SELECT locale, theme, reduce_motion, notifications, default_provider, engine_path, native_browser_discovery
                  FROM settings WHERE id = 1",
                 [],
                 |r| {
@@ -257,6 +338,7 @@ impl StateStore {
                         notifications: r.get::<_, i64>(3)? != 0,
                         default_provider: r.get(4)?,
                         engine_path: r.get(5)?,
+                        native_browser_discovery: r.get::<_, i64>(6)? != 0,
                     })
                 },
             )
@@ -278,6 +360,15 @@ impl StateStore {
 
     pub(super) fn load_data(tx: &Transaction<'_>) -> AppResult<Data> {
         let settings = Self::load_settings(tx)?;
+        let mut identity_generations = BTreeMap::new();
+        let mut proof_rows =
+            tx.prepare("SELECT account_id, generation FROM identity_generations")?;
+        for row in
+            proof_rows.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?
+        {
+            let (account, generation) = row?;
+            identity_generations.insert(account, generation);
+        }
 
         let mut providers = BTreeMap::new();
         {
@@ -313,7 +404,7 @@ impl StateStore {
                 "SELECT id, workflows_complete, pinned, title, created_at, updated_at, last_used,
                         account_id, descriptions_json, verified_json, identity_paths_json,
                         observations_json, connection_recipe_json, preparation_json,
-                        icon_type, icon_source, writes, smoke_json
+                        icon_type, icon_source, writes, smoke_json, account_binding_json, account_selection_revision
                  FROM sites ORDER BY id ASC",
             )?;
             let rows = stmt.query_map([], |r| {
@@ -383,7 +474,7 @@ impl StateStore {
                         action_id, action_title, provider, locale, account_id, status, phase,
                         error_code, found_json, started_at, updated_at, finished_at, summary,
                         approval_id, progress_done, progress_total, parent_id,
-                        effect, dispatch_phase, owner_pid
+                        effect, dispatch_phase, owner_pid, artifact_json
                  FROM jobs ORDER BY ord ASC, rowid DESC",
             )?;
             let rows = stmt.query_map([], JobRow::from_row)?;
@@ -396,6 +487,7 @@ impl StateStore {
         }
 
         Ok(Data {
+            identity_generations,
             settings,
             providers,
             sites,
@@ -415,7 +507,7 @@ impl StateStore {
                         action_id, action_title, provider, locale, account_id, status, phase,
                         error_code, found_json, started_at, updated_at, finished_at, summary,
                         approval_id, progress_done, progress_total, parent_id,
-                        effect, dispatch_phase, owner_pid
+                        effect, dispatch_phase, owner_pid, artifact_json
                  FROM jobs WHERE id = ?1",
                 params![id],
                 JobRow::from_row,
@@ -486,15 +578,16 @@ impl StateStore {
     pub(super) fn save_diff(tx: &Transaction<'_>, before: &Data, next: &Data) -> AppResult<()> {
         if next.settings != before.settings {
             tx.execute(
-                "INSERT INTO settings (id, locale, theme, reduce_motion, notifications, default_provider, engine_path)
-                 VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6)
+                "INSERT INTO settings (id, locale, theme, reduce_motion, notifications, default_provider, engine_path, native_browser_discovery)
+                 VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7)
                  ON CONFLICT(id) DO UPDATE SET
                      locale = excluded.locale,
                      theme = excluded.theme,
                      reduce_motion = excluded.reduce_motion,
                      notifications = excluded.notifications,
                      default_provider = excluded.default_provider,
-                     engine_path = excluded.engine_path",
+                     engine_path = excluded.engine_path,
+                     native_browser_discovery = excluded.native_browser_discovery",
                 params![
                     next.settings.locale,
                     next.settings.theme,
@@ -502,6 +595,7 @@ impl StateStore {
                     i64::from(next.settings.notifications),
                     next.settings.default_provider,
                     next.settings.engine_path,
+                    i64::from(next.settings.native_browser_discovery),
                 ],
             )?;
         }
@@ -549,9 +643,9 @@ impl StateStore {
                          id, workflows_complete, pinned, title, created_at, updated_at, last_used,
                          account_id, descriptions_json, verified_json, identity_paths_json,
                          observations_json, connection_recipe_json, preparation_json,
-                         icon_type, icon_source, writes, smoke_json
+                         icon_type, icon_source, writes, smoke_json, account_binding_json, account_selection_revision
                      ) VALUES (
-                         ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18
+                         ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20
                      )
                      ON CONFLICT(id) DO UPDATE SET
                          workflows_complete = excluded.workflows_complete,
@@ -570,7 +664,9 @@ impl StateStore {
                          icon_type = excluded.icon_type,
                          icon_source = excluded.icon_source,
                          writes = excluded.writes,
-                         smoke_json = excluded.smoke_json",
+                         smoke_json = excluded.smoke_json,
+                         account_binding_json = excluded.account_binding_json,
+                         account_selection_revision = excluded.account_selection_revision",
                     params![
                         id,
                         new_row.workflows_complete,
@@ -590,6 +686,8 @@ impl StateStore {
                         new_row.icon_source,
                         new_row.writes,
                         new_row.smoke_json,
+                        new_row.account_binding_json,
+                        new_row.account_selection_revision,
                     ],
                 )?;
             }
@@ -612,6 +710,22 @@ impl StateStore {
                      ON CONFLICT(id) DO UPDATE SET data_json = excluded.data_json",
                     params![id, new_json],
                 )?;
+            }
+        }
+
+        for id in before.identity_generations.keys() {
+            if !next.identity_generations.contains_key(id) || !next.accounts.contains_key(id) {
+                tx.execute(
+                    "DELETE FROM identity_generations WHERE account_id = ?1",
+                    params![id],
+                )?;
+            }
+        }
+        for (id, generation) in &next.identity_generations {
+            if next.accounts.contains_key(id)
+                && before.identity_generations.get(id) != Some(generation)
+            {
+                tx.execute("INSERT INTO identity_generations (account_id, generation) VALUES (?1, ?2) ON CONFLICT(account_id) DO UPDATE SET generation = excluded.generation", params![id, generation])?;
             }
         }
 
@@ -683,6 +797,11 @@ impl StateStore {
         before_notes: Option<&[JobNote]>,
     ) -> AppResult<()> {
         let pending_result = job.result.take();
+        let artifact_json = job
+            .artifact
+            .as_ref()
+            .map(serde_json::to_string)
+            .transpose()?;
         let understanding_json = job
             .understanding
             .as_ref()
@@ -692,7 +811,8 @@ impl StateStore {
         let row_bytes = understanding_json.as_ref().map_or(0, String::len)
             + found_json.len()
             + job.summary.len()
-            + job.intent.len();
+            + job.intent.len()
+            + artifact_json.as_ref().map_or(0, String::len);
         if row_bytes > MAX_PAYLOAD_BYTES {
             return Err(AppError::api("too_large", 413));
         }
@@ -708,11 +828,11 @@ impl StateStore {
                  action_id, action_title, provider, locale, account_id, status, phase,
                  error_code, found_json, started_at, updated_at, finished_at, summary,
                  approval_id, progress_done, progress_total, parent_id,
-                 effect, dispatch_phase, owner_pid
+                 effect, dispatch_phase, owner_pid, artifact_json
              ) VALUES (
                  ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15,
                  ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25,
-                 ?26, ?27, ?28
+                 ?26, ?27, ?28, ?29
              )
              ON CONFLICT(id) DO UPDATE SET
                  ord = excluded.ord,
@@ -744,6 +864,7 @@ impl StateStore {
                      WHEN jobs.dispatch_phase = 'dispatched' THEN 'dispatched'
                      ELSE excluded.dispatch_phase
                  END,
+                 artifact_json = excluded.artifact_json,
                  owner_pid = CASE
                      WHEN excluded.owner_pid != 0 THEN excluded.owner_pid
                      ELSE jobs.owner_pid
@@ -777,6 +898,7 @@ impl StateStore {
                 effect_str,
                 job.dispatch_phase.as_str(),
                 job.owner_pid as i64,
+                artifact_json,
             ],
         )?;
 

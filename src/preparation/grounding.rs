@@ -52,7 +52,9 @@ impl Runtime {
                 ""
             };
             self.job_note(&job.id, "reading", "", 0, "")?;
-            let response = self.read_evidence_page(&raw, account).await;
+            let response = self
+                .read_evidence_page_scoped(&raw, account, Some(job))
+                .await;
             let response = match response {
                 Ok(r) => r,
                 Err(e) => {
@@ -397,6 +399,7 @@ pub(super) fn documented_auth(doc: &Value, site: &str) -> AuthRequirements {
                 }
                 let id = format!("website-key-{}", &util::hash(name.as_bytes())[..8]);
                 Some(crate::spec::AuthStrategy {
+                    oauth_refresh: None,
                     name: id.clone(),
                     kind: "header".into(),
                     header: header.into(),

@@ -49,3 +49,6 @@
 /dashboard/inspect-ui.mjs
 /dashboard/progress-visual.mjs
 /dashboard/visual-fixture.mjs
+
+# Synthetic accepted-command browser evidence
+/test-results/accepted-command/

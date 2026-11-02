@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Hybirdss/Hycli/releases/tag/v0.1.0">Pobierz (Windows · macOS · Linux)</a> ·
+  <a href="https://github.com/Hybirdss/Hycli/releases/tag/v0.1.1">Pobierz (Windows · macOS · Linux)</a> ·
   <a href="https://github.com/Hybirdss/Hycli/issues">Uzyskaj pomoc na GitHubie</a> ·
   <a href="#try-it-in-30-seconds">Wypróbuj w 30 sekund</a> ·
   <a href="#get-started">Pierwsze kroki</a> ·
@@ -59,23 +59,27 @@ Hycli jest dostarczany jako pojedynczy natywny plik binarny zawierający zarówn
 
 ### Pobieranie i uruchamianie (Windows, macOS, Linux)
 
-Pobierz natywny instalator lub archiwum przenośne dla swojego systemu z **[GitHub Releases (v0.1.0)](https://github.com/Hybirdss/Hycli/releases/tag/v0.1.0)**:
+Pobierz natywny instalator lub archiwum przenośne dla swojego systemu z **[GitHub Releases (v0.1.1)](https://github.com/Hybirdss/Hycli/releases/tag/v0.1.1)**:
 
 | System | Architektura | Natywny instalator | Archiwum przenośne | Jak uruchomić |
 | --- | --- | --- | --- | --- |
-| **Windows 10/11** | x64 i ARM64 | `hycli-0.1.0-win32-*-setup.exe` | `hycli-0.1.0-win32-*.tar.gz` | Uruchom `*-setup.exe` (dodaje `hycli` do zmiennej `PATH` użytkownika i menu Start), a następnie otwórz **Hycli** lub wpisz `hycli open` w PowerShell. |
-| **macOS 13+** | Apple Silicon (`arm64`) i Intel (`x64`) | `hycli-0.1.0-darwin-*.dmg` | `hycli-0.1.0-darwin-*.tar.gz` | Otwórz plik `.dmg`, przeciągnij **Hycli.app** do **Applications** i uruchom aplikację (automatycznie dowiązuje `hycli` w `~/.local/bin`). |
-| **Linux** | x64 i ARM64 | `hycli-0.1.0-linux-*.deb` | `hycli-0.1.0-linux-*.tar.gz` | Zainstaluj pakiet `.deb` (`sudo apt install ./hycli-*.deb`) lub rozpakuj `.tar.gz` i uruchom `./install.sh`, a następnie wpisz `hycli open`. |
+| **Windows 10/11** | x64 i ARM64 | `hycli-0.1.1-win32-*-setup.exe` | `hycli-0.1.1-win32-*.tar.gz` | Uruchom `*-setup.exe` (dodaje `hycli` do zmiennej `PATH` użytkownika i menu Start), a następnie otwórz **Hycli** lub wpisz `hycli open` w PowerShell. |
+| **macOS 13+** | Apple Silicon (`arm64`) i Intel (`x64`) | `hycli-0.1.1-darwin-*.dmg` | `hycli-0.1.1-darwin-*.tar.gz` | Otwórz plik `.dmg`, przeciągnij **Hycli.app** do **Applications** i uruchom aplikację (automatycznie dowiązuje `hycli` w `~/.local/bin`). |
+| **Linux** | x64 i ARM64 | `hycli-0.1.1-linux-*.deb` | `hycli-0.1.1-linux-*.tar.gz` | Zainstaluj pakiet `.deb` (`sudo apt install ./hycli-*.deb`) lub rozpakuj `.tar.gz` i uruchom `./install.sh`, a następnie wpisz `hycli open`. |
+
+**Opublikowana wersja v0.1.0:** Przenośne archiwa dla Windows i macOS nie zawierają skryptów instalacyjnych. Zamiast nich użyj instalatora Windows `*-setup.exe` lub macOS `.dmg` z wydania podlinkowanego powyżej.
 
 <details>
 <summary><strong>Szybka instalacja z terminala i budowanie ze źródeł</strong></summary>
 
+Poniższe polecenia wymagają archiwum zawierającego `install.sh` (Linux/macOS) lub `install.ps1` (Windows), na przykład pakietu zbudowanego z aktualnych źródeł.
+
 **Archiwum przenośne Linux / macOS:**
 
 ```sh
-sha256sum -c hycli-0.1.0-*.tar.gz.sha256   # na macOS: shasum -a 256 -c
-tar -xzf hycli-0.1.0-*.tar.gz
-cd hycli-0.1.0-*
+sha256sum -c hycli-0.1.1-*.tar.gz.sha256   # na macOS: shasum -a 256 -c
+tar -xzf hycli-0.1.1-*.tar.gz
+cd hycli-0.1.1-*
 ./install.sh
 hycli open
 ```
@@ -83,8 +87,8 @@ hycli open
 **Archiwum przenośne Windows PowerShell:**
 
 ```powershell
-tar -xzf hycli-0.1.0-win32-x64.tar.gz
-cd hycli-0.1.0-win32-x64
+tar -xzf hycli-0.1.1-win32-x64.tar.gz
+cd hycli-0.1.1-win32-x64
 powershell -ExecutionPolicy Bypass -File .\install.ps1
 hycli open
 ```
@@ -180,6 +184,8 @@ Połączenie logowania Codex działa w tymczasowym wątku z wyłączonym dostęp
 
 Dodaj Hycli do klienta MCP (**Agenci programistyczni → Zobacz ustawienia połączenia** pokazuje dokładną ścieżkę dla Twojego systemu):
 
+Poniższy przykład dotyczy klientów obsługujących JSON `mcpServers`. Dla ChatGPT i Claude zobacz [konfigurację aplikacji desktopowych](../../README.md#use-hycli-with-your-ai); to osobna konfiguracja, niezależna od logowania do dostawcy AI w Hycli.
+
 ```json
 {
   "mcpServers": {
@@ -210,6 +216,8 @@ hycli check SITE
 <a id="browser-sign-in"></a>
 ## Logowanie przez przeglądarkę
 
+Natywne wykrywanie jest opcjonalne i domyślnie wyłączone w macOS, również po aktualizacji bez zapisanej decyzji. Ustawienie obejmuje CLI i MCP korzystające z tego samego katalogu danych; istniejące konta i połączenia przeglądarki pozostają dostępne. [Native discovery and recovery (English)](../../agent/AGENTS.md#native-discovery-choice-and-recovery).
+
 Hycli wykrywa lokalne profile przeglądarek Chrome, Chromium, Edge, Brave, Vivaldi, Arc, Whale i Firefox (oraz zainstalowane lokalnie binaria ukrytego Chromium) w systemach Windows, macOS i Linux, importując do lokalnego sejfu wyłącznie sesję żądanej strony. Profile współdzielące to samo zweryfikowane konto na stronie są automatycznie łączone.
 
 Jeśli sesja jest zablokowana przez szyfrowanie Windows App-Bound, prywatne kontenery lub niezaimportowaną przeglądarkę, użyj **Konta → Połącz konto**, aby zalogować się przez przeglądarkę, połącz [rozszerzenie towarzyszące przeglądarki](../../browser-companion/guide.html) albo zaimportuj plik cookie JSON/Netscape w panelu (nigdy nie wklejaj plików cookie do czatu z AI).
@@ -232,7 +240,9 @@ npm --prefix dashboard ci
 npm --prefix dashboard run check
 npm --prefix dashboard run build
 cargo test --all-targets --locked
-cargo build --locked --bin hycli --example dashboard_fixture
+cargo test --locked --features dashboard-test-support --test codex_launch
+cargo build --locked --bin hycli
+cargo build --locked --features dashboard-test-support --example dashboard_fixture
 node scripts/test-e2e.mjs --full
 ```
 
@@ -251,3 +261,5 @@ Hycli jest udostępniany na licencji [Apache-2.0](../../LICENSE). Używaj go wy�
    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=Hybirdss/Hycli&type=Date" />
  </picture>
 </a>
+
+Aby odczytać stronę JSON lub GraphQL przy użyciu zweryfikowanego konta, zobacz [Account reads](../ACCOUNT_READ.md): `hycli accounts read ACCOUNT --request REQUEST.json`.

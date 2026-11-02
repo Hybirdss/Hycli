@@ -389,3 +389,138 @@ fn anthropic_status_errors_remain_safe_without_json_and_spend_caps_are_not_trans
         "ai_billing_error"
     );
 }
+
+#[test]
+fn provider_output_failures_have_actionable_finite_codes() {
+    for (provider, value, expected) in [
+        (
+            "anthropic",
+            json!({"stop_reason":"max_tokens","content":[]}),
+            "ai_response_incomplete",
+        ),
+        (
+            "openai",
+            json!({"status":"incomplete"}),
+            "ai_response_incomplete",
+        ),
+        (
+            "zai",
+            json!({"choices":[{"finish_reason":"length"}]}),
+            "ai_response_incomplete",
+        ),
+        (
+            "anthropic",
+            json!({"stop_reason":"unexpected-private-value"}),
+            "ai_response_invalid",
+        ),
+        (
+            "openai",
+            json!({"status":"completed","output":[]}),
+            "ai_response_invalid",
+        ),
+    ] {
+        let error = extract_text(provider, &value).unwrap_err();
+        assert_eq!(error.public_code, expected);
+        assert!(!format!("{error:?}").contains("private-value"));
+    }
+    for text in ["private-output", "{\"private-output\":"] {
+        let error = decode_json::<Value>(text).unwrap_err();
+        assert_eq!(error.public_code, "ai_response_invalid");
+        assert!(!format!("{error:?}").contains("private-output"));
+    }
+}
+
+#[tokio::test]
+async fn unreadable_provider_error_body_preserves_rate_limit_status() {
+    let router = Router::new().route(
+        "/messages",
+        post(|| async {
+            (
+                axum::http::StatusCode::TOO_MANY_REQUESTS,
+                "x".repeat(8 * 1024 * 1024 + 1),
+            )
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let origin = format!("http://{}", listener.local_addr().unwrap());
+    let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+    let mut client = Client::new(Arc::new(codex::Codex::new(
+        std::env::temp_dir().join("synthetic-ai-body-test"),
+    )));
+    client.origins.insert("anthropic".into(), origin);
+    let error = client
+        .complete(
+            &Config {
+                provider: "anthropic".into(),
+                model: "fixture".into(),
+                key: "synthetic-key".into(),
+            },
+            "fixture",
+            "fixture",
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(error.public_code, "rate_limited");
+    assert_eq!(error.http_status, 429);
+    server.abort();
+}
+
+#[tokio::test]
+async fn interrupted_response_body_keeps_known_status_and_never_leaks_body() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    for (status, expected) in [
+        (200, "ai_connection_failed"),
+        (401, "credentials_invalid"),
+        (429, "rate_limited"),
+        (529, "rate_limited"),
+    ] {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = Vec::new();
+            let mut buffer = [0; 4096];
+            loop {
+                let read = socket.read(&mut buffer).await.unwrap();
+                assert!(read > 0);
+                request.extend_from_slice(&buffer[..read]);
+                if let Some(end) = request.windows(4).position(|window| window == b"\r\n\r\n") {
+                    let headers = String::from_utf8_lossy(&request[..end]).to_ascii_lowercase();
+                    let length = headers
+                        .lines()
+                        .find_map(|line| line.strip_prefix("content-length: "))
+                        .unwrap()
+                        .parse::<usize>()
+                        .unwrap();
+                    if request.len() >= end + 4 + length {
+                        break;
+                    }
+                }
+            }
+            let response = format!(
+                "HTTP/1.1 {status} Synthetic\r\nContent-Type: application/json\r\nContent-Length: 4096\r\nConnection: close\r\n\r\nprivate-provider-body"
+            );
+            socket.write_all(response.as_bytes()).await.unwrap();
+            socket.shutdown().await.unwrap();
+        });
+        let mut client = Client::new(Arc::new(codex::Codex::new(
+            std::env::temp_dir().join("synthetic-ai-stream-test"),
+        )));
+        client.origins.insert("anthropic".into(), origin);
+        let error = client
+            .complete(
+                &Config {
+                    provider: "anthropic".into(),
+                    model: "fixture".into(),
+                    key: "synthetic-private-key".into(),
+                },
+                "fixture",
+                "fixture",
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(error.public_code, expected, "status {status}");
+        assert!(!format!("{error:?}").contains("private-"));
+        server.await.unwrap();
+    }
+}

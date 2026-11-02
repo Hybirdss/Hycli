@@ -37,6 +37,10 @@ impl StateStore {
         } else {
             path.with_extension("json")
         };
+        // A busy timeout cannot resolve every competing WAL/schema lock promotion.
+        // Serialize bootstrap across connections and processes before opening SQLite;
+        // release the guard after migration/recovery, not when the store is dropped.
+        let _startup = util::file_lock(&db_path.with_extension("db.startup.lock"), false)?;
         let conn = Connection::open(&db_path)?;
         conn.busy_timeout(Duration::from_secs(5))?;
         #[cfg(unix)]

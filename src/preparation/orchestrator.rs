@@ -38,7 +38,18 @@ impl Runtime {
             environment.browsers.len(),
             "",
         )?;
-        let mut account_id = self.browser_account_for(&job.site_id, &job.url)?;
+        let mut account_id = if let Some(selection) = job
+            .account_selection
+            .as_ref()
+            .filter(|s| !s.revision.is_empty())
+        {
+            if !selection.account_id.is_empty() {
+                self.job_credential(job, &selection.account_id, &job.url)?;
+            }
+            selection.account_id.clone()
+        } else {
+            self.browser_account_for(&job.site_id, &job.url)?
+        };
         self.state
             .update_job(&job.id, |work| work.account_id = account_id.clone())?;
         self.job_progress(&job.id, "connect", 1)?;
@@ -546,7 +557,18 @@ impl Runtime {
                     kind: "Actual agent tool result".into(),
                     content: json!({"tool":call.tool,"arguments":call.arguments,"result":content}),
                 });
-                let selected = self.browser_account_for(&job.site_id, &job.url)?;
+                let selected = if let Some(selection) = job
+                    .account_selection
+                    .as_ref()
+                    .filter(|s| !s.revision.is_empty())
+                {
+                    if !selection.account_id.is_empty() {
+                        self.job_credential(job, &selection.account_id, &job.url)?;
+                    }
+                    selection.account_id.clone()
+                } else {
+                    self.browser_account_for(&job.site_id, &job.url)?
+                };
                 if selected != account_id {
                     account_id = selected;
                     self.state
@@ -651,11 +673,11 @@ impl Runtime {
         role: &str,
         prompt: Value,
     ) -> AppResult<Plan> {
-        self.agent_progress(&job.id, role, "queued", 0, "")?;
+        self.agent_progress(&job.id, role, "queued", 0, "", None)?;
         let result = self
             .ai
             .complete_when_ready(config, SYSTEM, &prompt.to_string(), || {
-                self.agent_progress(&job.id, role, "running", 0, "")
+                self.agent_progress(&job.id, role, "running", 0, "", None)
             })
             .await;
         if std::env::var_os("HYCLI_PREPARATION_TRACE").is_some() {
@@ -682,8 +704,9 @@ impl Runtime {
                 "completed",
                 plan.spec.as_ref().map_or(0, |s| s.operations.len()),
                 &plan.note,
+                None,
             )?,
-            Err(_) => self.agent_progress(&job.id, role, "failed", 0, "")?,
+            Err(error) => self.agent_progress(&job.id, role, "failed", 0, "", Some(error))?,
         }
         plan
     }

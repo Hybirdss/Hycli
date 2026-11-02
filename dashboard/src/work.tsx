@@ -18,7 +18,7 @@ function Elapsed({ job }: { job: Job }) {
 }
 export function WorkNotes({ job, limit }: { job: Job; limit?: number }) {
   const { t, locale } = useI18n(); const notes = job.notes || []; const shown = limit ? notes.slice(-limit) : notes;
-  const text = (note: JobNote) => note.code === 'agent_summary' ? note.message : t(`activity.note.${note.code}`, { count: note.count });
+  const text = (note: JobNote) => note.code.startsWith('agent_failed_') ? t(`errors.${note.code.slice('agent_failed_'.length)}`) : note.code === 'agent_summary' ? note.message : t(`activity.note.${note.code}`, { count: note.count });
   return <ol className="work-notes">{shown.length ? shown.map(note => <li key={note.seq}><span className={`note-dot ${note.code === 'completed' ? 'note-dot--done' : ''}`} /><div><p>{text(note)}</p><span>{note.agent && <strong>{t(`activity.role.${note.agent}`)} · </strong>}<time dateTime={note.at}>{new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date(note.at))}</time></span></div></li>) : <li className="notes-empty">{t('activity.noNotes')}</li>}</ol>;
 }
 export function Progress({ job, onCancel, onOpen, compact = false }: { job: Job; onCancel?: () => void; onOpen?: () => void; compact?: boolean }) {

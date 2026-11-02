@@ -1,7 +1,7 @@
 use super::{
     actions,
     args::{AuthCmd, Deps, SpecCmd},
-    dispatch::{blocked_err, open_kb, runner},
+    dispatch::{open_kb, runner},
 };
 use crate::{
     apperr::{self, AppError},
@@ -73,21 +73,21 @@ pub(super) async fn spec_cmd(deps: Deps, cmd: SpecCmd, emit: &Emitter) -> Result
             let sp = load_file_spec(&file)?;
             let issues = sp.validate();
             if !issues.is_empty() {
-                emit.data(&serde_json::json!({"status": format!("{} issues", issues.len()), "issues": issues}));
+                emit.data(&serde_json::json!({"status": format!("{} issues", issues.len()), "issues": issues}))?;
                 return Err(apperr::spec(
                     "Spec validation failed",
                     "Fix the reported issues.",
                 ));
             }
             crate::policy::validate_spec(&sp)?;
-            emit.data(&serde_json::json!({"status": "ok", "site": sp.site.name, "ops": sp.operations.len()}));
+            emit.data(&serde_json::json!({"status": "ok", "site": sp.site.name, "ops": sp.operations.len()}))?;
             Ok(())
         }
         SpecCmd::Install { file } => {
             let sp = load_file_spec(&file)?;
             let issues = sp.validate();
             if !issues.is_empty() {
-                emit.data(&serde_json::json!({"issues": issues}));
+                emit.data(&serde_json::json!({"issues": issues}))?;
                 return Err(apperr::spec(
                     "Validation failed; installation aborted",
                     "Fix the reported issues.",
@@ -111,7 +111,7 @@ pub(super) async fn spec_cmd(deps: Deps, cmd: SpecCmd, emit: &Emitter) -> Result
                 "site": sp.site.name,
                 "ops": sp.operations.len(),
                 "user_guide": user_guide,
-            }));
+            }))?;
             Ok(())
         }
         SpecCmd::Ls => {
@@ -149,7 +149,7 @@ pub(super) async fn spec_cmd(deps: Deps, cmd: SpecCmd, emit: &Emitter) -> Result
                     })
                 })
                 .collect();
-            emit.data(&rows);
+            emit.data(&rows)?;
             Ok(())
         }
         SpecCmd::Rm { site } => {
@@ -165,10 +165,27 @@ pub(super) async fn spec_cmd(deps: Deps, cmd: SpecCmd, emit: &Emitter) -> Result
                 true,
             )?
             .remove_site(&site)?;
-            emit.data(&serde_json::json!({"removed": site}));
+            emit.data(&serde_json::json!({"removed": site}))?;
             Ok(())
         }
     }
+}
+
+fn oauth_auth_strategy(
+    site: &str,
+    key: &str,
+) -> Result<Option<crate::spec::AuthStrategy>, AppError> {
+    if !crate::util::valid_id(site)
+        || !crate::platform::specs_dir()
+            .join(format!("{site}.yaml"))
+            .exists()
+    {
+        return Ok(None);
+    }
+    Ok(find_spec(site)?
+        .auth
+        .into_iter()
+        .find(|auth| auth.name == key && auth.oauth_refresh.is_some()))
 }
 
 pub(super) fn auth_cmd(cmd: AuthCmd, emit: &Emitter) -> Result<(), AppError> {
@@ -178,6 +195,7 @@ pub(super) fn auth_cmd(cmd: AuthCmd, emit: &Emitter) -> Result<(), AppError> {
             let (site, key) = r#ref.split_once('/').ok_or_else(|| {
                 apperr::usage("Format must be <site>/<key>", "Example: httpbin/token")
             })?;
+            let from_argument = value.is_some();
             let v = match value {
                 Some(v) => v,
                 None => {
@@ -193,7 +211,22 @@ pub(super) fn auth_cmd(cmd: AuthCmd, emit: &Emitter) -> Result<(), AppError> {
                     "Provide via stdin or --value.",
                 ));
             }
-            if let Ok(core) = crate::runtime::Runtime::open(
+            let oauth = oauth_auth_strategy(site, key)?;
+            if oauth.is_some() && v.len() > 65536 {
+                return Err(AppError::api("oauth_configuration_invalid", 400));
+            }
+            let typed_oauth = serde_json::from_str::<serde_json::Value>(&v)
+                .ok()
+                .is_some_and(|v| {
+                    v.get("kind").and_then(serde_json::Value::as_str) == Some("oauth_refresh")
+                });
+            if oauth.is_some() && from_argument {
+                return Err(AppError::api("oauth_stdin_required", 400));
+            }
+            if oauth.is_none() && typed_oauth {
+                return Err(AppError::api("oauth_configuration_invalid", 400));
+            }
+            match crate::runtime::Runtime::open(
                 &crate::platform::data_dir(),
                 Some(crate::platform::specs_dir()),
                 None,
@@ -201,25 +234,39 @@ pub(super) fn auth_cmd(cmd: AuthCmd, emit: &Emitter) -> Result<(), AppError> {
                 false,
                 true,
             ) {
-                if core.set_website_credential(site, key, Some(&v)).is_err() {
-                    st.set(site, key, &v)?;
-                    let _ = core.policy.invalidate(Some(site), None);
+                Ok(core) => {
+                    if let Some(auth) = oauth {
+                        core.set_website_credential(site, &auth.name, Some(&v))?;
+                    } else if core.set_website_credential(site, key, Some(&v)).is_err() {
+                        st.set(site, key, &v)?;
+                        let _ = core.policy.invalidate(Some(site), None);
+                    }
                 }
-            } else {
-                st.set(site, key, &v)?;
+                Err(error) if oauth.is_some() => return Err(error),
+                Err(_) => st.set(site, key, &v)?,
             }
-            emit.data(&serde_json::json!({"stored": r#ref}));
+            emit.data(&serde_json::json!({"stored": r#ref}))?;
             Ok(())
         }
         AuthCmd::Ls => {
-            emit.data(&st.keys());
+            emit.data(&st.keys())?;
             Ok(())
         }
         AuthCmd::Rm { r#ref } => {
             let (site, key) = r#ref.split_once('/').ok_or_else(|| {
                 apperr::usage("Format must be <site>/<key>", "Example: httpbin/token")
             })?;
-            if site == "accounts" || site == "providers" {
+            if let Some(auth) = oauth_auth_strategy(site, key)? {
+                let core = crate::runtime::Runtime::open(
+                    &crate::platform::data_dir(),
+                    Some(crate::platform::specs_dir()),
+                    None,
+                    false,
+                    false,
+                    true,
+                )?;
+                core.set_website_credential(site, &auth.name, None)?;
+            } else if site == "accounts" || site == "providers" {
                 let core = crate::runtime::Runtime::open(
                     &crate::platform::data_dir(),
                     Some(crate::platform::specs_dir()),
@@ -248,7 +295,7 @@ pub(super) fn auth_cmd(cmd: AuthCmd, emit: &Emitter) -> Result<(), AppError> {
             } else {
                 st.delete(site, key)?;
             }
-            emit.data(&serde_json::json!({"removed": r#ref}));
+            emit.data(&serde_json::json!({"removed": r#ref}))?;
             Ok(())
         }
     }
@@ -321,7 +368,7 @@ pub(super) async fn capture_run(
     emit.data(
         &serde_json::json!({"clusters": clusters.len(), "recorded": recorded, "artifact_sha": short,
         "draft": out_path, "next": "Verify replay with hycli try, then mark gap done"}),
-    );
+    )?;
     Ok(())
 }
 
@@ -349,10 +396,8 @@ pub(super) async fn try_run(
         sp.op(&op)?;
         runner.run_op(&sp, &op, &args).await?
     };
-    emit.data(&res);
-    if res.defense != "none" && !res.defense.is_empty() {
-        return Err(blocked_err(&res.defense, &res.signal));
-    }
+    res.ensure_success()?;
+    emit.data(&res)?;
     Ok(())
 }
 
@@ -370,7 +415,7 @@ pub(super) async fn check_run(
     for site in sites {
         reports.push(core.check_site(&site).await?);
     }
-    emit.data(&reports);
+    emit.data(&reports)?;
     // Exit status follows the most actionable verdict, so scripts can branch without parsing.
     let worst = [
         "signed_out",
@@ -451,7 +496,7 @@ pub(super) async fn site_run(
     let (result, _) = runner(&deps)?
         .run_op_for_account(&sp, op, &args.inputs, args.account.as_deref())
         .await?;
-    emit.data(&result.mapped.or(result.body));
+    emit.data(&result.output())?;
     Ok(())
 }
 
@@ -482,7 +527,7 @@ pub(super) async fn wait_preparation(
                     }
                 }
                 job.url.clear();
-                emit.data(&job);
+                emit.data(&job)?;
                 return job_outcome(&job);
             }
             tokio::time::sleep(std::time::Duration::from_millis(750)).await;
@@ -505,7 +550,8 @@ pub(super) fn job_outcome(job: &crate::state::Job) -> Result<(), AppError> {
             };
             let status = match code {
                 "auth_required" | "identity_unavailable" => 401,
-                "blocked_by_site" | "site_rate_limited" => 429,
+                "api_denied" => 403,
+                "blocked_by_site" | "site_rate_limited" | "rate_limited" => 429,
                 _ => 500,
             };
             Err(AppError::api(code, status))

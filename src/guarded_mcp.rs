@@ -27,11 +27,20 @@ impl Server {
     }
     pub(crate) fn tools(&self) -> AppResult<Vec<Tool>> {
         let language = self.core.state.settings()?.locale;
+        self.tools_from_snapshot(self.core.sites(&language)?)
+    }
+    pub(crate) fn tools_from_snapshot(
+        &self,
+        sites: Vec<crate::runtime::SiteView>,
+    ) -> AppResult<Vec<Tool>> {
         let mut out = vec![];
-        for site in self.core.sites(&language)? {
+        for site in sites {
             if self.allowed(&site.id).is_err() {
                 continue;
             }
+            // Supplementary help must not invalidate the already captured listing
+            // if an installed definition changes concurrently. Execution revalidates.
+            let definition = self.core.spec(&site.id).ok();
             // A read-only website offers its change actions to no agent.
             for action in site
                 .actions
@@ -63,17 +72,34 @@ impl Server {
                 let schema = json!({"type":"object","properties":properties,"required":required,"additionalProperties":false});
                 let schema: JsonObject = serde_json::from_value(schema)?;
                 let name = format!("{}_{}", site.id, action.id);
-                let description = format!(
+                let file_output = definition
+                    .as_ref()
+                    .and_then(|spec| spec.op(&action.id).ok())
+                    .and_then(|op| op.response.as_ref())
+                    .is_some_and(|response| response.format == "file");
+                let mut description = format!(
                     "{} · {}. {} {}",
                     site.title,
                     action.title,
                     action.description,
-                    if action.effect == Effect::Read {
+                    if action.effect == Effect::Read && file_output {
+                        "Streams a file read."
+                    } else if action.effect == Effect::Read {
                         "Runs a bounded read."
                     } else {
                         "Runs a website change."
                     }
                 );
+                if (file_output
+                    || definition
+                        .as_ref()
+                        .and_then(|spec| spec.op(&action.id).ok())
+                        .is_some_and(|op| op.pagination.is_some()))
+                    && !action.output.is_empty()
+                {
+                    description.push(' ');
+                    description.push_str(&action.output);
+                }
                 out.push(
                     Tool::new(name, description, Arc::new(schema)).with_annotations(
                         ToolAnnotations::new()
@@ -88,14 +114,14 @@ impl Server {
         let result_schema: JsonObject = serde_json::from_value(
             json!({"type":"object","properties":{"id":{"type":"string","description":"Job ID or approval ID returned by a website action"}},"required":["id"],"additionalProperties":false}),
         )?;
-        out.push(Tool::new("hycli_result","Read a website action's status and sanitized result, including after the user approves it in the dashboard.",Arc::new(result_schema)).with_annotations(ToolAnnotations::new().read_only(true).destructive(false).idempotent(true).open_world(false)));
+        out.push(Tool::new("hycli_result","Read a website action's status and sanitized result, including after dashboard approval. For a completed file action, use its typed artifact, never file-shaped result/body JSON. Automatically list/explain each file from metadata; distinguish completion, checked availability and actual inspection. Paths belong to the Hycli host; remote access is not assumed.",Arc::new(result_schema)).with_annotations(ToolAnnotations::new().read_only(true).destructive(false).idempotent(true).open_world(false)));
         let check_schema: JsonObject = serde_json::from_value(
             json!({"type":"object","properties":{"site":{"type":"string","description":"Installed website ID; omit to check every website"}},"additionalProperties":false}),
         )?;
         out.push(Tool::new("hycli_check","Replay each website's recorded reads without AI. Tells an expired sign-in (verdict signed_out: ask the user to reconnect) apart from a changed website (site_changed: request a repair) before you retry anything. Never runs a change.",Arc::new(check_schema)).with_annotations(ToolAnnotations::new().read_only(true).destructive(false).idempotent(true).open_world(true)));
-        out.push(Tool::new("hycli_activity", "Read current work, completed stages, agent status and plain-language work notes. No credential values or raw request details.", Arc::new(serde_json::from_value(json!({"type":"object","properties":{},"additionalProperties":false}))?)).with_annotations(ToolAnnotations::new().read_only(true).destructive(false).idempotent(true).open_world(false)));
+        out.push(Tool::new("hycli_activity", "Read current work, available recent action history, completed stages, agent status and work notes. Use completed action jobs with typed artifacts to list/explain files for the current task; fetch details through hycli_result or hycli_job when available. Include artifact/job IDs, metadata-based purpose, source/action, filename, host-local path, type, actual size and creation time; distinguish completion, availability and inspection. Not an exhaustive permanent catalogue: history clearing/pruning can omit records while files remain. No credential values or raw request details.", Arc::new(serde_json::from_value(json!({"type":"object","properties":{},"additionalProperties":false}))?)).with_annotations(ToolAnnotations::new().read_only(true).destructive(false).idempotent(true).open_world(false)));
         if !self.sites_only {
-            out.push(Tool::new("hycli_run", "Run an installed website action by ID, including actions prepared during this connection. Inspect hycli_sites for typed inputs.", Arc::new(serde_json::from_value(json!({"type":"object","properties":{"site":{"type":"string"},"action":{"type":"string"},"inputs":{"type":"object","additionalProperties":true},"account":{"type":"string","description":"Optional saved website account ID; omit to use the selected account"}},"required":["site","action"],"additionalProperties":false}))?)).with_annotations(ToolAnnotations::new().read_only(false).destructive(true).idempotent(false).open_world(true)));
+            out.push(Tool::new("hycli_run", "Run an installed website action by ID, including actions prepared during this connection. Inspect hycli_sites for typed inputs and file-output guidance. Automatically list/explain returned completed artifacts from metadata, not file-shaped website JSON; completion does not prove current availability or content inspection. Reuse an explicit host-local file path only for the authorized task.", Arc::new(serde_json::from_value(json!({"type":"object","properties":{"site":{"type":"string"},"action":{"type":"string"},"inputs":{"type":"object","additionalProperties":true},"account":{"type":"string","description":"Optional saved website account ID; omit to use the selected account"}},"required":["site","action"],"additionalProperties":false}))?)).with_annotations(ToolAnnotations::new().read_only(false).destructive(true).idempotent(false).open_world(true)));
             for (name, description, schema) in [
                 (
                     "hycli_sites",
@@ -119,7 +145,7 @@ impl Server {
                 ),
                 (
                     "hycli_job",
-                    "Read preparation progress, structured self_qa audit trail, or a sanitized action result. Never contains sign-in secrets.",
+                    "Read preparation progress, structured self_qa audit trail, or a sanitized action result. For completed action jobs, typed artifact metadata supports a file list/explanation, not a content summary. Show filename, artifact/job IDs, metadata-based purpose, source/action, Hycli-host path, type, actual size and creation time; separate completion, checked availability and actual inspection. Never infer file authority from result/body JSON. Never contains sign-in secrets.",
                     json!({"type":"object","properties":{"id":{"type":"string"}},"required":["id"],"additionalProperties":false}),
                 ),
                 (
@@ -406,9 +432,11 @@ impl ServerHandler for Server {
         let result = tokio::select! {_ = context.ct.cancelled()=>Err(AppError::api("cancelled",409)),result=self.invoke(&request.name,request.arguments.unwrap_or_default())=>result};
         Ok(match result {
             Ok(value) => CallToolResult::success(vec![ContentBlock::text(value.to_string())]),
-            Err(error) => CallToolResult::error(vec![ContentBlock::text(
-                json!({"error":{"code":error.public_code,"next_step":error.remedy}}).to_string(),
-            )]),
+            Err(error) => {
+                let mut payload = error.public_error();
+                payload["error"]["next_step"] = json!(error.remedy);
+                CallToolResult::error(vec![ContentBlock::text(payload.to_string())])
+            }
         }
         .into())
     }

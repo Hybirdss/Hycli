@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Hybirdss/Hycli/releases/tag/v0.1.0">डाउनलोड करें (Windows · macOS · Linux)</a> ·
+  <a href="https://github.com/Hybirdss/Hycli/releases/tag/v0.1.1">डाउनलोड करें (Windows · macOS · Linux)</a> ·
   <a href="https://github.com/Hybirdss/Hycli/issues">GitHub पर मदद पाएँ</a> ·
   <a href="#try-it-in-30-seconds">30 सेकंड में आज़माएं</a> ·
   <a href="#get-started">शुरुआत करें</a> ·
@@ -59,23 +59,27 @@ Hycli एक एकल नेटिव बाइनरी के रूप म�
 
 ### डाउनलोड करें और चलाएं (Windows, macOS, Linux)
 
-अपने प्लेटफ़ॉर्म के लिए नेटिव इंस्टॉलर या पोर्टेबल आर्काइव **[GitHub Releases (v0.1.0)](https://github.com/Hybirdss/Hycli/releases/tag/v0.1.0)** से डाउनलोड करें:
+अपने प्लेटफ़ॉर्म के लिए नेटिव इंस्टॉलर या पोर्टेबल आर्काइव **[GitHub Releases (v0.1.1)](https://github.com/Hybirdss/Hycli/releases/tag/v0.1.1)** से डाउनलोड करें:
 
 | प्लेटफ़ॉर्म | आर्किटेक्चर | नेटिव इंस्टॉलर | पोर्टेबल आर्काइव | कैसे शुरू करें |
 | --- | --- | --- | --- | --- |
-| **Windows 10/11** | x64 और ARM64 | `hycli-0.1.0-win32-*-setup.exe` | `hycli-0.1.0-win32-*.tar.gz` | `*-setup.exe` चलाएं (यह उपयोगकर्ता के `PATH` और स्टार्ट मेनू में `hycli` जोड़ता है), फिर **Hycli** खोलें या PowerShell में `hycli open` चलाएं। |
-| **macOS 13+** | Apple Silicon (`arm64`) और Intel (`x64`) | `hycli-0.1.0-darwin-*.dmg` | `hycli-0.1.0-darwin-*.tar.gz` | `.dmg` खोलें, **Hycli.app** को **Applications** में ड्रैग करें और खोलें (यह स्वतः `~/.local/bin` में `hycli` को लिंक कर देता है)। |
-| **Linux** | x64 और ARM64 | `hycli-0.1.0-linux-*.deb` | `hycli-0.1.0-linux-*.tar.gz` | `.deb` इंस्टॉल करें (`sudo apt install ./hycli-*.deb`) या `.tar.gz` एक्सट्रैक्ट करके `./install.sh` चलाएं, फिर `hycli open` चलाएं। |
+| **Windows 10/11** | x64 और ARM64 | `hycli-0.1.1-win32-*-setup.exe` | `hycli-0.1.1-win32-*.tar.gz` | `*-setup.exe` चलाएं (यह उपयोगकर्ता के `PATH` और स्टार्ट मेनू में `hycli` जोड़ता है), फिर **Hycli** खोलें या PowerShell में `hycli open` चलाएं। |
+| **macOS 13+** | Apple Silicon (`arm64`) और Intel (`x64`) | `hycli-0.1.1-darwin-*.dmg` | `hycli-0.1.1-darwin-*.tar.gz` | `.dmg` खोलें, **Hycli.app** को **Applications** में ड्रैग करें और खोलें (यह स्वतः `~/.local/bin` में `hycli` को लिंक कर देता है)। |
+| **Linux** | x64 और ARM64 | `hycli-0.1.1-linux-*.deb` | `hycli-0.1.1-linux-*.tar.gz` | `.deb` इंस्टॉल करें (`sudo apt install ./hycli-*.deb`) या `.tar.gz` एक्सट्रैक्ट करके `./install.sh` चलाएं, फिर `hycli open` चलाएं। |
+
+**प्रकाशित संस्करण v0.1.0:** Windows और macOS के पोर्टेबल आर्काइव में इंस्टॉलेशन स्क्रिप्ट शामिल नहीं हैं। इसके बजाय ऊपर दिए गए रिलीज़ लिंक से Windows के लिए `*-setup.exe` या macOS के लिए `.dmg` इंस्टॉलर का उपयोग करें।
 
 <details>
 <summary><strong>टर्मिनल से त्वरित पोर्टेबल इंस्टॉल और सोर्स से बिल्ड करना</strong></summary>
 
+नीचे दिए गए आर्काइव कमांड के लिए ऐसा पैकेज चाहिए जिसमें `install.sh` (Linux/macOS) या `install.ps1` (Windows) हो, जैसे वर्तमान सोर्स से बनाया गया पैकेज।
+
 **Linux / macOS पोर्टेबल आर्काइव:**
 
 ```sh
-sha256sum -c hycli-0.1.0-*.tar.gz.sha256   # या macOS पर: shasum -a 256 -c
-tar -xzf hycli-0.1.0-*.tar.gz
-cd hycli-0.1.0-*
+sha256sum -c hycli-0.1.1-*.tar.gz.sha256   # या macOS पर: shasum -a 256 -c
+tar -xzf hycli-0.1.1-*.tar.gz
+cd hycli-0.1.1-*
 ./install.sh
 hycli open
 ```
@@ -83,8 +87,8 @@ hycli open
 **Windows PowerShell पोर्टेबल आर्काइव:**
 
 ```powershell
-tar -xzf hycli-0.1.0-win32-x64.tar.gz
-cd hycli-0.1.0-win32-x64
+tar -xzf hycli-0.1.1-win32-x64.tar.gz
+cd hycli-0.1.1-win32-x64
 powershell -ExecutionPolicy Bypass -File .\install.ps1
 hycli open
 ```
@@ -180,6 +184,8 @@ Codex लॉगिन कनेक्शन एक अस्थायी थ्�
 
 अपने MCP क्लाइंट में Hycli जोड़ें (**कोडिंग एजेंट → कनेक्शन सेटिंग्स देखें** आपके OS के लिए सटीक पाथ दिखाता है):
 
+नीचे दिया गया उदाहरण `mcpServers` JSON स्वीकार करने वाले क्लाइंट के लिए है। ChatGPT और Claude के लिए [डेस्कटॉप सेटअप](../../README.md#use-hycli-with-your-ai) देखें; यह Hycli में AI प्रदाता के लॉगिन से अलग है।
+
 ```json
 {
   "mcpServers": {
@@ -210,6 +216,8 @@ hycli check SITE
 <a id="browser-sign-in"></a>
 ## ब्राउज़र साइन-इन
 
+स्थानीय ब्राउज़र खोज वैकल्पिक है और macOS पर डिफ़ॉल्ट रूप से बंद रहती है, जिसमें पहले से सहेजे विकल्प के बिना अपग्रेड भी शामिल हैं। यही सेटिंग समान डेटा फ़ोल्डर वाले CLI और MCP पर लागू होती है; मौजूदा खाते और ब्राउज़र कनेक्शन बने रहते हैं। [Native discovery and recovery (English)](../../agent/AGENTS.md#native-discovery-choice-and-recovery).
+
 Hycli Windows, macOS और Linux पर स्थानीय Chrome, Chromium, Edge, Brave, Vivaldi, Arc, Whale और Firefox प्रोफ़ाइलों (तथा इंस्टॉल होने पर स्थानीय स्टेल्थ Chromium बाइनरी) को खोजता है, और केवल अनुरोधित वेबसाइट के सत्र को स्थानीय वॉल्ट में आयात करता है। एक ही सत्यापित वेबसाइट खाते को साझा करने वाली प्रोफ़ाइलें स्वचालित रूप से एक कर दी जाती हैं।
 
 यदि कोई सत्र Windows App-Bound एन्क्रिप्शन, निजी कंटेनरों या किसी अपंजीकृत ब्राउज़र द्वारा लॉक किया गया है, तो अपने ब्राउज़र के माध्यम से साइन इन करने के लिए **खाते → खाता जोड़ें** का उपयोग करें, [ब्राउज़र कंपैनियन एक्सटेंशन](../../browser-companion/guide.html) कनेक्ट करें, या डैशबोर्ड में JSON/Netscape कुकी फ़ाइल आयात करें (कभी भी AI चैट में कुकीज़ पेस्ट न करें)।
@@ -232,7 +240,9 @@ npm --prefix dashboard ci
 npm --prefix dashboard run check
 npm --prefix dashboard run build
 cargo test --all-targets --locked
-cargo build --locked --bin hycli --example dashboard_fixture
+cargo test --locked --features dashboard-test-support --test codex_launch
+cargo build --locked --bin hycli
+cargo build --locked --features dashboard-test-support --example dashboard_fixture
 node scripts/test-e2e.mjs --full
 ```
 
@@ -251,3 +261,5 @@ Hycli को [Apache-2.0](../../LICENSE) के अंतर्गत लाइ�
    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=Hybirdss/Hycli&type=Date" />
  </picture>
 </a>
+
+सत्यापित खाते से एक JSON या GraphQL पेज पढ़ने के लिए देखें [Account reads](../ACCOUNT_READ.md): `hycli accounts read ACCOUNT --request REQUEST.json`.

@@ -69,15 +69,16 @@ fn graphql_strings_and_comments_do_not_disguise_a_mutation() {
 #[tokio::test]
 async fn browser_pairing_is_single_use_origin_bound_and_verifies_actual_identity() {
     let (website,site_server)=host(Router::new().route("/account",get(|headers:HeaderMap| async move {
-        assert_eq!(headers.get("cookie").unwrap(),"sid=synthetic-bridge-cookie");
-        Json(json!({"user":{"id":"fixture-user-42","email":"mina@example.test","name":"Mina"},"token":"synthetic-response-secret"}))
+        if headers.get("cookie").is_some_and(|value| value == "sid=synthetic-bridge-cookie") {
+            (StatusCode::OK, Json(json!({"user":{"id":"fixture-user-42","email":"mina@example.test","name":"Mina"},"token":"synthetic-response-secret"})))
+        } else { (StatusCode::UNAUTHORIZED, Json(json!({"error":"signed_out"}))) }
     }))).await;
     let core = runtime();
     core.install(&spec_for(&website)).unwrap();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
     let web = crate::dashboard::Web::new(core.clone(), port).unwrap();
-    let launch = web.launch.clone();
+    let ticket = web.test_bootstrap_ticket();
     let router = crate::dashboard::router(web);
     let server = tokio::spawn(async move {
         axum::serve(listener, router).await.unwrap();
@@ -85,7 +86,8 @@ async fn browser_pairing_is_single_use_origin_bound_and_verifies_actual_identity
     let base = format!("http://127.0.0.1:{port}");
     let client = reqwest::Client::new();
     let session = client
-        .get(format!("{base}/api/session?launch={launch}"))
+        .post(format!("{base}/api/bootstrap"))
+        .json(&json!({"ticket": ticket}))
         .send()
         .await
         .unwrap();
@@ -103,6 +105,18 @@ async fn browser_pairing_is_single_use_origin_bound_and_verifies_actual_identity
         .as_str()
         .unwrap()
         .to_owned();
+    for (value, expected) in [(json!("false"), 400), (json!(false), 200)] {
+        let response = client
+            .patch(format!("{base}/api/settings"))
+            .header("cookie", &cookie)
+            .header("x-hycli-csrf", &csrf)
+            .json(&json!({"native_browser_discovery": value}))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status().as_u16(), expected);
+    }
+    assert!(!core.state.settings().unwrap().native_browser_discovery);
     let paired = client
         .post(format!("{base}/api/accounts/pair"))
         .header("cookie", &cookie)
@@ -656,7 +670,7 @@ async fn anthropic_registration_normalizes_inputs_and_preserves_saved_connection
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
     let web = crate::dashboard::Web::new(core.clone(), port).unwrap();
-    let launch = web.launch.clone();
+    let ticket = web.test_bootstrap_ticket();
     let server = tokio::spawn(async move {
         axum::serve(listener, crate::dashboard::router(web))
             .await
@@ -665,7 +679,8 @@ async fn anthropic_registration_normalizes_inputs_and_preserves_saved_connection
     let base = format!("http://127.0.0.1:{port}");
     let client = reqwest::Client::new();
     let response = client
-        .get(format!("{base}/api/session?launch={launch}"))
+        .post(format!("{base}/api/bootstrap"))
+        .json(&json!({"ticket": ticket}))
         .send()
         .await
         .unwrap();
@@ -747,4 +762,78 @@ async fn anthropic_registration_normalizes_inputs_and_preserves_saved_connection
     );
     server.abort();
     provider_server.abort();
+}
+
+#[tokio::test]
+async fn explicit_same_origin_selection_binds_destination_without_moving_source() {
+    let core = runtime();
+    let sp = spec_for("https://example.test");
+    core.install(&sp).unwrap();
+    let account = core.connect_account("", "https://example.test", serde_json::from_value(json!([{"name":"sid","value":"synthetic-only","domain":"example.test","path":"/","secure":true}])).unwrap(), "Fixture", "Profile A", "").unwrap();
+    core.state
+        .update(|d| {
+            let a = d.accounts.get_mut(&account.id).unwrap();
+            a.verified_identity = true;
+            a.user_id = "synthetic-person".into();
+            Ok(())
+        })
+        .unwrap();
+    let expected = core.credential(&account.id).unwrap();
+    core.publish_verified_identity(
+        &account.id,
+        &expected,
+        expected.clone(),
+        crate::accounts::Identity {
+            user_id: "synthetic-person".into(),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let web = crate::dashboard::Web::new(core.clone(), port).unwrap();
+    let ticket = web.test_bootstrap_ticket();
+    let server = tokio::spawn(async move {
+        axum::serve(listener, crate::dashboard::router(web))
+            .await
+            .unwrap();
+    });
+    let base = format!("http://127.0.0.1:{port}");
+    let client = reqwest::Client::new();
+    let session = client
+        .post(format!("{base}/api/bootstrap"))
+        .json(&json!({"ticket": ticket}))
+        .send()
+        .await
+        .unwrap();
+    let cookie = session.headers()["set-cookie"]
+        .to_str()
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .to_owned();
+    let csrf = session.json::<Value>().await.unwrap()["csrf"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let result = client
+        .post(format!("{base}/api/browser/select"))
+        .header("cookie", cookie)
+        .header("x-hycli-csrf", csrf)
+        .json(&json!({"site_id":"fixture", "url":"https://example.test", "account_id":account.id}))
+        .send()
+        .await
+        .unwrap();
+    server.abort();
+    assert!(result.status().is_success());
+    assert_eq!(
+        core.state.site("fixture").unwrap().unwrap().account_id,
+        account.id,
+        "an explicit destination choice must bind the destination, not silently select only the source"
+    );
+    assert_eq!(
+        core.state.account(&account.id).unwrap().unwrap().site_id,
+        account.site_id
+    );
 }

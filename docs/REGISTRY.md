@@ -85,14 +85,14 @@ The linux-x64 release binary requires glibc 2.38 (`GLIBC_2.38` not found on Debi
 Only proceed after the OS/CPU selection publication gate above is satisfied and publication is authorized. Bundles must be on the release before publishing, because the registry only stores the link and the hash. Three steps, in this order:
 
 1. Build the bundles from the published archives and write the entry: `node scripts/mcpb.mjs --fetch --server-json packaging/registry/server.json`
-2. Upload exactly those bytes: `gh release upload v0.1.0 dist/artifacts/hycli-mcp-0.1.0-*.mcpb dist/artifacts/hycli-mcp-0.1.0-*.mcpb.sha256 packaging/registry/server.json --clobber`
+2. Upload exactly those bytes: `gh release upload v0.1.1 dist/artifacts/hycli-mcp-0.1.1-*.mcpb dist/artifacts/hycli-mcp-0.1.1-*.mcpb.sha256 packaging/registry/server.json --clobber`
 3. `mcp-publisher login github` (browser OAuth, maintainer account — an agent cannot complete it), then `mcp-publisher publish packaging/registry/server.json`
 
 Verify the result, and check that a client would download a file matching the stored hash:
 
 ```sh
 curl -s "https://registry.modelcontextprotocol.io/v0.1/servers?search=hycli"
-curl -sL "https://github.com/Hybirdss/Hycli/releases/download/v0.1.0/hycli-mcp-0.1.0-linux-x64.mcpb" | sha256sum
+curl -sL "https://github.com/Hybirdss/Hycli/releases/download/v0.1.1/hycli-mcp-0.1.1-linux-x64.mcpb" | sha256sum
 ```
 
 When CI published the release, prefer the `server.json` that `scripts/publish-release.mjs` uploaded: it hashed the bundles it collected from CI, so it matches those bytes by construction.

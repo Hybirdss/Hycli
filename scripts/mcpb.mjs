@@ -119,6 +119,18 @@ for (const entry of selected) {
   for (const dir of ['agent', 'skills']) {
     await fs.cp(path.join(unpacked, dir), path.join(stage, dir), {recursive: true});
   }
+  // Older release archives predate the account-read reference.
+  const accountReadGuide = path.join(unpacked, 'docs', 'ACCOUNT_READ.md');
+  let guide;
+  try {
+    guide = await fs.readFile(accountReadGuide);
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+  if (guide !== undefined) {
+    await fs.mkdir(path.join(stage, 'docs'), {recursive: true});
+    await fs.writeFile(path.join(stage, 'docs', 'ACCOUNT_READ.md'), guide);
+  }
 
   const manifest = buildManifest(entry, version);
   await fs.writeFile(path.join(stage, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');

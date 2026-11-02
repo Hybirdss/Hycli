@@ -44,13 +44,12 @@ pub(super) async fn edit_site(
     Path(id): Path<String>,
     Json(body): Json<Value>,
 ) -> AppResult<Json<Value>> {
-    web.core.spec(&id)?;
+    let selected_spec = web.core.spec(&id)?;
+    if let Some(account) = body.get("account_id").and_then(Value::as_str) {
+        web.core
+            .select_account(&id, account, selected_spec.site.source_url())?;
+    }
     web.core.state.update(|d| {
-        if let Some(account) = body.get("account_id").and_then(Value::as_str) {
-            if !account.is_empty() && !d.accounts.get(account).is_some_and(|a| a.site_id == id) {
-                return Err(AppError::api("bad_request", 400));
-            }
-        }
         let m = d.sites.entry(id.clone()).or_default();
         if let Some(title) = body.get("title").and_then(Value::as_str) {
             m.title = title.trim().chars().take(100).collect();
@@ -60,9 +59,6 @@ pub(super) async fn edit_site(
         }
         if let Some(writes) = body.get("writes").and_then(Value::as_bool) {
             m.writes = writes;
-        }
-        if let Some(account) = body.get("account_id").and_then(Value::as_str) {
-            m.account_id = account.into();
         }
         m.updated_at = util::now();
         Ok(())

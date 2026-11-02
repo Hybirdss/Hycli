@@ -16,7 +16,7 @@ impl Operation {
                 .as_ref()?
                 .as_str()
         });
-        query.is_some_and(|query| graphql_parser::parse_query::<&str>(query).is_ok())
+        query.is_some_and(|query| crate::policy::parse_graphql_bounded(query).is_some())
     }
     pub fn parse_json_response(&self, response: &crate::net::Response) -> Option<Value> {
         let expected = self.response.as_ref();
@@ -55,6 +55,59 @@ impl Operation {
         }
         Some(parsed)
     }
+    pub(crate) fn matches_file_response(&self, received: &crate::net::FileResponse) -> bool {
+        let Some(artifact) = received.artifact.as_ref() else {
+            return false;
+        };
+        let response = &received.response;
+        if !response.successful()
+            || response.status == 206
+            || !response.header("content-range").is_empty()
+        {
+            return false;
+        }
+        let Some(expected) = self
+            .response
+            .as_ref()
+            .filter(|expected| expected.format == "file")
+        else {
+            return false;
+        };
+        let Some(file) = expected.file.as_ref() else {
+            return false;
+        };
+        let media = response
+            .header("content-type")
+            .split(';')
+            .next()
+            .unwrap_or("")
+            .trim()
+            .to_ascii_lowercase();
+        let prefix = String::from_utf8_lossy(artifact.prefix())
+            .trim_start()
+            .to_ascii_lowercase();
+        let html = media == "text/html" || media == "application/xhtml+xml";
+        let looks_html = ["<!doctype html", "<html", "<form"]
+            .iter()
+            .any(|start| prefix.starts_with(start));
+        // Headers and a finite prefix detect obvious mismatches, not whole-file
+        // safety or semantics. Every saved file remains untrusted and uninspected.
+        let matches_type = if html {
+            response
+                .header("content-disposition")
+                .split(';')
+                .next()
+                .unwrap_or("")
+                .trim()
+                .eq_ignore_ascii_case("attachment")
+        } else {
+            !looks_html
+        };
+        file.media_types.contains(&media)
+            && (file.allow_empty || artifact.byte_count() != 0)
+            && matches_type
+    }
+
     pub fn matches_response(&self, response: &crate::net::Response) -> bool {
         if !response.successful() {
             return false;
@@ -63,6 +116,9 @@ impl Operation {
             return true;
         };
         match expected.format.as_str() {
+            // File contracts require EOF-sealed reception, never a buffered JSON
+            // shape or an inspection prefix pretending to be a complete file.
+            "file" => false,
             "json" => self.parse_json_response(response).is_some_and(|body| {
                 expected
                     .required_pointers
@@ -107,5 +163,63 @@ impl Operation {
             "empty" => response.bytes.is_empty(),
             _ => false,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{net::Response, spec};
+
+    fn response(status: u16, body: serde_json::Value) -> Response {
+        Response {
+            url: "https://example.test/api/report/revenue".into(),
+            status,
+            headers: vec![("content-type".into(), "application/json".into())],
+            bytes: serde_json::to_vec(&body).unwrap(),
+            duration_ms: 1,
+            defense: "none".into(),
+        }
+    }
+
+    fn daily_revenue_operation() -> Operation {
+        spec::parse(
+            serde_json::json!({
+                "spec_version": 2,
+                "site": {"name": "fixture", "base_url": "https://example.test"},
+                "operations": [{
+                    "name": "read-daily-revenue",
+                    "method": "GET",
+                    "path": "/api/report/revenue",
+                    "effect": "read",
+                    "evidence": "Synthetic daily revenue contract",
+                    "response": {
+                        "format": "json",
+                        "required_pointers": ["/0/date", "/0/revenueAmount"]
+                    }
+                }]
+            })
+            .to_string()
+            .as_bytes(),
+        )
+        .unwrap()
+        .operations
+        .remove(0)
+    }
+
+    #[test]
+    fn daily_revenue_never_turns_auth_failure_or_missing_date_into_zero() {
+        let operation = daily_revenue_operation();
+        assert!(
+            !operation.matches_response(&response(401, serde_json::json!({"revenueAmount": 0})))
+        );
+        assert!(!operation.matches_response(&response(200, serde_json::json!([]))));
+        assert!(
+            !operation.matches_response(&response(200, serde_json::json!([{"revenueAmount": 0}])))
+        );
+        assert!(operation.matches_response(&response(
+            200,
+            serde_json::json!([{"date": "20261017", "revenueAmount": 0}])
+        )));
     }
 }

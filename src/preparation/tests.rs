@@ -2,6 +2,7 @@ use super::{
     grounding::{apply_documented_auth, documented_auth, merge_worker_spec, supported_path},
     models::{
         WorkflowReview, complete_workflows, decode_plan, redact_self_qa, valid_understanding,
+        writes_without_declared_auth,
     },
 };
 use crate::{
@@ -12,6 +13,33 @@ use crate::{
 };
 use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
+
+#[test]
+fn writes_without_a_credentialed_auth_strategy_are_reported_as_gaps() {
+    let public = crate::spec::parse(
+        json!({"spec_version":2,"site":{"name":"s","base_url":"https://x.example"},"operations":[
+            {"name":"read-items","method":"GET","path":"/items","effect":"read","evidence":"fixture"},
+            {"name":"create-item","method":"POST","path":"/items","effect":"write","evidence":"fixture"}
+        ]})
+        .to_string()
+        .as_bytes(),
+    )
+    .unwrap();
+    assert_eq!(
+        writes_without_declared_auth(&public),
+        vec!["create-item".to_string()]
+    );
+
+    let authed = crate::spec::parse(
+        json!({"spec_version":2,"site":{"name":"s","base_url":"https://x.example"},"auth":[{"name":"session","kind":"browser"}],"operations":[
+            {"name":"create-item","method":"POST","path":"/items","auth":"session","effect":"write","evidence":"fixture"}
+        ]})
+        .to_string()
+        .as_bytes(),
+    )
+    .unwrap();
+    assert!(writes_without_declared_auth(&authed).is_empty());
+}
 
 #[test]
 fn nullable_optional_review_sections_do_not_discard_observed_coverage() {
@@ -261,4 +289,399 @@ fn self_qa_decoding_and_redaction_preserves_adversarial_audit_trail() {
     let review = plan.workflow_review.unwrap();
     assert_eq!(review.self_qa.len(), 1);
     assert_eq!(review.self_qa[0].lens, "interrogate_id_chain");
+}
+
+#[tokio::test]
+async fn query_addressed_iframe_is_read_without_requesting_unsafe_query_links() {
+    use crate::{runtime::Runtime, state::Job};
+    use axum::{Router, http::Uri};
+    use std::sync::{Arc, Mutex};
+    for unsafe_target in [
+        "/?do=delete&id=123",
+        "/oauth/callback?code=opaqueAuthorizationCode&state=opaqueState",
+        "/reference?sid=opaqueSessionId",
+        "/reference?key=opaqueApiKey",
+        "/graphql?query=mutation%20%7BdeleteAccount%7D",
+        "/reference?authId=opaque",
+        "/reference?accessKeyId=opaque",
+    ] {
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        let recorded = requests.clone();
+        let router = Router::new().fallback(move |uri: Uri| {
+            let recorded = recorded.clone();
+            async move {
+                recorded.lock().unwrap().push(uri.to_string());
+                axum::response::Html(if uri.to_string() == "/" {
+                    format!(r#"<html><body><iframe src="/EntryList.page?blogId=demo&amp;categoryNo=0"></iframe><a href="{unsafe_target}">Untrusted navigation</a></body></html>"#)
+                } else {
+                    "<html><body><article><h1>Public entry</h1><p>Useful blog content</p></article></body></html>".into()
+                })
+            }
+        });
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let initial =
+            url::Url::parse(&format!("http://{}/", listener.local_addr().unwrap())).unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join(".cache/tests")
+            .join(crate::util::id());
+        let core = Runtime::open(&root, None, None, false, true, false).unwrap();
+        let mut job = Job::new("prepare", "en");
+        job.url = initial.to_string();
+        core.state.add_job(job.clone()).unwrap();
+        let mut sources = vec![];
+        let mut documents = BTreeMap::new();
+        let mut evidence = BTreeSet::new();
+        let mut links = BTreeSet::new();
+        core.ingest_round_reads(
+            &job,
+            &initial,
+            0,
+            "",
+            &mut vec![job.url.clone()],
+            &mut BTreeSet::new(),
+            &mut sources,
+            &mut BTreeSet::new(),
+            &mut BTreeSet::new(),
+            &mut links,
+            &mut BTreeSet::new(),
+            &mut evidence,
+            &mut BTreeSet::new(),
+            &mut documents,
+            &mut BTreeMap::new(),
+            &mut vec![],
+        )
+        .await
+        .unwrap();
+        server.abort();
+        assert_eq!(
+            *requests.lock().unwrap(),
+            vec!["/", "/EntryList.page?blogId=demo&categoryNo=0"],
+            "unsafe link was requested: {unsafe_target}"
+        );
+        let frame_url = initial
+            .join("/EntryList.page?blogId=demo&categoryNo=0")
+            .unwrap()
+            .to_string();
+        assert!(links.contains(&frame_url));
+        assert!(evidence.contains("/EntryList.page"));
+        assert!(
+            documents
+                .get(&frame_url)
+                .is_some_and(|text| text.contains("Useful blog content"))
+        );
+        assert!(sources.iter().any(|source| {
+            source.content["text"]
+                .as_str()
+                .is_some_and(|text| text.contains("Useful blog content"))
+        }));
+    }
+}
+
+#[tokio::test]
+async fn authenticated_document_discovery_leaves_icons_to_anonymous_image_cache() {
+    use crate::{runtime::Runtime, state::Job};
+    use axum::{
+        Router,
+        http::{HeaderMap, Uri},
+    };
+    use std::sync::{Arc, Mutex};
+    let requests = Arc::new(Mutex::new(Vec::new()));
+    let recorded = requests.clone();
+    let router = Router::new().fallback(move |uri: Uri, headers: HeaderMap| {
+        let recorded = recorded.clone();
+        async move {
+            recorded.lock().unwrap().push((uri.to_string(), headers.contains_key("cookie"), headers.contains_key("authorization")));
+            if uri.path() == "/favicon.svg" {
+                return ([("content-type", "image/svg+xml"), ("link", "")], r#"<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><rect width="32" height="32"/></svg>"#.to_owned());
+            }
+            ([("content-type", "text/html"), ("link", r#"</header-icon>; rel="alternate icon", </header-image>; rel=icon; title="alternate image""#)], if uri.path() == "/" {
+                r#"<html><head><link rel="icon" href="/favicon.svg?version=2"><link rel="icon" href="/icon?version=2&#38;id=1"><img src="/&#105;mage"></head><body><iframe src="/EntryList.page?blogId=demo&amp;categoryNo=0"></iframe></body></html>"#.into()
+            } else { "<html><article>Authenticated document</article></html>".into() })
+        }
+    });
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let initial = url::Url::parse(&format!("http://{}/", listener.local_addr().unwrap())).unwrap();
+    let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+    let root = std::env::var_os("HYCLI_TEST_DATA")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(".cache/tests")
+        })
+        .join(crate::util::id());
+    let core = Runtime::open(&root, None, None, false, true, false).unwrap();
+    let cookies = crate::accounts::parse_cookies(&json!([{"name":"sid","value":"synthetic-fixture-session","domain":initial.host_str().unwrap(),"path":"/"}]).to_string(), initial.as_str()).unwrap();
+    let account = core
+        .connect_account("", initial.as_str(), cookies, "Test", "Test", "")
+        .unwrap();
+    let mut job = Job::new("prepare", "en");
+    job.site_id = account.site_id.clone();
+    job.url = initial.to_string();
+    core.state.add_job(job.clone()).unwrap();
+    let mut icons = vec![];
+    let mut documents = BTreeMap::new();
+    core.ingest_round_reads(
+        &job,
+        &initial,
+        0,
+        &account.id,
+        &mut vec![job.url.clone()],
+        &mut BTreeSet::new(),
+        &mut vec![],
+        &mut BTreeSet::new(),
+        &mut BTreeSet::new(),
+        &mut BTreeSet::new(),
+        &mut BTreeSet::new(),
+        &mut BTreeSet::new(),
+        &mut BTreeSet::new(),
+        &mut documents,
+        &mut BTreeMap::new(),
+        &mut icons,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        *requests.lock().unwrap(),
+        vec![
+            ("/".into(), true, false),
+            (
+                "/EntryList.page?blogId=demo&categoryNo=0".into(),
+                true,
+                false
+            )
+        ],
+        "document crawler requested a static resource"
+    );
+    assert!(
+        documents
+            .values()
+            .any(|text| text.contains("Authenticated document"))
+    );
+    assert!(
+        core.fetch_site_image("fixture", &initial, icons)
+            .await
+            .unwrap()
+    );
+    assert_eq!(
+        requests.lock().unwrap().last().unwrap(),
+        &("/favicon.svg?version=2".into(), false, false)
+    );
+    assert_eq!(requests.lock().unwrap().len(), 3);
+    assert!(root.join("site-images/fixture.image").exists());
+    server.abort();
+}
+
+#[test]
+fn write_auth_diagnostics_are_per_operation_and_do_not_claim_verification() {
+    let sp = crate::spec::parse(json!({"spec_version":2,"site":{"name":"s","base_url":"https://example.com"},"auth":[
+        {"name":"session","kind":"browser"}, {"name":"public","kind":"none"},
+        {"name":"key","kind":"header","header":"Authorization","value_from":"store:s/key"},
+        {"name":"csrf","kind":"derived","header":"X-CSRF-Token","value_from":"cookie:csrf"}
+    ],"operations":[
+        {"name":"read-items","method":"GET","path":"/items","effect":"read","evidence":"fixture"},
+        {"name":"read-private","method":"GET","path":"/private","auth":"session","effect":"read","evidence":"fixture"},
+        {"name":"create-public","method":"POST","path":"/items","auth":"public","effect":"write","evidence":"fixture"},
+        {"name":"create-undeclared","method":"POST","path":"/items","effect":"write","evidence":"fixture"},
+        {"name":"create-session","method":"POST","path":"/items","auth":"session","effect":"write","evidence":"fixture"},
+        {"name":"create-key","method":"POST","path":"/items","auth":"key","effect":"write","evidence":"fixture"},
+        {"name":"create-csrf","method":"POST","path":"/items","auth":"csrf","effect":"write","evidence":"fixture"}
+    ]}).to_string().as_bytes()).unwrap();
+    assert!(sp.validate().is_empty());
+    assert_eq!(
+        writes_without_declared_auth(&sp),
+        vec!["create-public".to_string(), "create-undeclared".to_string()]
+    );
+}
+
+#[test]
+fn preparation_teaches_explicit_pagination_without_changing_default_contract() {
+    let environment = crate::environment::Environment {
+        discovery_pending: false,
+        os: "fixture".into(),
+        architecture: "fixture".into(),
+        browsers: vec![],
+        profiles: vec![],
+        capabilities: vec![],
+    };
+    let prompt = super::prompts::build_round_prompt(
+        &crate::state::Job::new("prepare", "en"),
+        &url::Url::parse("https://example.com").unwrap(),
+        0,
+        &environment,
+        0,
+        0,
+        0,
+        &BTreeMap::new(),
+        &BTreeSet::new(),
+        &BTreeSet::new(),
+        &BTreeSet::new(),
+        &BTreeSet::new(),
+        &[],
+        &[],
+        &BTreeMap::new(),
+        &BTreeSet::new(),
+        None,
+        None,
+        None,
+        None,
+    );
+    assert_eq!(prompt["output_contract"]["spec"]["spec_version"], 2);
+    assert!(
+        prompt["output_contract"]["spec"]["operations"][0]
+            .get("pagination")
+            .is_none()
+    );
+    let optional = &prompt["optional_pagination_contract"];
+    assert_eq!(optional["spec_version"], 3);
+    assert_eq!(optional["operation"]["pagination"]["input"], "cursor");
+    let text = optional.to_string();
+    for required in [
+        "evidence",
+        "15 minutes",
+        "next_cursor",
+        "Never automatically",
+        "8 characters",
+        "4096 bytes",
+        "preflight",
+    ] {
+        assert!(text.contains(required), "{required}");
+    }
+    for (role, _) in super::prompts::WORKERS {
+        let worker = super::prompts::build_worker_task(&prompt, role, "fixture", &BTreeMap::new());
+        assert_eq!(worker["optional_pagination_contract"], *optional);
+    }
+}
+
+#[test]
+fn end_user_agent_guides_remain_byte_identical() {
+    let canonical = include_str!("../../agent/AGENTS.md");
+    assert_eq!(canonical, include_str!("../../agent/CLAUDE.md"));
+    assert_eq!(
+        canonical,
+        include_str!("../../skills/hycli/references/agent-guide.md")
+    );
+}
+
+#[test]
+fn file_guidance_teaches_scoped_metadata_explanations_and_safe_reuse() {
+    for guide in [
+        include_str!("../../agent/AGENTS.md"),
+        include_str!("../../skills/hycli/SKILL.md"),
+    ] {
+        for required in [
+            "automatically show",
+            "hycli jobs ls",
+            "hycli jobs show ID",
+            "hycli_activity",
+            "hycli_job",
+            "hycli_result",
+            "metadata-based",
+            "file-shaped JSON",
+            "artifact_id",
+            "local_path",
+            "media_type",
+            "byte_count",
+            "created_at",
+            "provenance",
+            "completion",
+            "availability",
+            "inspection",
+            "exhaustive permanent catalogue",
+            "clearing or pruning",
+            "integrity only",
+            "embedded instructions",
+            "HEAD/preflight",
+            "download started",
+        ] {
+            assert!(
+                guide.contains(required),
+                "Missing file guidance: {required}"
+            );
+        }
+        assert!(!guide.contains("8 MiB"));
+        assert!(!guide.contains("100 MiB"));
+    }
+}
+
+#[test]
+fn invalid_worker_plan_is_not_reported_as_provider_outage() {
+    let error = decode_plan(r#"{"calls":"private-invalid-plan"}"#)
+        .err()
+        .unwrap();
+    assert_eq!(error.public_code, "ai_response_invalid");
+    assert!(!format!("{error:?}").contains("private-invalid-plan"));
+}
+
+#[tokio::test]
+async fn worker_failure_reasons_survive_job_reload_without_provider_content() {
+    use axum::{Json, Router, http::StatusCode, routing::post};
+    use std::sync::Arc;
+    let router = Router::new().route("/messages", post(|Json(body): Json<serde_json::Value>| async move {
+        let prompt = body["messages"][0]["content"].as_str().unwrap_or_default();
+        if prompt.contains("explore") {
+            (StatusCode::OK, Json(json!({"stop_reason":"max_tokens","content":[{"type":"text","text":"private-output"}]})))
+        } else if prompt.contains("organize") {
+            (StatusCode::OK, Json(json!({"stop_reason":"end_turn","content":[{"type":"text","text":"private-invalid-json"}]})))
+        } else {
+            (StatusCode::TOO_MANY_REQUESTS, Json(json!({"error":{"type":"rate_limit_error","message":"private-provider-message"}})))
+        }
+    }));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let origin = format!("http://{}", listener.local_addr().unwrap());
+    let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join(".cache/provider-failure-tests")
+        .join(crate::util::id());
+    let mut core = crate::runtime::Runtime::open(&root, None, None, false, true, false).unwrap();
+    Arc::get_mut(&mut core)
+        .unwrap()
+        .ai
+        .origins
+        .insert("anthropic".into(), origin);
+    let mut job = crate::state::Job::new("prepare", "en");
+    job.status = "running".into();
+    core.state.add_job(job.clone()).unwrap();
+    let config = crate::ai::Config {
+        provider: "anthropic".into(),
+        model: "fixture".into(),
+        key: "synthetic-private-key".into(),
+    };
+    let roles = ["explore", "organize", "check"];
+    let results = futures_util::future::join_all(
+        roles
+            .iter()
+            .map(|role| core.plan_worker(&job, &config, role, json!({"fixture":role}))),
+    )
+    .await;
+    assert!(results.iter().all(Result::is_err));
+    drop(core);
+    let reopened = crate::runtime::Runtime::open(&root, None, None, false, true, false).unwrap();
+    for saved in [
+        reopened.state.job(&job.id).unwrap(),
+        reopened
+            .state
+            .read()
+            .unwrap()
+            .jobs
+            .into_iter()
+            .find(|j| j.id == job.id)
+            .unwrap(),
+    ] {
+        for (role, code) in [
+            ("explore", "ai_response_incomplete"),
+            ("organize", "ai_response_invalid"),
+            ("check", "rate_limited"),
+        ] {
+            assert!(
+                saved
+                    .notes
+                    .iter()
+                    .any(|n| n.agent == role && n.code == format!("agent_failed_{code}")),
+                "missing {role}/{code}"
+            );
+        }
+        let encoded = serde_json::to_string(&saved).unwrap();
+        assert!(!encoded.contains("private-"));
+    }
+    server.abort();
 }

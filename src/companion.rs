@@ -182,6 +182,22 @@ pub fn archive(firefox: bool) -> AppResult<Vec<u8>> {
             include_bytes!("../browser-companion/background.js").as_slice(),
         ),
         (
+            "site-scope.js",
+            include_bytes!("../browser-companion/site-scope.js").as_slice(),
+        ),
+        (
+            "vendor/tldts.js",
+            include_bytes!("../browser-companion/vendor/tldts.js").as_slice(),
+        ),
+        (
+            "vendor/tldts.LICENSE",
+            include_bytes!("../browser-companion/vendor/tldts.LICENSE").as_slice(),
+        ),
+        (
+            "vendor/README.md",
+            include_bytes!("../browser-companion/vendor/README.md").as_slice(),
+        ),
+        (
             "style.css",
             include_bytes!("../browser-companion/style.css").as_slice(),
         ),
@@ -403,4 +419,44 @@ pub async fn refresh(
         &origin,
         Json(json!({"refreshed":true,"account_id":account.id})),
     ))
+}
+
+#[cfg(test)]
+mod archive_tests {
+    #[test]
+    fn browser_archives_include_offline_scope_parser_and_license() {
+        use std::io::{Cursor, Read};
+        for firefox in [false, true] {
+            let bytes = super::archive(firefox).expect("companion archive");
+            let mut zip = zip::ZipArchive::new(Cursor::new(bytes)).expect("read zip");
+            for (name, expected) in [
+                (
+                    "site-scope.js",
+                    include_bytes!("../browser-companion/site-scope.js").as_slice(),
+                ),
+                (
+                    "vendor/tldts.js",
+                    include_bytes!("../browser-companion/vendor/tldts.js").as_slice(),
+                ),
+                (
+                    "vendor/tldts.LICENSE",
+                    include_bytes!("../browser-companion/vendor/tldts.LICENSE").as_slice(),
+                ),
+            ] {
+                let mut actual = Vec::new();
+                zip.by_name(name)
+                    .expect("bundled dependency")
+                    .read_to_end(&mut actual)
+                    .unwrap();
+                assert_eq!(actual, expected);
+            }
+            let mut popup = String::new();
+            zip.by_name("popup.html")
+                .unwrap()
+                .read_to_string(&mut popup)
+                .unwrap();
+            assert!(popup.find("vendor/tldts.js").unwrap() < popup.find("site-scope.js").unwrap());
+            assert!(popup.find("site-scope.js").unwrap() < popup.find("popup.js").unwrap());
+        }
+    }
 }

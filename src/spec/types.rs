@@ -51,6 +51,8 @@ pub struct Defaults {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AuthStrategy {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub oauth_refresh: Option<OAuthRefreshBinding>,
     pub name: String,
     pub kind: String, // none | header | browser | derived
     #[serde(default)]
@@ -62,6 +64,24 @@ pub struct AuthStrategy {
     /// Exact credential destination; legacy definitions use the site's base origin.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub origin: String,
+}
+
+/// Public endpoint pins only. Grant values never belong in a SiteSpec.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OAuthRefreshBinding {
+    pub grant_ref: String,
+    pub token_endpoint: String,
+    pub identity_endpoint: String,
+    pub subject_pointer: String,
+    pub resource: String,
+    pub scopes: Vec<String>,
+    #[serde(default)]
+    pub client_pointer: String,
+    #[serde(default)]
+    pub resource_pointer: String,
+    #[serde(default)]
+    pub scopes_pointer: String,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -84,6 +104,8 @@ pub struct PreflightStep {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Operation {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pagination: Option<Pagination>,
     pub name: String,
     #[serde(default)]
     pub desc: String,
@@ -95,6 +117,11 @@ pub struct Operation {
     pub base_url: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub transport: String,
+    /// Opt-in: this operation's target URL is derived at runtime from a preflight
+    /// value (for example an upload lease), so it may be cross-origin to the
+    /// static base. Only set by a prepared spec for an upload step.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub derived_target: bool,
     #[serde(default)]
     pub auth: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -117,9 +144,20 @@ pub struct Operation {
     pub response: Option<ResponseExpectation>,
 }
 
+/// A private continuation value is never an ordinary public argument.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Pagination {
+    pub input: String,
+    pub query: String,
+    pub next: String,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ResponseExpectation {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file: Option<FileResponseExpectation>,
     pub format: String,
     pub required_pointers: Vec<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -132,6 +170,14 @@ pub struct ResponseExpectation {
     pub ssr_json: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub extract_pointer: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FileResponseExpectation {
+    pub media_types: Vec<String>,
+    #[serde(default)]
+    pub allow_empty: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -157,10 +203,17 @@ pub struct Body {
     pub json_template: Option<Value>,
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub form: std::collections::BTreeMap<String, Param>,
+    /// multipart/form-data fields. A param with type "file" carries a local
+    /// filesystem path sent as a file part; any other type is a text part.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub multipart: std::collections::BTreeMap<String, Param>,
 }
 impl Body {
     pub fn inputs(&self) -> impl Iterator<Item = (&String, &Param)> {
-        self.json.iter().chain(self.form.iter())
+        self.json
+            .iter()
+            .chain(self.form.iter())
+            .chain(self.multipart.iter())
     }
     pub fn content_type(&self) -> &'static str {
         if self.form.is_empty() {

@@ -1,10 +1,20 @@
 //! The single execution boundary used by the dashboard, CLI and MCP.
 mod account_read;
 mod accounts;
+pub(crate) use accounts::CandidateIdentityProbe;
+pub(crate) mod oauth;
+mod selection;
+pub(crate) use selection::SelectionSnapshot;
 mod execution;
+mod failure;
+mod identity;
+mod pagination;
 mod preflight;
 mod recon;
+mod session;
 mod transport;
+#[cfg(test)]
+mod upload_safety_tests;
 mod views;
 
 use crate::{
@@ -89,6 +99,14 @@ pub struct SiteView {
 }
 #[derive(Clone, Serialize)]
 pub struct OpResult {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artifact: Option<crate::artifacts::CompletedArtifact>,
+    #[serde(skip)]
+    pub diagnostic: Option<crate::apperr::SafeHttpDiagnostic>,
+    #[serde(skip)]
+    pub paginated: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_cursor: Option<String>,
     pub site: String,
     pub op: String,
     pub status: u16,
@@ -99,19 +117,26 @@ pub struct OpResult {
     pub signal: String,
 }
 impl OpResult {
-    pub fn ensure_success(&self) -> AppResult<()> {
-        if self.signal == "query_failed" || self.signal == "action_outcome_unknown" {
-            return Err(AppError::api(&self.signal, 502));
+    /// Opted-in pagination uses one projection across CLI and persisted jobs.
+    pub fn output(self) -> Option<Value> {
+        if let Some(artifact) = self.artifact {
+            return Some(serde_json::json!(artifact));
         }
-        let (code, status) = match self.status {
-            401 => ("auth_required", 401),
-            429 => ("site_rate_limited", 429),
-            403 => ("blocked_by_site", 403),
-            _ if self.defense != "none" && !self.defense.is_empty() => ("blocked_by_site", 403),
-            200..300 => return Ok(()),
-            _ => ("request_failed", 502),
-        };
-        Err(AppError::api(code, status))
+        let data = self.mapped.or(self.body);
+        if self.paginated {
+            Some(serde_json::json!({"data":data,"next_cursor":self.next_cursor}))
+        } else {
+            data
+        }
+    }
+
+    pub fn ensure_success(&self) -> AppResult<()> {
+        failure::ensure_success(
+            self.status,
+            &self.defense,
+            &self.signal,
+            self.diagnostic.clone(),
+        )
     }
 }
 impl Runtime {
@@ -122,6 +147,30 @@ impl Runtime {
         recover: bool,
         allow_local: bool,
         keyring: bool,
+    ) -> AppResult<Arc<Self>> {
+        Self::open_with_vault(
+            root,
+            specs_dir,
+            kb_path,
+            recover,
+            allow_local,
+            keyring,
+            None,
+        )
+    }
+    #[cfg(test)]
+    pub(crate) fn open_oauth_test(root: &Path) -> AppResult<Arc<Self>> {
+        let store = Store::open_oauth_test(&root.join("store.json"), [42; 32])?;
+        Self::open_with_vault(root, None, None, false, true, false, Some(store))
+    }
+    fn open_with_vault(
+        root: &Path,
+        specs_dir: Option<PathBuf>,
+        kb_path: Option<PathBuf>,
+        recover: bool,
+        allow_local: bool,
+        keyring: bool,
+        supplied_vault: Option<Store>,
     ) -> AppResult<Arc<Self>> {
         util::private_dir(root)?;
         let instance = if recover {
@@ -145,30 +194,37 @@ impl Runtime {
         }
         let codex = Arc::new(ai::codex::Codex::new(root.join("provider-workspace")));
         let (events, _) = tokio::sync::broadcast::channel(100);
-        Ok(Arc::new(Self {
+        let core = Arc::new(Self {
             _instance: instance,
             root: root.into(),
             specs_dir,
             state,
-            vault: Mutex::new(Store::open_with_keyring(&root.join("store.json"), keyring)?),
+            vault: Mutex::new(match supplied_vault {
+                Some(store) => store,
+                None => Store::open_with_keyring(&root.join("store.json"), keyring)?,
+            }),
             policy: policy.clone(),
             network: Network::new(policy, allow_local),
             ai: ai::Client::new(codex),
             kb: Arc::new(Kb::open(&kb_path.unwrap_or_else(|| root.join("kb.db")))?),
             events,
             tasks: Mutex::new(BTreeMap::new()),
-        }))
+        });
+        core.pagination_values()?;
+        Ok(core)
     }
     pub fn changed(&self) {
         let _ = self.events.send(());
     }
     pub fn remove_site(&self, id: &str) -> AppResult<()> {
         self.spec(id)?;
+        self.clear_pagination(id)?;
         for job in self.state.read()?.jobs {
             if job.site_id == id && ["queued", "running"].contains(&job.status.as_str()) {
                 self.cancel_job(&job.id)?;
             }
         }
+        let _selection = self.selection_lock()?;
         self.policy.invalidate(Some(id), None)?;
         std::fs::remove_file(self.specs_dir.join(format!("{id}.yaml")))?;
         self.state.update(|d| {
@@ -184,6 +240,7 @@ impl Runtime {
                 self.cancel_job(&job.id)?;
             }
         }
+        let _selection = self.selection_lock()?;
         self.policy.invalidate(None, Some(id))?;
         self.vault
             .lock()
@@ -194,6 +251,8 @@ impl Runtime {
             for m in d.sites.values_mut() {
                 if m.account_id == id {
                     m.account_id.clear();
+                    m.account_binding = None;
+                    m.account_selection_revision = util::id();
                 }
             }
             Ok(())
@@ -201,7 +260,34 @@ impl Runtime {
         self.changed();
         Ok(())
     }
+    /// A shared lock and durable revision also fence removals from the CLI process.
+    fn provider_change_lock(&self) -> AppResult<std::fs::File> {
+        util::file_lock(&self.root.join("provider-change.lock"), false)
+    }
+    pub(crate) fn begin_provider_change(&self, id: &str) -> AppResult<u64> {
+        ai::provider(id).ok_or_else(|| AppError::api("provider_missing", 400))?;
+        let _change = self.provider_change_lock()?;
+        self.state.advance_provider_revision(id)
+    }
+    pub(crate) fn finish_provider_change<T>(
+        &self,
+        id: &str,
+        revision: u64,
+        apply: impl FnOnce() -> AppResult<T>,
+    ) -> AppResult<T> {
+        let _change = self.provider_change_lock()?;
+        if self.state.provider_revision(id)? != revision {
+            return Err(AppError::api("cancelled", 409));
+        }
+        // Hold the shared lock through the synchronous state/vault write.
+        // No network work or await occurs while this lock is held.
+        apply()
+    }
     pub fn remove_provider(&self, id: &str) -> AppResult<()> {
+        let _change = self.provider_change_lock()?;
+        if ai::provider(id).is_some() {
+            self.state.advance_provider_revision(id)?;
+        }
         self.vault
             .lock()
             .map_err(|_| AppError::api("internal", 500))?
@@ -251,20 +337,79 @@ impl Runtime {
         Ok(out)
     }
     pub fn install(&self, sp: &Spec) -> AppResult<()> {
+        self.install_selected(sp, None)
+    }
+    pub(crate) fn install_selected(
+        &self,
+        sp: &Spec,
+        selection: Option<&SelectionSnapshot>,
+    ) -> AppResult<()> {
         policy::validate_spec(sp)?;
+        let _guard = self.selection_lock()?;
+        let credential = selection
+            .filter(|s| !s.account_id.is_empty())
+            .map(|s| self.credential(&s.account_id))
+            .transpose()?;
+        // A rejected stale preparation must not invalidate the active selection's cursors.
+        if let Some(selection) = selection {
+            if selection.site_id != sp.site.name
+                || selection.origin != origin(sp.site.source_url())?
+            {
+                return Err(AppError::api("auth_required", 401));
+            }
+            self.validate_selection_data(&self.state.read()?, selection, credential.as_ref())?;
+        }
+        if self
+            .spec(&sp.site.name)
+            .ok()
+            .and_then(|old| Self::spec_hash(&old).ok())
+            != Some(Self::spec_hash(sp)?)
+        {
+            self.clear_pagination(&sp.site.name)?;
+        }
         let bytes = serde_yaml::to_string(sp).map_err(|_| AppError::api("data_invalid", 400))?;
-        util::atomic_file(
-            &self.specs_dir.join(format!("{}.yaml", sp.site.name)),
-            bytes.as_bytes(),
-        )?;
-        self.state.update(|d| {
+        let path = self.specs_dir.join(format!("{}.yaml", sp.site.name));
+        let previous = if path.exists() {
+            Some(std::fs::read(&path)?)
+        } else {
+            None
+        };
+        let mut published = false;
+        let result = self.state.update(|d| {
+            if let Some(selection) = selection {
+                if selection.site_id != sp.site.name
+                    || selection.origin != origin(sp.site.source_url())?
+                {
+                    return Err(AppError::api("auth_required", 401));
+                }
+                self.validate_selection_data(d, selection, credential.as_ref())?;
+            }
             let m = d.sites.entry(sp.site.name.clone()).or_default();
+            if m.account_binding.as_ref().is_some_and(|binding| {
+                origin(sp.site.source_url()).is_ok_and(|o| o != binding.origin)
+            }) {
+                m.account_binding = None;
+                m.account_id.clear();
+                m.account_selection_revision = util::id();
+            }
             if m.created_at.is_empty() {
                 m.created_at = util::now();
             }
             m.updated_at = util::now();
+            // The state write transaction blocks concurrent account identity updates;
+            // selection and credential writers also hold the cross-process file lock.
+            util::atomic_file(&path, bytes.as_bytes())?;
+            published = true;
             Ok(())
-        })?;
+        });
+        if result.is_err() && published {
+            if let Some(previous) = previous {
+                util::atomic_file(&path, &previous)?;
+            } else if path.exists() {
+                std::fs::remove_file(&path)?;
+            }
+        }
+        result?;
         self.changed();
         Ok(())
     }
@@ -316,6 +461,7 @@ impl Runtime {
             .iter()
             .map(|p| {
                 let s = data.providers.get(p.id).cloned().unwrap_or_default();
+                let account = self.ai.codex.account_state();
                 ai::ProviderView {
                     provider: p.clone(),
                     model: s.model,
@@ -325,9 +471,15 @@ impl Runtime {
                     models: s.models,
                     available: p.id != "codex" || self.ai.codex.available(),
                     account: if p.id == "codex" {
-                        self.ai.codex.cached_account().unwrap_or_default()
+                        account.account.unwrap_or_default()
                     } else {
                         String::new()
+                    },
+                    verification: (p.id == "codex").then_some(account.verification),
+                    verification_error: if p.id == "codex" {
+                        account.verification_error
+                    } else {
+                        None
                     },
                 }
             })
@@ -336,10 +488,16 @@ impl Runtime {
 }
 
 pub fn params(op: &Operation) -> Vec<(&String, &spec::Param)> {
+    static CURSOR: std::sync::LazyLock<spec::Param> = std::sync::LazyLock::new(|| spec::Param {
+        kind: "string".into(),
+        required: false,
+        default: None,
+    });
     op.params
         .iter()
         .chain(op.query.iter())
         .chain(op.body.iter().flat_map(|b| b.inputs()))
+        .chain(op.pagination.iter().map(|p| (&p.input, &*CURSOR)))
         .collect()
 }
 pub fn origin(raw: &str) -> AppResult<String> {

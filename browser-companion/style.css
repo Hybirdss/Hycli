@@ -2,3 +2,5 @@
 
 header select { max-width: 135px; border: 1px solid #d8ddd2; border-radius: 8px; padding: 5px; background: transparent; color: inherit; }
 body { text-align: start; }
+
+#permission-origins{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}

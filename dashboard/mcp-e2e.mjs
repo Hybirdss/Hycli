@@ -1,3 +1,4 @@
+import {fixtureSession} from './scripts/fixture-session.mjs';
 import {spawn} from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -23,9 +24,9 @@ async function connect(args){
  return {rpc,call,notifications,initialized,close(){child.stdin.end();child.kill('SIGTERM');for(const item of pending.values())clearTimeout(item.timer);if(errors.trim())console.error(errors.slice(0,1500));}};
 }
 const count=async()=>(await (await fetch(ports.website+'/fixture/status')).json()).writes;
-// A plain local request cannot mint a dashboard session; only the launch address can.
+// A plain local request cannot mint a dashboard session; the synthetic fixture has already redeemed its one-time ticket.
 assert.equal((await fetch(ports.dashboard+'/api/session')).status,401);
-const session=await fetch(ports.dashboard+'/api/session?launch='+ports.launch);const cookie=session.headers.get('set-cookie').split(';')[0];const csrf=(await session.json()).csrf;
+const {cookie,csrf}=fixtureSession(ports);
 const auth={cookie,'x-hycli-csrf':csrf};
 const allowChanges=writes=>fetch(ports.dashboard+'/api/sites/library',{method:'PATCH',headers:{...auth,'content-type':'application/json'},body:JSON.stringify({writes})});
 // Earlier suites may have allowed changes; this one starts from the read-only default.

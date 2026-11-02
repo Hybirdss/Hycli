@@ -109,7 +109,7 @@ impl Runtime {
             }
             "web.recon" => {
                 let url = context.url(argument(call, "url"))?;
-                let (report, draft) = self.recon(&context.job.site_id, url.as_str(), 12).await?;
+                let (report, draft) = self.recon_for_job(context.job, url.as_str(), 12).await?;
                 for op in &draft.operations {
                     outcome
                         .routes
@@ -170,6 +170,7 @@ impl Runtime {
                         profile,
                         false,
                         Some(context.environment.profiles.clone()),
+                        crate::native_scan_admission::NativeScanIntent::Preparation,
                     )
                     .await?;
                 let imported: Vec<_> = search
@@ -185,9 +186,11 @@ impl Runtime {
             }
             "session.inspect" => {
                 let account = argument(call, "account_id");
-                context.account(self, account)?;
-                outcome.content = self.inspect_session_key(
+                let credential = self.job_credential(context.job, account, &context.job.url)?;
+                let credential = self.capture_candidate(account, &credential)?;
+                outcome.content = Self::inspect_session_snapshot(
                     account,
+                    &credential,
                     &crate::runtime::origin(&context.job.url)?,
                     argument(call, "storage_key"),
                     call.arguments
@@ -198,7 +201,7 @@ impl Runtime {
             }
             "session.observe" => {
                 let account = argument(call, "account_id");
-                context.account(self, account)?;
+                let credential = self.job_credential(context.job, account, &context.job.url)?;
                 let url = crate::net::validate_url(argument(call, "url"))?;
                 let job_url = crate::net::validate_url(&context.job.url)?;
                 if !crate::net::same_site_origin(&url, &job_url)
@@ -214,7 +217,16 @@ impl Runtime {
                 {
                     return Err(AppError::api("unsupported_evidence", 422));
                 }
-                let response = self.read_page(url.as_str(), account).await?;
+                let response = self
+                    .read_page_checked(url.as_str(), account, "go", Some(&credential), || {
+                        self.ensure_job_credential_snapshot(
+                            context.job,
+                            account,
+                            url.as_str(),
+                            Some(&credential),
+                        )
+                    })
+                    .await?;
                 let text = String::from_utf8_lossy(&response.bytes);
                 let body = response.json();
                 let html = response.header("content-type").contains("html");
@@ -224,10 +236,11 @@ impl Runtime {
                 } else {
                     vec![]
                 };
-                let cookie_names: Vec<_> = self
-                    .credential(account)
-                    .map(|c| c.cookies.into_iter().map(|ck| ck.name).collect())
-                    .unwrap_or_default();
+                let cookie_names: Vec<_> = credential
+                    .cookies
+                    .iter()
+                    .map(|cookie| &cookie.name)
+                    .collect();
                 outcome.content = json!({"url":response.url,"status":response.status,"successful":response.successful(),"format":if body.is_some(){"json"}else if html{"html"}else{"text"},"response_shape":body.as_ref().map(|body|crate::session_recipe::shape(body,0)),"html_structure":if html{crate::html::structure(&text)}else{json!([])},"html_fields":if html{crate::html::fields(&text)}else{json!([])},"ssr_keys":ssr_keys,"ssr_payloads":if html{crate::html::ssr_payloads(&text)}else{json!(null)},"bundle_routes":js_routes,"cookie_names":cookie_names,"values_exposed":false});
                 if response.successful() {
                     let final_url = crate::net::validate_url(&response.url)?;
@@ -244,7 +257,7 @@ impl Runtime {
             }
             "session.read" => {
                 let account = argument(call, "account_id");
-                context.account(self, account)?;
+                self.job_credential(context.job, account, &context.job.url)?;
                 if !self
                     .state
                     .read()?
@@ -269,9 +282,14 @@ impl Runtime {
                 {
                     return Err(AppError::api("unsupported_evidence", 422));
                 }
-                let response = self.read_page(url.as_str(), account).await?;
+                let response = self
+                    .read_page_for_job(context.job, url.as_str(), account)
+                    .await?;
                 let json_body = response.json();
-                if matches!(response.status, 401 | 403) && response.defense == "none" {
+                if matches!(response.status, 401 | 403)
+                    && response.defense == "none"
+                    && context.account(self, account).is_ok()
+                {
                     // A route may require a different credential. Recheck the known
                     // identity before treating that denial as loss of the whole session.
                     let _ = self.refresh_account(account).await;
@@ -326,8 +344,7 @@ impl Runtime {
                         json!({"origin":entry.origin().ascii_serialization(),"cookies":[]}),
                     )?
                 } else {
-                    context.account(self, account_id)?;
-                    self.credential(account_id)?
+                    self.job_credential(context.job, account_id, entry.as_str())?
                 };
                 let capture = crate::browser_session::capture_with_engine(
                     &credential,
@@ -355,12 +372,26 @@ impl Runtime {
                         .insert(("GET".into(), final_url.path().into()));
                 }
                 if !account_id.is_empty() {
+                    self.ensure_job_credential_snapshot(
+                        context.job,
+                        account_id,
+                        entry.as_str(),
+                        Some(&credential),
+                    )?;
+                }
+                // A bound destination may read, but it must not rewrite the source account's credential/recipe.
+                let source_owned =
+                    !account_id.is_empty() && context.account(self, account_id).is_ok();
+                if source_owned {
                     let captured_headers = capture.headers.clone();
                     let identity_url = capture
                         .identity
                         .as_ref()
                         .map(|_| capture.identity_url.clone());
                     self.update_credential(account_id, |c| {
+                        if serde_json::to_vec(c)? != serde_json::to_vec(&credential)? {
+                            return Err(AppError::api("conflict", 409));
+                        }
                         c.headers.extend(captured_headers);
                         if let Some(url) = identity_url {
                             c.identity_source = url;
@@ -423,6 +454,13 @@ mod tests {
             .join(".cache/tests")
             .join(util::id());
         let core = Runtime::open(&root, None, None, false, false, false).unwrap();
+        // This isolated fixture explicitly exercises native import on every OS.
+        core.state
+            .update(|data| {
+                data.settings.native_browser_discovery = true;
+                Ok(())
+            })
+            .unwrap();
         let origin = "https://example.com";
         let site_id = crate::runtime::site_id_for(&url::Url::parse(origin).unwrap());
         let old = core

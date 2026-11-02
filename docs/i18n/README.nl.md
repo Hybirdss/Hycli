@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Hybirdss/Hycli/releases/tag/v0.1.0">Downloaden (Windows · macOS · Linux)</a> ·
+  <a href="https://github.com/Hybirdss/Hycli/releases/tag/v0.1.1">Downloaden (Windows · macOS · Linux)</a> ·
   <a href="https://github.com/Hybirdss/Hycli/issues">Hulp krijgen op GitHub</a> ·
   <a href="#try-it-in-30-seconds">Probeer in 30 seconden</a> ·
   <a href="#get-started">Aan de slag</a> ·
@@ -59,23 +59,27 @@ Hycli wordt geleverd als één enkel native binair bestand dat zowel de website-
 
 ### Downloaden en starten (Windows, macOS, Linux)
 
-Download het native installatieprogramma of het draagbare archief voor jouw platform via **[GitHub Releases (v0.1.0)](https://github.com/Hybirdss/Hycli/releases/tag/v0.1.0)**:
+Download het native installatieprogramma of het draagbare archief voor jouw platform via **[GitHub Releases (v0.1.1)](https://github.com/Hybirdss/Hycli/releases/tag/v0.1.1)**:
 
 | Platform | Architectuur | Native installatieprogramma | Draagbaar archief | Hoe te starten |
 | --- | --- | --- | --- | --- |
-| **Windows 10/11** | x64 & ARM64 | `hycli-0.1.0-win32-*-setup.exe` | `hycli-0.1.0-win32-*.tar.gz` | Voer `*-setup.exe` uit (voegt `hycli` zonder beheerdersrechten toe aan je gebruikers-`PATH` en het Startmenu) en start vervolgens **Hycli** of voer `hycli open` uit in PowerShell. |
-| **macOS 13+** | Apple Silicon (`arm64`) & Intel (`x64`) | `hycli-0.1.0-darwin-*.dmg` | `hycli-0.1.0-darwin-*.tar.gz` | Open de `.dmg`, sleep **Hycli.app** naar **Applications** en open de app (koppelt `hycli` automatisch in `~/.local/bin`). |
-| **Linux** | x64 & ARM64 | `hycli-0.1.0-linux-*.deb` | `hycli-0.1.0-linux-*.tar.gz` | Installeer het `.deb`-bestand (`sudo apt install ./hycli-*.deb`) of pak het `.tar.gz`-archief uit en voer `./install.sh` uit, gevolgd door `hycli open`. |
+| **Windows 10/11** | x64 & ARM64 | `hycli-0.1.1-win32-*-setup.exe` | `hycli-0.1.1-win32-*.tar.gz` | Voer `*-setup.exe` uit (voegt `hycli` zonder beheerdersrechten toe aan je gebruikers-`PATH` en het Startmenu) en start vervolgens **Hycli** of voer `hycli open` uit in PowerShell. |
+| **macOS 13+** | Apple Silicon (`arm64`) & Intel (`x64`) | `hycli-0.1.1-darwin-*.dmg` | `hycli-0.1.1-darwin-*.tar.gz` | Open de `.dmg`, sleep **Hycli.app** naar **Applications** en open de app (koppelt `hycli` automatisch in `~/.local/bin`). |
+| **Linux** | x64 & ARM64 | `hycli-0.1.1-linux-*.deb` | `hycli-0.1.1-linux-*.tar.gz` | Installeer het `.deb`-bestand (`sudo apt install ./hycli-*.deb`) of pak het `.tar.gz`-archief uit en voer `./install.sh` uit, gevolgd door `hycli open`. |
+
+**Gepubliceerde versie v0.1.0:** De draagbare archieven voor Windows en macOS bevatten geen installatiescripts. Gebruik in plaats daarvan het Windows-installatiebestand `*-setup.exe` of het macOS-installatiebestand `.dmg` uit de hierboven gelinkte release.
 
 <details>
 <summary><strong>Snelle terminal-installatie & bouwen vanuit broncode</strong></summary>
 
+De onderstaande archiefcommando's vereisen een pakket met `install.sh` (Linux/macOS) of `install.ps1` (Windows), bijvoorbeeld een pakket dat uit de huidige broncode is gebouwd.
+
 **Draagbaar archief voor Linux / macOS:**
 
 ```sh
-sha256sum -c hycli-0.1.0-*.tar.gz.sha256   # of op macOS: shasum -a 256 -c
-tar -xzf hycli-0.1.0-*.tar.gz
-cd hycli-0.1.0-*
+sha256sum -c hycli-0.1.1-*.tar.gz.sha256   # of op macOS: shasum -a 256 -c
+tar -xzf hycli-0.1.1-*.tar.gz
+cd hycli-0.1.1-*
 ./install.sh
 hycli open
 ```
@@ -83,8 +87,8 @@ hycli open
 **Draagbaar archief voor Windows PowerShell:**
 
 ```powershell
-tar -xzf hycli-0.1.0-win32-x64.tar.gz
-cd hycli-0.1.0-win32-x64
+tar -xzf hycli-0.1.1-win32-x64.tar.gz
+cd hycli-0.1.1-win32-x64
 powershell -ExecutionPolicy Bypass -File .\install.ps1
 hycli open
 ```
@@ -180,6 +184,8 @@ De Codex-aanmeldingsverbinding draait in een tijdelijke thread waarin uitvoering
 
 Voeg Hycli toe aan je MCP-client (**Codeer-agents → Verbindingsinstellingen bekijken** toont het exacte pad voor jouw besturingssysteem):
 
+Het onderstaande voorbeeld is voor clients die `mcpServers`-JSON accepteren. Zie de [desktopinstellingen](../../README.md#use-hycli-with-your-ai) voor ChatGPT en Claude; dit staat los van aanmelden bij een AI-provider in Hycli.
+
 ```json
 {
   "mcpServers": {
@@ -210,6 +216,8 @@ hycli check SITE
 <a id="browser-sign-in"></a>
 ## Browser-aanmelding
 
+Native detectie is optioneel en staat standaard uit op macOS, ook na een update zonder opgeslagen keuze. De instelling geldt ook voor CLI en MCP met dezelfde gegevensmap; bestaande accounts en browserverbindingen blijven behouden. [Native discovery and recovery (English)](../../agent/AGENTS.md#native-discovery-choice-and-recovery).
+
 Hycli detecteert lokale profielen van Chrome, Chromium, Edge, Brave, Vivaldi, Arc, Whale en Firefox (plus lokale stealth Chromium-binaries wanneer geïnstalleerd) op Windows, macOS en Linux, en importeert alleen de sessie van de gevraagde website in de lokale kluis. Profielen die hetzelfde geverifieerde website-account delen, worden automatisch ontdubbeld.
 
 Als een sessie is vergrendeld door Windows App-Bound-versleuteling, privécontainers of een niet-geïmporteerde browser, gebruik dan **Accounts → Een account verbinden** om via je browser in te loggen, koppel de [browser-companion-extensie](../../browser-companion/guide.html) of importeer een JSON-/Netscape-cookiebestand in het dashboard (plak nooit cookies in een AI-chat).
@@ -232,7 +240,9 @@ npm --prefix dashboard ci
 npm --prefix dashboard run check
 npm --prefix dashboard run build
 cargo test --all-targets --locked
-cargo build --locked --bin hycli --example dashboard_fixture
+cargo test --locked --features dashboard-test-support --test codex_launch
+cargo build --locked --bin hycli
+cargo build --locked --features dashboard-test-support --example dashboard_fixture
 node scripts/test-e2e.mjs --full
 ```
 
@@ -251,3 +261,5 @@ Hycli valt onder de [Apache-2.0](../../LICENSE)-licentie. Gebruik het uitsluiten
    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=Hybirdss/Hycli&type=Date" />
  </picture>
 </a>
+
+Voor één JSON- of GraphQL-pagina met een geverifieerd account, zie [Account reads](../ACCOUNT_READ.md): `hycli accounts read ACCOUNT --request REQUEST.json`.

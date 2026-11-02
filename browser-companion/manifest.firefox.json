@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Hycli browser companion",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Connect a signed-in website to Hycli without sharing sign-in secrets with your AI.",
   "permissions": [
     "cookies",
@@ -18,6 +18,8 @@
   ],
   "background": {
     "scripts": [
+      "vendor/tldts.js",
+      "site-scope.js",
       "background.js"
     ]
   },

@@ -45,7 +45,7 @@ try{
  if(values.source){
   for(const file of ['Cargo.toml','Cargo.lock','LICENSE','README.md','CONTRIBUTING.md','CHANGELOG.md','AGENTS.md','CLAUDE.md','.gitignore'])await copy(file);
   for(const directory of ['src','tests','examples','agent','skills','browser-companion','scripts','packaging','dashboard','.github'])await copy(directory);
-  for(const file of ['docs/BUILD.md','docs/ARCHITECTURE.md','docs/SITESPEC.md','docs/RELEASING.md','docs/REGISTRY.md','docs/brand/concepts/hycli-shima-banner-v4.png'])await copy(file);
+  for(const file of ['docs/BUILD.md','docs/ARCHITECTURE.md','docs/SITESPEC.md','docs/ACCOUNT_READ.md','docs/RELEASING.md','docs/REGISTRY.md','docs/brand/concepts/hycli-shima-banner-v4.png'])await copy(file);
   for(const directory of ['docs/i18n','docs/images','docs/brand/badges'])await copy(directory);
   for(const file of ['docs/design/brand-research/claude-official-32.provenance.txt','docs/design/motion/PROVENANCE.md'])await copy(file);
  }else{
@@ -60,7 +60,7 @@ try{
   if(build.platform==='linux'){await copy('packaging/install-linux.sh','install.sh');await fs.chmod(path.join(content,'install.sh'),0o755);await copy('packaging/icons/hycli.png','hycli.png');}
   else if(build.platform==='darwin'){await copy('packaging/install-macos.sh','install.sh');await fs.chmod(path.join(content,'install.sh'),0o755);await copy('packaging/icons/hycli.png','hycli.png');}
   else if(build.platform==='win32'){await copy('packaging/install-windows.ps1','install.ps1');await copy('packaging/icons/hycli.ico','hycli.ico');}
-  for(const file of ['LICENSE','agent/AGENTS.md','agent/CLAUDE.md','docs/SITESPEC.md','docs/BUILD.md','docs/RELEASING.md'])await copy(file);
+  for(const file of ['LICENSE','agent/AGENTS.md','agent/CLAUDE.md','docs/SITESPEC.md','docs/ACCOUNT_READ.md','docs/BUILD.md','docs/RELEASING.md'])await copy(file);
   await copy('skills');await copy('dist/README.md','README.md');
  }
  const checksums=[];

@@ -60,3 +60,24 @@ html[dir=rtl] .lucide-arrow-right,html[dir=rtl] .lucide-chevron-right{transform:
 .website-keys .field{margin-top:12px}.website-keys .identity-verified{margin-top:7px}
 
 .website-inputs{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;min-width:0}.website-address,.prepare-intent{display:flex;flex-direction:column;gap:7px;min-width:0;color:var(--muted);font-size:12px}.prepare-intent small{font-size:11px;font-weight:400}.prepare-intent input{width:100%;min-width:0;min-height:47px}.add-website--inline .connect-form-footer{align-self:end}.workflow-understanding{margin-top:18px;padding:14px 16px;background:var(--soft);border:1px solid var(--line);border-radius:9px}.workflow-understanding p{font-size:13px;line-height:1.6}.workflow-understanding ul{margin:8px 0 0;padding-inline-start:18px;font-size:12px;line-height:1.7}@media(max-width:720px){.website-inputs{grid-template-columns:1fr}.add-website--inline .connect-form-footer{grid-column:1/-1;grid-row:auto}}
+
+.file-result { display: grid; gap: 16px; padding: 20px; border: 1px solid var(--line); border-radius: 12px; margin-top: 16px; }
+.file-result-heading { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.file-result-heading h3, .file-result-heading p { margin: 0; overflow-wrap: anywhere; }
+.file-result-path { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.file-result-path code, .file-result-hash { overflow-wrap: anywhere; word-break: break-all; }
+.file-result-path code { flex: 1; min-width: 160px; }
+.file-result details summary { cursor: pointer; }
+.file-result-hash { display: block; margin-top: 12px; font-size: 12px; }
+.file-result > button { justify-self: start; }
+
+.file-history-list { list-style: none; padding: 0; margin: 0; }
+.file-history > h2 { font-size: 18px; margin: 0 0 10px; }
+.file-metadata, .file-states { display: grid; gap: 10px; margin: 0; }
+.file-metadata > div, .file-states > div { display: grid; grid-template-columns: minmax(100px, 1fr) minmax(0, 2fr); gap: 12px; }
+.file-metadata dt, .file-states dt { font-size: 12px; color: var(--muted); }
+.file-metadata dd, .file-states dd { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
+.file-states { padding: 14px; background: var(--soft); border-radius: 8px; }
+.file-result-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.file-download-status { font-size: 13px; color: var(--muted); margin: 0; }
+@media (max-width: 480px) { .file-metadata > div, .file-states > div { grid-template-columns: 1fr; gap: 4px; } }

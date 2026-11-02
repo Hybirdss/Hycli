@@ -55,9 +55,9 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: dashboard/package-lock.json
-      - name: Registry packaging regression tests
+      - name: Registry, fixture and companion boundary tests
         shell: bash
-        run: node --test scripts/registry.test.mjs
+        run: node --test scripts/check-baseline-lock.test.mjs scripts/registry.test.mjs scripts/mcpb-guidance.test.mjs scripts/fixture-panic.test.mjs browser-companion/site-scope.test.cjs dashboard/e2e-screenshots.test.mjs dashboard/snapshot.test.mjs dashboard/accepted-command.test.mjs dashboard/account-continuation.test.mjs dashboard/native-discovery.test.mjs dashboard/provider-login.test.mjs dashboard/provider-status.test.mjs dashboard/bootstrap-landing.test.mjs
       - name: Rust toolchain
         run: |
           rustup update stable --no-self-update
@@ -103,18 +103,340 @@ jobs:
           npm --prefix dashboard ci
           npm --prefix dashboard run check
           npm --prefix dashboard run build
+          node --test dashboard/work-notes.test.mjs dashboard/scripts/fixture-session.test.mjs
       - name: Rust checks
         run: |
           cargo fmt --all --check
           cargo test --all-targets --locked
-          cargo build --locked --bin hycli --example dashboard_fixture
+          cargo test --locked --features dashboard-test-support --test codex_launch
+          cargo build --locked --bin hycli
+          cargo build --locked --features dashboard-test-support --example dashboard_fixture --example binding_dashboard_fixture
+      - name: Exact pre-fix source for preference output regression
+        if: matrix.browser_tests
+        uses: actions/checkout@v7
+        with:
+          ref: d88f051cfa78ac91b648ab0990cb5f197746da8b
+          path: .cache/preference-output-baseline
+          persist-credentials: false
+      - name: Preference output regression fails before fix and passes after
+        if: matrix.browser_tests
+        run: |
+          baseline="$GITHUB_WORKSPACE/.cache/preference-output-baseline"
+          proof="$GITHUB_WORKSPACE/.cache/preference-output-proof"
+          test_name=integration_tests::execution_tests::unrelated_preferences_preserve_raw_and_mapped_read_results
+          test "$(git -C "$baseline" rev-parse HEAD)" = d88f051cfa78ac91b648ab0990cb5f197746da8b
+          python3 - "$baseline" <<'PYLOCK'
+          import hashlib, pathlib, subprocess, sys
+          baseline = pathlib.Path(sys.argv[1])
+          original = subprocess.check_output(["git", "-C", str(baseline), "show", "HEAD:Cargo.lock"])
+          assert (baseline / "Cargo.lock").read_bytes() == original, "Baseline lock was modified"
+          candidate = pathlib.Path("Cargo.lock").read_bytes()
+          def without_expected_edge(data):
+              marker = b'[[package]]\nname = "hycli"\n'
+              assert data.count(marker) == 1, "Expected exactly one root hycli package"
+              start = data.index(marker)
+              end = data.index(b'\n[[package]]', start)
+              root = data[start:end]
+              edge = b' "windows-sys 0.61.2",\n'
+              assert root.count(edge) == 1, "Expected exactly one approved Windows root edge"
+              return data[:start] + root.replace(edge, b'', 1) + data[end:]
+          assert without_expected_edge(candidate) == original, "Unexpected locked dependency drift"
+          print("Pinned baseline Cargo.lock SHA256:", hashlib.sha256(original).hexdigest())
+          PYLOCK
+          mkdir -p "$proof"
+          ln -s "$GITHUB_WORKSPACE/web" "$baseline/web"
+          cp src/integration_tests/execution_tests.rs "$baseline/src/integration_tests/execution_tests.rs"
+          if CARGO_TARGET_DIR="$proof/baseline-target" cargo test --manifest-path "$baseline/Cargo.toml" --locked --lib "$test_name" -- --exact --nocapture > "$proof/baseline.log" 2>&1; then
+            cat "$proof/baseline.log"
+            echo "Expected the pinned baseline to fail the ordinary-output assertion."
+            exit 1
+          fi
+          cat "$proof/baseline.log"
+          grep -F "test $test_name ... FAILED" "$proof/baseline.log"
+          grep -F 'assertion `left == right` failed' "$proof/baseline.log"
+          grep -F 'Page [private] is available in [private].' "$proof/baseline.log"
+          CARGO_TARGET_DIR="$GITHUB_WORKSPACE/target" cargo test --locked --lib "$test_name" -- --exact --nocapture > "$proof/candidate.log" 2>&1 || { cat "$proof/candidate.log"; exit 1; }
+          cat "$proof/candidate.log"
+          grep -F "test $test_name ... ok" "$proof/candidate.log"
+      - name: Retain synthetic preference output red and green proof
+        if: always() && matrix.browser_tests
+        uses: actions/upload-artifact@v6
+        with:
+          name: preference-output-regression-proof
+          path: .cache/preference-output-proof/*.log
+          if-no-files-found: error
+          retention-days: 7
+      - name: Exact pre-fix source for preflight Bearer compatibility
+        if: matrix.browser_tests
+        uses: actions/checkout@v7
+        with:
+          ref: 24a5e6b9c55cd154456e4218f5299ad3bfe4e686
+          path: .cache/preflight-bearer-baseline
+          persist-credentials: false
+      - name: Preflight Bearer admission fails before fix and runtime succeeds after
+        if: matrix.browser_tests
+        run: |
+          baseline="$GITHUB_WORKSPACE/.cache/preflight-bearer-baseline"
+          proof="$GITHUB_WORKSPACE/.cache/preflight-bearer-proof"
+          test_name=integration_tests::preflight_header_tests::preflight_bearer_reaches_local_service_without_overriding_account_or_leaking_output
+          test "$(git -C "$baseline" rev-parse HEAD)" = 24a5e6b9c55cd154456e4218f5299ad3bfe4e686
+          python3 - "$baseline" <<'PYLOCK'
+          import hashlib, pathlib, subprocess, sys
+          baseline = pathlib.Path(sys.argv[1])
+          original = subprocess.check_output(["git", "-C", str(baseline), "show", "HEAD:Cargo.lock"])
+          assert (baseline / "Cargo.lock").read_bytes() == original, "Baseline lock was modified"
+          candidate = pathlib.Path("Cargo.lock").read_bytes()
+          def without_expected_edge(data):
+              marker = b'[[package]]\nname = "hycli"\n'
+              assert data.count(marker) == 1, "Expected exactly one root hycli package"
+              start = data.index(marker)
+              end = data.index(b'\n[[package]]', start)
+              root = data[start:end]
+              edge = b' "windows-sys 0.61.2",\n'
+              assert root.count(edge) == 1, "Expected exactly one approved Windows root edge"
+              return data[:start] + root.replace(edge, b'', 1) + data[end:]
+          assert without_expected_edge(candidate) == original, "Unexpected locked dependency drift"
+          print("Pinned baseline Cargo.lock SHA256:", hashlib.sha256(original).hexdigest())
+          PYLOCK
+          mkdir -p "$proof"
+          ln -s "$GITHUB_WORKSPACE/web" "$baseline/web"
+          cp src/integration_tests/preflight_header_tests.rs "$baseline/src/integration_tests/preflight_header_tests.rs"
+          printf '\nmod preflight_header_tests;\n' >> "$baseline/src/integration_tests/mod.rs"
+          if CARGO_TARGET_DIR="$proof/baseline-target" cargo test --manifest-path "$baseline/Cargo.toml" --locked --lib "$test_name" -- --exact --nocapture > "$proof/baseline.log" 2>&1; then
+            cat "$proof/baseline.log"
+            echo "Expected the pinned baseline to reject the standard preflight Bearer declaration."
+            exit 1
+          fi
+          cat "$proof/baseline.log"
+          grep -F "test $test_name ... FAILED" "$proof/baseline.log"
+          grep -F 'standard preflight Authorization Bearer declaration must be admitted' "$proof/baseline.log"
+          CARGO_TARGET_DIR="$proof/candidate-target" cargo test --locked --lib "$test_name" -- --exact --nocapture > "$proof/candidate.log" 2>&1 || { cat "$proof/candidate.log"; exit 1; }
+          cat "$proof/candidate.log"
+          grep -F "test $test_name ... ok" "$proof/candidate.log"
+      - name: Retain synthetic preflight Bearer red and green proof
+        if: always() && matrix.browser_tests
+        uses: actions/upload-artifact@v7
+        with:
+          name: preflight-bearer-regression-proof
+          path: .cache/preflight-bearer-proof/*.log
+          if-no-files-found: error
+          retention-days: 7
+      - name: Exact pre-fix source for native Codex launch
+        if: matrix.browser_tests
+        uses: actions/checkout@v7
+        with:
+          ref: 8d422a07d29fdd31a5b956fe96363a00f02470aa
+          path: .cache/codex-launch-baseline
+          persist-credentials: false
+      - name: Native Codex launch fails before fix and full fixture passes after
+        if: matrix.browser_tests
+        run: |
+          baseline="$GITHUB_WORKSPACE/.cache/codex-launch-baseline"
+          proof="$GITHUB_WORKSPACE/.cache/codex-launch-proof"
+          test "$(git -C "$baseline" rev-parse HEAD)" = 8d422a07d29fdd31a5b956fe96363a00f02470aa
+          python3 - "$baseline" <<'PYLOCK'
+          import hashlib, pathlib, subprocess, sys
+          baseline = pathlib.Path(sys.argv[1])
+          original = subprocess.check_output(["git", "-C", str(baseline), "show", "HEAD:Cargo.lock"])
+          assert (baseline / "Cargo.lock").read_bytes() == original, "Baseline lock was modified"
+          candidate = pathlib.Path("Cargo.lock").read_bytes()
+          def without_expected_edge(data):
+              marker = b'[[package]]\nname = "hycli"\n'
+              assert data.count(marker) == 1, "Expected exactly one root hycli package"
+              start = data.index(marker)
+              end = data.index(b'\n[[package]]', start)
+              root = data[start:end]
+              edge = b' "windows-sys 0.61.2",\n'
+              assert root.count(edge) == 1, "Expected exactly one approved Windows root edge"
+              return data[:start] + root.replace(edge, b'', 1) + data[end:]
+          assert without_expected_edge(candidate) == original, "Unexpected locked dependency drift"
+          print("Pinned baseline Cargo.lock SHA256:", hashlib.sha256(original).hexdigest())
+          PYLOCK
+          mkdir -p "$proof" "$baseline/tests"
+          ln -s "$GITHUB_WORKSPACE/web" "$baseline/web"
+          git -C "$baseline" diff --exit-code -- src Cargo.toml Cargo.lock
+          # Overlay only the identical public-API synthetic native fixture and registration.
+          # Do not copy candidate implementation or private unit tests into the baseline.
+          cp tests/codex_launch.rs "$baseline/tests/codex_launch.rs"
+          printf '\n[[test]]\nname = "codex_launch"\npath = "tests/codex_launch.rs"\nharness = false\n' >> "$baseline/Cargo.toml"
+          python3 - "$baseline" <<'PYMANIFEST'
+          import hashlib, pathlib, subprocess, sys
+          baseline = pathlib.Path(sys.argv[1])
+          original = subprocess.check_output(["git", "-C", str(baseline), "show", "HEAD:Cargo.toml"])
+          registration = b'\n[[test]]\nname = "codex_launch"\npath = "tests/codex_launch.rs"\nharness = false\n'
+          registered = (baseline / "Cargo.toml").read_bytes()
+          assert registered == original + registration, "Unexpected historical manifest edits"
+          expected_suffix = b'required-features = ["dashboard-test-support"]\n\n[target.\'cfg(windows)\'.dependencies]\nwindows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_Storage_FileSystem", "Win32_System_Threading", "Win32_System_Memory", "Win32_System_SystemServices"] }\n\n[features]\ndashboard-test-support = []\n\n[[example]]\nname = "dashboard_fixture"\nrequired-features = ["dashboard-test-support"]\n\n[[example]]\nname = "binding_dashboard_fixture"\nrequired-features = ["dashboard-test-support"]\n'
+          assert pathlib.Path("Cargo.toml").read_bytes() == registered + expected_suffix, "Unexpected candidate manifest drift"
+          print("Pinned baseline Cargo.toml SHA256:", hashlib.sha256(original).hexdigest())
+          PYMANIFEST
+          cmp tests/codex_launch.rs "$baseline/tests/codex_launch.rs"
+          git -C "$baseline" diff --exit-code -- src Cargo.lock
+          sha256sum tests/codex_launch.rs "$baseline/tests/codex_launch.rs" > "$proof/fixture-sha256.log"
+          # A compilation failure is not the expected red behavioral assertion.
+          CARGO_TARGET_DIR="$proof/baseline-target" cargo test --manifest-path "$baseline/Cargo.toml" --locked --test codex_launch --no-run > "$proof/baseline-build.log" 2>&1 || { cat "$proof/baseline-build.log"; exit 1; }
+          if CARGO_TARGET_DIR="$proof/baseline-target" cargo test --manifest-path "$baseline/Cargo.toml" --locked --test codex_launch > "$proof/baseline.log" 2>&1; then
+            cat "$proof/baseline.log"
+            echo "Expected the pinned baseline to fail the relative executable launch assertion."
+            exit 1
+          fi
+          cat "$proof/baseline.log"
+          grep -F 'panicked at tests/codex_launch.rs:' "$proof/baseline.log"
+          grep -F 'relative executable must launch independently of provider workspace' "$proof/baseline.log"
+          # Separate build roots prevent any baseline/candidate artifact reuse.
+          CARGO_TARGET_DIR="$proof/candidate-target" cargo test --locked --features dashboard-test-support --test codex_launch --no-run > "$proof/candidate-build.log" 2>&1 || { cat "$proof/candidate-build.log"; exit 1; }
+          CARGO_TARGET_DIR="$proof/candidate-target" cargo test --locked --features dashboard-test-support --test codex_launch > "$proof/candidate.log" 2>&1 || { cat "$proof/candidate.log"; exit 1; }
+          cat "$proof/candidate.log"
+          grep -Fx 'relative binary with different workspace: PASS' "$proof/candidate.log"
+          grep -Fx 'isolated native PATH discovery and launch: PASS' "$proof/candidate.log"
+          grep -Fx 'hung control and inference initialize, child cleanup and retry: PASS' "$proof/candidate.log"
+      - name: Retain synthetic native Codex launch red and green proof
+        if: always() && matrix.browser_tests
+        uses: actions/upload-artifact@v7
+        with:
+          name: codex-launch-regression-proof
+          path: .cache/codex-launch-proof/*.log
+          if-no-files-found: error
+          retention-days: 7
+      - name: Active file transfer across timeout and lease boundaries
+        if: matrix.platform == 'linux-x64'
+        timeout-minutes: 8
+        run: cargo test --locked --lib active_file_transfer_renews_leases_across_old_total_deadlines -- --ignored --nocapture
+      - name: Private pagination CLI and MCP
+        run: node scripts/test-pagination.mjs
+      - name: Native companion popup dependencies
+        if: matrix.platform == 'win32-x64'
+        working-directory: dashboard
+        run: npx --no-install playwright install chromium
+      - name: Native packaged companion consent and cookie proof
+        if: matrix.platform == 'win32-x64'
+        timeout-minutes: 10
+        run: node dashboard/companion-consent-native.mjs
+      - name: Retain synthetic companion proof only
+        if: always() && matrix.platform == 'win32-x64'
+        uses: actions/upload-artifact@v6
+        with:
+          name: companion-consent-native-report
+          path: test-results/companion-consent-native.json
+          if-no-files-found: error
+          retention-days: 7
       - name: Browser dependencies
         if: matrix.browser_tests
         working-directory: dashboard
         run: npx playwright install --with-deps chromium
+      - name: Exact pre-fix dashboard source for accepted-command regression
+        if: matrix.browser_tests
+        uses: actions/checkout@v7
+        with:
+          ref: 55d9f9f945f2207c4ead707975fe734dbeff5aa5
+          path: .cache/accepted-command-baseline
+          persist-credentials: false
+      - name: Build pinned pre-fix dashboard without changing its source
+        if: matrix.browser_tests
+        run: |
+          test "$(git -C .cache/accepted-command-baseline rev-parse HEAD)" = 55d9f9f945f2207c4ead707975fe734dbeff5aa5
+          ln -s "$GITHUB_WORKSPACE/dashboard/node_modules" .cache/accepted-command-baseline/dashboard/node_modules
+          npm --prefix .cache/accepted-command-baseline/dashboard run build
+          git -C .cache/accepted-command-baseline diff --exit-code -- dashboard
+      - name: Exact pre-fix dashboard source for result action recovery
+        if: matrix.browser_tests
+        uses: actions/checkout@v7
+        with:
+          ref: 6ab5ffd849351e8cf4d5263913e0ffcbfc27d785
+          path: .cache/result-action-baseline
+          persist-credentials: false
+      - name: Build pinned result action baseline
+        if: matrix.browser_tests
+        run: |
+          test "$(git -C .cache/result-action-baseline rev-parse HEAD)" = 6ab5ffd849351e8cf4d5263913e0ffcbfc27d785
+          node scripts/check-baseline-lock.mjs dashboard .cache/result-action-baseline/dashboard
+          ln -s "$GITHUB_WORKSPACE/dashboard/node_modules" .cache/result-action-baseline/dashboard/node_modules
+          npm --prefix .cache/result-action-baseline/dashboard run build
+          git -C .cache/result-action-baseline diff --exit-code -- dashboard
+      - name: Exact pre-fix dashboard source for native discovery
+        if: matrix.browser_tests
+        uses: actions/checkout@v7
+        with:
+          ref: 89023c86f7823c61b55c60394ad28aab5adafec1
+          path: .cache/native-discovery-baseline
+          persist-credentials: false
+      - name: Build pinned native discovery baseline
+        if: matrix.browser_tests
+        run: |
+          test "$(git -C .cache/native-discovery-baseline rev-parse HEAD)" = 89023c86f7823c61b55c60394ad28aab5adafec1
+          node scripts/check-baseline-lock.mjs dashboard .cache/native-discovery-baseline/dashboard
+          ln -s "$GITHUB_WORKSPACE/dashboard/node_modules" .cache/native-discovery-baseline/dashboard/node_modules
+          npm --prefix .cache/native-discovery-baseline/dashboard run build
+          git -C .cache/native-discovery-baseline diff --exit-code -- dashboard
       - name: End-to-end service
         if: matrix.browser_tests
-        run: node scripts/test-e2e.mjs --full
+        run: |
+          # The hosted runner's installed Chrome has an existing Ubuntu sandbox profile.
+          # Keep chromiumSandbox enabled; downloaded headless shells lack that profile.
+          : "${CHROME_BIN:?The browser-test runner must provide installed Chrome}"
+          "$CHROME_BIN" --version
+          LOCALE_BASELINE=1 LOCALE_WEB="$GITHUB_WORKSPACE/.cache/accepted-command-baseline/web" BROWSER_BIN="$CHROME_BIN" node dashboard/locale-persistence-e2e.mjs
+          BROWSER_BIN="$CHROME_BIN" node dashboard/locale-persistence-e2e.mjs
+          BROWSER_BIN="$CHROME_BIN" node dashboard/binding-e2e.mjs
+          DISCOVERY_BASELINE=1 DISCOVERY_WEB="$GITHUB_WORKSPACE/.cache/native-discovery-baseline/web" BROWSER_BIN="$CHROME_BIN" node dashboard/native-discovery-e2e.mjs
+          BROWSER_BIN="$CHROME_BIN" node dashboard/native-discovery-e2e.mjs
+          RESULT_ACTION_BASELINE=1 RESULT_ACTION_WEB="$GITHUB_WORKSPACE/.cache/result-action-baseline/web" BROWSER_BIN="$CHROME_BIN" node dashboard/result-action-recovery-e2e.mjs
+          BROWSER_BIN="$CHROME_BIN" node dashboard/result-action-recovery-e2e.mjs
+          BROWSER_BIN="$CHROME_BIN" node dashboard/result-recovery-e2e.mjs
+          BROWSER_BIN="$CHROME_BIN" node dashboard/website-draft-e2e.mjs
+          ACCEPTED_COMMAND_BASELINE=1 ACCEPTED_COMMAND_WEB="$GITHUB_WORKSPACE/.cache/accepted-command-baseline/web" BROWSER_BIN="$CHROME_BIN" node dashboard/accepted-command-e2e.mjs
+          BROWSER_BIN="$CHROME_BIN" node dashboard/accepted-command-e2e.mjs
+          node scripts/test-e2e.mjs --full
+          # Verification must preserve reviewed screenshots before source packaging.
+          git diff --exit-code -- docs/images docs/design
+      - name: Retain synthetic native discovery red and green evidence
+        if: always() && matrix.browser_tests
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-discovery-regression
+          path: test-results/native-discovery/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Retain synthetic result action red and green evidence
+        if: always() && matrix.browser_tests
+        uses: actions/upload-artifact@v7
+        with:
+          name: result-action-recovery-regression
+          path: test-results/result-action-recovery/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Retain synthetic locale readiness evidence
+        if: always() && matrix.browser_tests
+        uses: actions/upload-artifact@v7
+        with:
+          name: locale-readiness-regression
+          path: test-results/locale-readiness/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Retain synthetic accepted-command red and green evidence
+        if: always() && matrix.browser_tests
+        uses: actions/upload-artifact@v7
+        with:
+          name: accepted-command-regression
+          path: test-results/accepted-command/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Retain synthetic file-download dashboard evidence
+        if: always() && matrix.browser_tests
+        uses: actions/upload-artifact@v7
+        with:
+          name: file-download-regression
+          path: test-results/file-download/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Retain synthetic upload dashboard evidence
+        if: always() && matrix.browser_tests
+        uses: actions/upload-artifact@v7
+        with:
+          name: upload-dashboard-regression
+          path: test-results/file-upload/
+          if-no-files-found: error
+          retention-days: 7
       - name: Embedded release
         run: node scripts/build.mjs --skip-dependencies
       - name: Package public files
@@ -132,7 +454,13 @@ jobs:
         run: node scripts/smoke-package.mjs dist/artifacts/hycli-*-${{ matrix.platform }}.tar.gz
       - name: Background launcher lifecycle
         shell: bash
-        run: node scripts/smoke-desktop.mjs dist/hycli${{ runner.os == 'Windows' && '.exe' || '' }} ${{ matrix.browser_tests && '--browser' || '' }}
+        run: node scripts/smoke-desktop.mjs dist/hycli${{ runner.os == 'Windows' && '.exe' || '' }}
+      - name: Record v0.1.1 native browser acceptance waiver
+        if: matrix.browser_tests
+        run: |
+          echo '::warning::v0.1.1 native browser acceptance is NOT RUN (user-waived). Native handoff, authenticated cross-origin shutdown, saved-settings restart, and browser Quit remain unverified.'
+          echo '### v0.1.1 native browser acceptance: NOT RUN (user-waived)' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Native handoff, authenticated cross-origin shutdown, saved-settings restart, and browser Quit remain unverified. Non-browser lifecycle and independent synthetic browser fixtures do not satisfy these criteria.' >> "$GITHUB_STEP_SUMMARY"
       - name: Native installer
         run: node scripts/package-desktop.mjs
       - name: Native installer smoke check

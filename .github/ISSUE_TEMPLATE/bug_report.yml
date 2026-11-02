@@ -13,7 +13,7 @@ body:
     attributes:
       label: Hycli version
       description: The output of `hycli version`.
-      placeholder: "0.1.0"
+      placeholder: "0.1.1"
     validations:
       required: true
   - type: input

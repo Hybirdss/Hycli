@@ -18,26 +18,88 @@ impl Runtime {
         url: &str,
         max_bundles: usize,
     ) -> AppResult<(Value, Spec)> {
+        self.recon_scoped(site, url, max_bundles, None).await
+    }
+    pub(crate) async fn recon_for_job(
+        &self,
+        job: &crate::state::Job,
+        url: &str,
+        max_bundles: usize,
+    ) -> AppResult<(Value, Spec)> {
+        self.recon_scoped(&job.site_id, url, max_bundles, Some(job))
+            .await
+    }
+    async fn recon_scoped(
+        &self,
+        site: &str,
+        url: &str,
+        max_bundles: usize,
+        job: Option<&crate::state::Job>,
+    ) -> AppResult<(Value, Spec)> {
         let parsed = crate::net::validate_url(url)?;
         let site_id = if site.is_empty() || site == "default" {
             site_id_for(&parsed)
         } else {
             site.to_string()
         };
-        let account_id = self
-            .state
-            .read()?
-            .accounts
-            .values()
-            .find(|a| {
-                a.status == "connected"
-                    && (a.site_id == site_id
-                        || crate::net::validate_url(&a.site_url)
-                            .is_ok_and(|u| crate::net::same_site_origin(&u, &parsed)))
-            })
-            .map(|a| a.id.clone())
-            .unwrap_or_default();
-        let r = self.read_page(url, &account_id).await?;
+        let mut scope = job
+            .cloned()
+            .unwrap_or_else(|| crate::state::Job::new("recon", "en"));
+        if job.is_none() {
+            scope.site_id = site_id.clone();
+            scope.url = url.into();
+        }
+        if scope.account_selection.is_none() {
+            scope.account_selection =
+                Some(self.preparation_selection_snapshot(&scope.site_id, &scope.url)?);
+        }
+        let selection = scope.account_selection.as_ref().unwrap();
+        let data = self.state.read()?;
+        let account_id = if !selection.revision.is_empty() {
+            selection.account_id.clone()
+        } else {
+            data.sites
+                .get(&site_id)
+                .map(|m| &m.account_id)
+                .filter(|id| {
+                    data.accounts
+                        .get(*id)
+                        .is_some_and(|a| a.site_id == site_id && a.status == "connected")
+                })
+                .cloned()
+                .unwrap_or_default()
+        };
+        let credential = if account_id.is_empty() {
+            None
+        } else {
+            Some(self.job_credential(&scope, &account_id, &scope.url)?)
+        };
+        let check = || {
+            self.ensure_job_credential_snapshot(
+                &scope,
+                &account_id,
+                &scope.url,
+                credential.as_ref(),
+            )
+        };
+        let entry_account = if super::origin(url)? == super::origin(&scope.url)? {
+            account_id.as_str()
+        } else {
+            ""
+        };
+        let r = self
+            .read_page_checked(
+                url,
+                entry_account,
+                "go",
+                if entry_account.is_empty() {
+                    None
+                } else {
+                    credential.as_ref()
+                },
+                &check,
+            )
+            .await?;
         let _ = self.kb.record_attempt(&AttemptInput {
             site: site_id.clone(),
             stage: "recon".into(),
@@ -85,12 +147,27 @@ impl Runtime {
             let Ok(parsed_bundle) = crate::net::validate_url(&bundle_url) else {
                 continue;
             };
-            let bundle_account = if crate::net::same_site_origin(&parsed_bundle, &r_url) {
-                account_id.as_str()
-            } else {
-                ""
-            };
-            if let Ok(br) = self.read_page(&bundle_url, bundle_account).await {
+            check()?;
+            let bundle_account =
+                if parsed_bundle.origin().ascii_serialization() == super::origin(&scope.url)? {
+                    account_id.as_str()
+                } else {
+                    ""
+                };
+            if let Ok(br) = self
+                .read_page_checked(
+                    &bundle_url,
+                    bundle_account,
+                    "go",
+                    if bundle_account.is_empty() {
+                        None
+                    } else {
+                        credential.as_ref()
+                    },
+                    &check,
+                )
+                .await
+            {
                 if br.successful() {
                     let btext = String::from_utf8_lossy(&br.bytes);
                     for route in crate::discovery::bundle_routes(&btext) {
@@ -685,11 +762,11 @@ impl Runtime {
             .iter()
             .map(|(m, p)| format!("{m} {p}"))
             .collect();
-        let secrets = if account_id.is_empty() {
-            vec![]
-        } else {
-            self.credential(&account_id)?.redaction_values()
-        };
+        check()?;
+        let secrets = credential
+            .as_ref()
+            .map(|c| c.redaction_values())
+            .unwrap_or_default();
         let report = sanitized(
             json!({
                 "site_id": site_id,

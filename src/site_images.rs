@@ -266,6 +266,7 @@ impl Runtime {
                     read_only: true,
                     follow_redirects: true,
                     tls_profile: "go".into(),
+                    multipart: None,
                 })
                 .await;
             let Ok(response) = response else {

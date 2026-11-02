@@ -1745,7 +1745,7 @@ dependencies = [
 
 [[package]]
 name = "hycli"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "aes-gcm",
  "axum",
@@ -1758,6 +1758,7 @@ dependencies = [
  "graphql-parser",
  "httpdate",
  "keyring",
+ "libc",
  "mime_guess",
  "rand 0.10.3",
  "regex",
@@ -1782,6 +1783,7 @@ dependencies = [
  "url",
  "uuid",
  "which 8.0.6",
+ "windows-sys 0.61.2",
  "zip",
 ]
 
@@ -3116,6 +3118,7 @@ dependencies = [
  "js-sys",
  "log",
  "mime",
+ "mime_guess",
  "percent-encoding",
  "pin-project-lite",
  "quinn",

@@ -6,6 +6,8 @@ use super::models::{DispatchPhase, Job, JobAgent, JobNote, SiteMeta};
 
 #[derive(PartialEq, Eq)]
 pub(super) struct SiteRow {
+    pub(super) account_binding_json: String,
+    pub(super) account_selection_revision: String,
     pub(super) workflows_complete: Option<i64>,
     pub(super) pinned: i64,
     pub(super) title: String,
@@ -44,6 +46,8 @@ impl SiteRow {
             icon_source: r.get(offset + 14)?,
             writes: r.get(offset + 15)?,
             smoke_json: r.get(offset + 16)?,
+            account_binding_json: r.get(offset + 17)?,
+            account_selection_revision: r.get(offset + 18)?,
         })
     }
     pub(super) fn from_meta(meta: &SiteMeta) -> AppResult<Self> {
@@ -73,10 +77,14 @@ impl SiteRow {
             icon_source: meta.icon_source.clone(),
             writes: i64::from(meta.writes),
             smoke_json: serde_json::to_string(&meta.smoke)?,
+            account_binding_json: serde_json::to_string(&meta.account_binding)?,
+            account_selection_revision: meta.account_selection_revision.clone(),
         })
     }
     pub(super) fn into_meta(self) -> AppResult<SiteMeta> {
         Ok(SiteMeta {
+            account_binding: serde_json::from_str(&self.account_binding_json)?,
+            account_selection_revision: self.account_selection_revision,
             workflows_complete: self.workflows_complete.map(|v| v != 0),
             pinned: self.pinned != 0,
             title: self.title,
@@ -107,6 +115,7 @@ impl SiteRow {
 }
 
 pub(super) struct JobRow {
+    pub(super) artifact_json: Option<String>,
     pub(super) id: String,
     pub(super) kind: String,
     pub(super) site_id: String,
@@ -138,6 +147,7 @@ pub(super) struct JobRow {
 impl JobRow {
     pub(super) fn from_row(r: &Row<'_>) -> rusqlite::Result<Self> {
         Ok(Self {
+            artifact_json: r.get(27)?,
             id: r.get(0)?,
             kind: r.get(1)?,
             site_id: r.get(2)?,
@@ -179,6 +189,12 @@ impl JobRow {
             _ => crate::policy::Effect::Read,
         };
         Ok(Job {
+            artifact: self
+                .artifact_json
+                .as_deref()
+                .map(serde_json::from_str)
+                .transpose()?,
+            account_selection: None,
             id: self.id,
             kind: self.kind,
             site_id: self.site_id,
@@ -300,7 +316,8 @@ pub(super) fn init_schema(conn: &Connection) -> AppResult<()> {
              parent_id TEXT NOT NULL DEFAULT '',
              effect TEXT NOT NULL DEFAULT 'read',
              dispatch_phase TEXT NOT NULL DEFAULT 'pending',
-             owner_pid INTEGER NOT NULL DEFAULT 0
+             owner_pid INTEGER NOT NULL DEFAULT 0,
+             artifact_json TEXT
          );
          CREATE INDEX IF NOT EXISTS idx_jobs_ord ON jobs(ord ASC);
          CREATE INDEX IF NOT EXISTS idx_jobs_status_kind_site
@@ -335,10 +352,32 @@ pub(super) fn init_schema(conn: &Connection) -> AppResult<()> {
              result_json BLOB NOT NULL
          );",
     )?;
+    conn.execute_batch("CREATE TABLE IF NOT EXISTS identity_generations (account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE, generation TEXT NOT NULL);")?;
+    // Missing consent on macOS must not silently enable OS keychain prompts.
+    let native_default = i64::from(!cfg!(target_os = "macos"));
+    let has_native_policy = || -> rusqlite::Result<bool> {
+        Ok(conn
+            .prepare("PRAGMA table_info(settings)")?
+            .query_map([], |row| row.get::<_, String>(1))?
+            .collect::<Result<Vec<_>, _>>()?
+            .iter()
+            .any(|name| name == "native_browser_discovery"))
+    };
+    if !has_native_policy()? {
+        if let Err(error) = conn.execute(&format!("ALTER TABLE settings ADD COLUMN native_browser_discovery INTEGER NOT NULL DEFAULT {native_default}"), []) {
+            // A second process may have completed the same migration meanwhile.
+            if !has_native_policy()? {
+                return Err(error.into());
+            }
+        }
+    }
     for ddl in [
+        "ALTER TABLE sites ADD COLUMN account_binding_json TEXT NOT NULL DEFAULT 'null'",
+        "ALTER TABLE sites ADD COLUMN account_selection_revision TEXT NOT NULL DEFAULT ''",
         "ALTER TABLE jobs ADD COLUMN effect TEXT NOT NULL DEFAULT 'read'",
         "ALTER TABLE jobs ADD COLUMN dispatch_phase TEXT NOT NULL DEFAULT 'pending'",
         "ALTER TABLE jobs ADD COLUMN owner_pid INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE jobs ADD COLUMN artifact_json TEXT",
     ] {
         let _ = conn.execute(ddl, []);
     }

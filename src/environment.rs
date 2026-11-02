@@ -90,6 +90,9 @@ fn family(name: &str) -> Option<&'static str> {
     if name.contains("headless")
         || name.contains("driver")
         || name.contains("crash")
+        || name.contains("helper")
+        || name.contains("native-host")
+        || name.contains("native_host")
         || name.contains("agent")
         || name.starts_with("scoped_dir")
         || name.contains("-backup")
@@ -930,6 +933,8 @@ mod tests {
         );
         assert_eq!(family("microsoft-edge-stable"), Some("Edge"));
         assert_eq!(family("chromium-headless"), None);
+        assert_eq!(family("Google Chrome Helper (Renderer)"), None);
+        assert_eq!(family("chrome-native-host"), None);
     }
     #[test]
     fn ignores_electron_and_headless_ephemeral_directories_during_broad_scan() {

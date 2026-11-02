@@ -51,6 +51,11 @@ impl StateStore {
         if migrated_json {
             let bytes = util::read_bounded(&self.legacy_path, MAX_PAYLOAD_BYTES)?;
             let mut legacy: Data = serde_json::from_slice(&bytes)?;
+            // Imported old state contains references, never new selection authority.
+            for site in legacy.sites.values_mut() {
+                site.account_binding = None;
+                site.account_selection_revision.clear();
+            }
             for job in &mut legacy.jobs {
                 if job.result.is_none() {
                     if let Ok(result_file) = Self::legacy_result_path(&self.legacy_path, &job.id) {

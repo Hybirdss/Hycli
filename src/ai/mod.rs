@@ -73,6 +73,10 @@ pub struct ProviderView {
     pub models: Vec<String>,
     pub available: bool,
     pub account: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub verification: Option<codex::Verification>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub verification_error: Option<String>,
 }
 pub struct Client {
     gate: tokio::sync::Semaphore,
@@ -238,7 +242,7 @@ impl Client {
                 if e.is_timeout() {
                     "timeout"
                 } else {
-                    "ai_unavailable"
+                    "ai_connection_failed"
                 },
                 502,
             )
@@ -247,16 +251,26 @@ impl Client {
         let mut bytes = Vec::new();
         let mut stream = response.bytes_stream();
         while let Some(chunk) = stream.next().await {
-            let chunk = chunk.map_err(|_| AppError::api("ai_unavailable", 502))?;
+            let chunk = chunk.map_err(|_| {
+                if !(200..300).contains(&status) {
+                    request_error(&config.provider, path, status, &[])
+                } else {
+                    AppError::api("ai_connection_failed", 502)
+                }
+            })?;
             if bytes.len() + chunk.len() > 8 * 1024 * 1024 {
-                return Err(AppError::api("ai_unavailable", 502));
+                return Err(if !(200..300).contains(&status) {
+                    request_error(&config.provider, path, status, &[])
+                } else {
+                    AppError::api("ai_response_invalid", 502)
+                });
             }
             bytes.extend_from_slice(&chunk);
         }
         if !(200..300).contains(&status) {
             return Err(request_error(&config.provider, path, status, &bytes));
         }
-        serde_json::from_slice(&bytes).map_err(|_| AppError::api("ai_unavailable", 502))
+        serde_json::from_slice(&bytes).map_err(|_| AppError::api("ai_response_invalid", 502))
     }
 }
 fn is_zai(provider: &str) -> bool {
@@ -281,11 +295,14 @@ pub fn extract_text(provider: &str, value: &Value) -> AppResult<String> {
             if value.get("stop_reason").and_then(Value::as_str) == Some("refusal") {
                 return Err(AppError::api("ai_refused", 502));
             }
+            if value.get("stop_reason").and_then(Value::as_str) == Some("max_tokens") {
+                return Err(AppError::api("ai_response_incomplete", 502));
+            }
             if ![Some("end_turn"), Some("stop_sequence")]
                 .contains(&value.get("stop_reason").and_then(Value::as_str))
                 || value.get("error").is_some_and(|e| !e.is_null())
             {
-                return Err(AppError::api("ai_unavailable", 502));
+                return Err(AppError::api("ai_response_invalid", 502));
             }
             if let Some(content) = value.get("content").and_then(Value::as_array) {
                 for block in content {
@@ -301,9 +318,16 @@ pub fn extract_text(provider: &str, value: &Value) -> AppResult<String> {
             if value
                 .pointer("/choices/0/finish_reason")
                 .and_then(Value::as_str)
+                == Some("length")
+            {
+                return Err(AppError::api("ai_response_incomplete", 502));
+            }
+            if value
+                .pointer("/choices/0/finish_reason")
+                .and_then(Value::as_str)
                 != Some("stop")
             {
-                return Err(AppError::api("ai_unavailable", 502));
+                return Err(AppError::api("ai_response_invalid", 502));
             }
             text = value
                 .pointer("/choices/0/message/content")
@@ -312,10 +336,13 @@ pub fn extract_text(provider: &str, value: &Value) -> AppResult<String> {
                 .into();
         }
         _ => {
+            if value.get("status").and_then(Value::as_str) == Some("incomplete") {
+                return Err(AppError::api("ai_response_incomplete", 502));
+            }
             if value.get("status").and_then(Value::as_str) != Some("completed")
                 || value.get("error").is_some_and(|e| !e.is_null())
             {
-                return Err(AppError::api("ai_unavailable", 502));
+                return Err(AppError::api("ai_response_invalid", 502));
             }
             let mut refused = false;
             if let Some(output) = value.get("output").and_then(Value::as_array) {
@@ -343,7 +370,7 @@ pub fn extract_text(provider: &str, value: &Value) -> AppResult<String> {
         }
     }
     if text.trim().is_empty() {
-        return Err(AppError::api("ai_unavailable", 502));
+        return Err(AppError::api("ai_response_invalid", 502));
     }
     Ok(util::redact_generated_text(&text))
 }
@@ -421,9 +448,9 @@ pub fn decode_json<T: for<'de> Deserialize<'de>>(text: &str) -> AppResult<T> {
     };
     let start = text
         .find(['{', '['])
-        .ok_or_else(|| AppError::api("ai_unavailable", 502))?;
+        .ok_or_else(|| AppError::api("ai_response_invalid", 502))?;
     let mut de = serde_json::Deserializer::from_str(&text[start..]);
-    T::deserialize(&mut de).map_err(|_| AppError::api("ai_unavailable", 502))
+    T::deserialize(&mut de).map_err(|_| AppError::api("ai_response_invalid", 502))
 }
 
 #[cfg(test)]

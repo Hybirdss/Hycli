@@ -282,7 +282,7 @@ pub(super) fn decode_plan(text: &str) -> AppResult<Plan> {
             }
         }
     }
-    serde_json::from_value(value).map_err(|_| AppError::api("ai_unavailable", 502))
+    serde_json::from_value(value).map_err(|_| AppError::api("ai_response_invalid", 502))
 }
 
 impl Runtime {
@@ -506,4 +506,22 @@ impl Runtime {
         }
         Ok(false)
     }
+}
+
+/// Report missing auth declarations per operation, not per spec.
+/// This is diagnostic only: public writes can be intentional, selected browser
+/// credentials can still apply, and declaring auth does not prove it is configured.
+pub(super) fn writes_without_declared_auth(sp: &Spec) -> Vec<String> {
+    sp.operations
+        .iter()
+        .filter(|op| {
+            policy::operation_effect(op, &std::collections::BTreeMap::new()) != Effect::Read
+                && sp
+                    .auth
+                    .iter()
+                    .find(|strategy| strategy.name == op.auth)
+                    .is_none_or(|strategy| strategy.kind == "none")
+        })
+        .map(|op| op.name.clone())
+        .collect()
 }

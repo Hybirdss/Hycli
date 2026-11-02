@@ -189,12 +189,12 @@ impl Runtime {
                 continue;
             }
             let run = match self.request(&sp, &check.action, inputs, None) {
-                Ok(request) => self.execute(request, None).await,
+                Ok(request) => self.verify_installed_read(request).await,
                 Err(error) => Err(error),
             };
             match run.and_then(|(result, _)| result.ensure_success().map(|_| result)) {
                 Ok(result) => {
-                    if let Some(body) = result.mapped.or(result.body) {
+                    if let Some(body) = result.output() {
                         results.insert(check.action.clone(), body);
                     }
                     record("ok", String::new());

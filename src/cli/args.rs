@@ -257,8 +257,10 @@ pub enum SpecCmd {
 
 #[derive(Subcommand)]
 pub enum AuthCmd {
+    /// Store a legacy API key or an explicitly bound OAuth grant. OAuth JSON must use stdin.
     Set {
         r#ref: String,
+        /// Legacy API-key value only. Send OAuth grant JSON on stdin instead.
         #[arg(long)]
         value: Option<String>,
     },
@@ -270,25 +272,23 @@ pub enum AuthCmd {
 
 #[derive(Subcommand)]
 pub enum AccountsCmd {
-    /// Inspect cookie/header names and storage structure, never sign-in values.
-    Inspect { account: String },
-    /// Read JSON from a successful observed request with a verified session.
+    /// Read one evidenced JSON page with a verified account, without installing a website action.
     Read {
         account: String,
-        /// Legacy observed GET URL. Prefer --request for POST and persisted GraphQL reads.
-        url: Option<String>,
-        /// JSON request descriptor containing the request and observation evidence.
-        #[arg(long, conflicts_with = "url")]
-        request: Option<String>,
-        /// Opaque cursor returned by a previous descriptor read.
+        /// Version 1 request/evidence JSON. Never include credentials.
+        #[arg(long)]
+        request: String,
+        /// Opaque next_cursor from the same account and unchanged request file.
         #[arg(long)]
         cursor: Option<String>,
     },
+    /// Inspect cookie/header names and storage structure, never sign-in values.
+    Inspect { account: String },
     /// Observe one same-site GET before identity verification; private values stay local.
     Observe {
         account: String,
         url: String,
-        /// Render the entry and retain captured authentication headers in the local vault.
+        /// Reserved browser mode; currently fails closed. Use a same-origin HTTP endpoint.
         #[arg(long)]
         browser: bool,
     },

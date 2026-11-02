@@ -249,7 +249,7 @@ async fn desktop_shutdown_preserves_active_work_and_rejects_later_requests() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
     let web = crate::dashboard::Web::new(core.clone(), port).unwrap();
-    let launch = web.launch.clone();
+    let ticket = web.test_bootstrap_ticket();
     let shutdown = web.shutdown.clone();
     let server = tokio::spawn(async move {
         axum::serve(listener, crate::dashboard::router(web))
@@ -259,7 +259,8 @@ async fn desktop_shutdown_preserves_active_work_and_rejects_later_requests() {
     let client = reqwest::Client::builder().no_proxy().build().unwrap();
     let base = format!("http://127.0.0.1:{port}");
     let session = client
-        .get(format!("{base}/api/session?launch={launch}"))
+        .post(format!("{base}/api/bootstrap"))
+        .json(&json!({"ticket": ticket}))
         .send()
         .await
         .unwrap();
@@ -444,6 +445,22 @@ async fn resilience_against_false_403_lockout_multi_cookie_preflight_and_embedde
         .err()
         .unwrap();
     assert_eq!(first_err.http_status, 403);
+    assert_eq!(first_err.public_code, "api_denied");
+    assert_eq!(
+        first_err.public_error()["error"]["diagnostic"],
+        json!({"upstream_status":403,"defense":"none","provider_reason":"insufficient_scope"})
+    );
+    let failed_job = core
+        .state
+        .read()
+        .unwrap()
+        .jobs
+        .into_iter()
+        .find(|job| job.action_id == "forbidden-check")
+        .unwrap();
+    assert_eq!(failed_job.status, "failed");
+    assert_eq!(failed_job.error_code, "api_denied");
+    assert!(failed_job.result.is_none());
     assert_eq!(
         core.state.read().unwrap().accounts[&acct.id].status,
         "connected"

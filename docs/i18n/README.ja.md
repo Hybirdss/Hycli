@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Hybirdss/Hycli/releases/tag/v0.1.0">ダウンロード (Windows · macOS · Linux)</a> ·
+  <a href="https://github.com/Hybirdss/Hycli/releases/tag/v0.1.1">ダウンロード (Windows · macOS · Linux)</a> ·
   <a href="https://github.com/Hybirdss/Hycli/issues">GitHubでサポートを受ける</a> ·
   <a href="#try-it-in-30-seconds">30秒で試す</a> ·
   <a href="#get-started">はじめに</a> ·
@@ -59,23 +59,27 @@ Hycliはウェブサイトエンジンとローカルダッシュボード（`ht
 
 ### ダウンロードと実行 (Windows, macOS, Linux)
 
-お使いのプラットフォーム向けのネイティブインストーラーまたはポータブルアーカイブを **[GitHub Releases (v0.1.0)](https://github.com/Hybirdss/Hycli/releases/tag/v0.1.0)** からダウンロードしてください:
+お使いのプラットフォーム向けのネイティブインストーラーまたはポータブルアーカイブを **[GitHub Releases (v0.1.1)](https://github.com/Hybirdss/Hycli/releases/tag/v0.1.1)** からダウンロードしてください:
 
 | OS | アーキテクチャ | ネイティブインストーラー | ポータブルアーカイブ | 起動方法 |
 | --- | --- | --- | --- | --- |
-| **Windows 10/11** | x64 および ARM64 | `hycli-0.1.0-win32-*-setup.exe` | `hycli-0.1.0-win32-*.tar.gz` | `*-setup.exe` を実行（管理者権限不要、ユーザー `PATH` とスタートメニューに自動登録）し、**Hycli** を開くか PowerShell で `hycli open` を実行 |
-| **macOS 13+** | Apple Silicon (`arm64`) および Intel (`x64`) | `hycli-0.1.0-darwin-*.dmg` | `hycli-0.1.0-darwin-*.tar.gz` | `.dmg` を開き、**Hycli.app** を **Applications** にドラッグして起動（`~/.local/bin/hycli` に自動リンク） |
-| **Linux** | x64 および ARM64 | `hycli-0.1.0-linux-*.deb` | `hycli-0.1.0-linux-*.tar.gz` | `.deb` をインストール（`sudo apt install ./hycli-*.deb`）するか `.tar.gz` を展開して `./install.sh` を実行後、`hycli open` を実行 |
+| **Windows 10/11** | x64 および ARM64 | `hycli-0.1.1-win32-*-setup.exe` | `hycli-0.1.1-win32-*.tar.gz` | `*-setup.exe` を実行（管理者権限不要、ユーザー `PATH` とスタートメニューに自動登録）し、**Hycli** を開くか PowerShell で `hycli open` を実行 |
+| **macOS 13+** | Apple Silicon (`arm64`) および Intel (`x64`) | `hycli-0.1.1-darwin-*.dmg` | `hycli-0.1.1-darwin-*.tar.gz` | `.dmg` を開き、**Hycli.app** を **Applications** にドラッグして起動（`~/.local/bin/hycli` に自動リンク） |
+| **Linux** | x64 および ARM64 | `hycli-0.1.1-linux-*.deb` | `hycli-0.1.1-linux-*.tar.gz` | `.deb` をインストール（`sudo apt install ./hycli-*.deb`）するか `.tar.gz` を展開して `./install.sh` を実行後、`hycli open` を実行 |
+
+**公開済みの v0.1.0:** Windows と macOS のポータブルアーカイブにはインストールスクリプトが含まれていません。代わりに、上記のリリースから Windows 用の `*-setup.exe` または macOS 用の `.dmg` インストーラーを使用してください。
 
 <details>
 <summary><strong>ターミナルからのポータブルインストールとソースからのビルド</strong></summary>
 
+以下のアーカイブ用コマンドには、`install.sh`（Linux/macOS）または `install.ps1`（Windows）を含むパッケージが必要です。現在のソースからビルドしたパッケージなどが該当します。
+
 **Linux / macOS ポータブルアーカイブ:**
 
 ```sh
-sha256sum -c hycli-0.1.0-*.tar.gz.sha256   # macOS では shasum -a 256 -c
-tar -xzf hycli-0.1.0-*.tar.gz
-cd hycli-0.1.0-*
+sha256sum -c hycli-0.1.1-*.tar.gz.sha256   # macOS では shasum -a 256 -c
+tar -xzf hycli-0.1.1-*.tar.gz
+cd hycli-0.1.1-*
 ./install.sh
 hycli open
 ```
@@ -83,8 +87,8 @@ hycli open
 **Windows PowerShell ポータブルアーカイブ:**
 
 ```powershell
-tar -xzf hycli-0.1.0-win32-x64.tar.gz
-cd hycli-0.1.0-win32-x64
+tar -xzf hycli-0.1.1-win32-x64.tar.gz
+cd hycli-0.1.1-win32-x64
 powershell -ExecutionPolicy Bypass -File .\install.ps1
 hycli open
 ```
@@ -180,6 +184,8 @@ Codexログイン接続は、ファイル・シェル・ブラウザー・外部
 
 お使いのMCPクライアントにHycliを追加します（**コーディングエージェント → 接続設定を見る** に現在のOS向けの正確なパスが表示されます）:
 
+以下は `mcpServers` 形式の JSON に対応したクライアント向けの例です。ChatGPT と Claude は [デスクトップ設定](../../README.md#use-hycli-with-your-ai)を参照してください。Hycli の AI プロバイダへのログインとは別の設定です。
+
 ```json
 {
   "mcpServers": {
@@ -210,6 +216,8 @@ hycli check SITE
 <a id="browser-sign-in"></a>
 ## ブラウザーでのログイン
 
+ネイティブブラウザー探索は任意で、macOSでは保存済みの選択がないアップグレードを含め既定で無効です。設定は同じデータディレクトリを使うCLI・MCPにも適用され、既存アカウントとブラウザー接続は維持されます。 [Native discovery and recovery (English)](../../agent/AGENTS.md#native-discovery-choice-and-recovery).
+
 HycliはWindows、macOS、Linux上のローカルのChrome、Chromium、Edge、Brave、Vivaldi、Arc、Whale、Firefoxのプロファイル（およびインストール済みのローカルステルスChromiumバイナリ）を検出し、指定されたウェブサイトのセッションのみをローカル保管庫に取り込みます。同じ検証済みウェブサイトアカウントを共有する複数のプロファイルは自動的に重複排除されます。
 
 Windows App-Bound暗号化やプライベートコンテナー、未インポートのブラウザーによってセッションがロックされている場合は、**アカウント → アカウントを接続** からブラウザーでログインするか、[ブラウザー連携拡張機能](../../browser-companion/guide.html)の接続、またはダッシュボードでのJSON/Netscape Cookieファイルのインポートを利用してください（Cookieの内容をAIのチャット欄に直接貼り付けないでください）。
@@ -232,7 +240,9 @@ npm --prefix dashboard ci
 npm --prefix dashboard run check
 npm --prefix dashboard run build
 cargo test --all-targets --locked
-cargo build --locked --bin hycli --example dashboard_fixture
+cargo test --locked --features dashboard-test-support --test codex_launch
+cargo build --locked --bin hycli
+cargo build --locked --features dashboard-test-support --example dashboard_fixture
 node scripts/test-e2e.mjs --full
 ```
 
@@ -251,3 +261,5 @@ Hycliは [Apache-2.0](../../LICENSE) ライセンスのもとで提供されて�
    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=Hybirdss/Hycli&type=Date" />
  </picture>
 </a>
+
+検証済みアカウントで JSON・GraphQL を1ページずつ読み取る方法は、次を参照してください。 [Account reads](../ACCOUNT_READ.md): `hycli accounts read ACCOUNT --request REQUEST.json`.

@@ -243,6 +243,7 @@ pub fn draft_spec(
     let selected = &clusters[..clusters.len().min(limit)];
     let any_browser_auth = selected.iter().any(|c| c.needs_browser_auth);
     let mut auth = vec![spec::AuthStrategy {
+        oauth_refresh: None,
         name: "public".into(),
         kind: "none".into(),
         header: String::new(),
@@ -252,6 +253,7 @@ pub fn draft_spec(
     }];
     if any_browser_auth {
         auth.push(spec::AuthStrategy {
+            oauth_refresh: None,
             name: "browser".into(),
             kind: "browser".into(),
             header: String::new(),
@@ -313,7 +315,9 @@ pub fn draft_spec(
             )
         };
         let mut op = spec::Operation {
+            pagination: None,
             transport: String::new(),
+            derived_target: false,
             name,
             desc: format!(
                 "capture draft ({} observations, last status {})",
@@ -392,6 +396,7 @@ pub fn draft_spec(
                     json: json_map,
                     json_template: None,
                     form: BTreeMap::new(),
+                    multipart: BTreeMap::new(),
                 });
             }
         } else if !c.form_body.is_empty() {
@@ -413,6 +418,7 @@ pub fn draft_spec(
                     json: BTreeMap::new(),
                     json_template: None,
                     form: form_map,
+                    multipart: BTreeMap::new(),
                 });
             }
         }

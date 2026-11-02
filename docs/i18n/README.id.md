@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Hybirdss/Hycli/releases/tag/v0.1.0">Unduh (Windows · macOS · Linux)</a> ·
+  <a href="https://github.com/Hybirdss/Hycli/releases/tag/v0.1.1">Unduh (Windows · macOS · Linux)</a> ·
   <a href="https://github.com/Hybirdss/Hycli/issues">Dapatkan bantuan di GitHub</a> ·
   <a href="#try-it-in-30-seconds">Coba dalam 30 detik</a> ·
   <a href="#get-started">Mulai</a> ·
@@ -59,23 +59,27 @@ Hycli dikemas sebagai satu berkas biner native tunggal yang berisi mesin situs w
 
 ### Unduh dan jalankan (Windows, macOS, Linux)
 
-Unduh pemasang native atau arsip portabel untuk platform Anda dari **[GitHub Releases (v0.1.0)](https://github.com/Hybirdss/Hycli/releases/tag/v0.1.0)**:
+Unduh pemasang native atau arsip portabel untuk platform Anda dari **[GitHub Releases (v0.1.1)](https://github.com/Hybirdss/Hycli/releases/tag/v0.1.1)**:
 
 | Sistem Operasi | Arsitektur | Pemasang Native | Arsip Portabel | Cara memulai |
 | --- | --- | --- | --- | --- |
-| **Windows 10/11** | x64 & ARM64 | `hycli-0.1.0-win32-*-setup.exe` | `hycli-0.1.0-win32-*.tar.gz` | Jalankan `*-setup.exe` (tanpa hak admin, otomatis menambahkan `hycli` ke `PATH` pengguna dan Start Menu), lalu buka **Hycli** atau jalankan `hycli open` di PowerShell |
-| **macOS 13+** | Apple Silicon (`arm64`) & Intel (`x64`) | `hycli-0.1.0-darwin-*.dmg` | `hycli-0.1.0-darwin-*.tar.gz` | Buka `.dmg`, seret **Hycli.app** ke **Applications**, lalu jalankan (otomatis menautkan `~/.local/bin/hycli`) |
-| **Linux** | x64 & ARM64 | `hycli-0.1.0-linux-*.deb` | `hycli-0.1.0-linux-*.tar.gz` | Pasang `.deb` (`sudo apt install ./hycli-*.deb`) atau ekstrak `.tar.gz` dan jalankan `./install.sh`, lalu jalankan `hycli open` |
+| **Windows 10/11** | x64 & ARM64 | `hycli-0.1.1-win32-*-setup.exe` | `hycli-0.1.1-win32-*.tar.gz` | Jalankan `*-setup.exe` (tanpa hak admin, otomatis menambahkan `hycli` ke `PATH` pengguna dan Start Menu), lalu buka **Hycli** atau jalankan `hycli open` di PowerShell |
+| **macOS 13+** | Apple Silicon (`arm64`) & Intel (`x64`) | `hycli-0.1.1-darwin-*.dmg` | `hycli-0.1.1-darwin-*.tar.gz` | Buka `.dmg`, seret **Hycli.app** ke **Applications**, lalu jalankan (otomatis menautkan `~/.local/bin/hycli`) |
+| **Linux** | x64 & ARM64 | `hycli-0.1.1-linux-*.deb` | `hycli-0.1.1-linux-*.tar.gz` | Pasang `.deb` (`sudo apt install ./hycli-*.deb`) atau ekstrak `.tar.gz` dan jalankan `./install.sh`, lalu jalankan `hycli open` |
+
+**Rilis v0.1.0 yang dipublikasikan:** Arsip portabel Windows dan macOS tidak menyertakan skrip instalasi. Gunakan pemasang Windows `*-setup.exe` atau macOS `.dmg` dari rilis yang ditautkan di atas.
 
 <details>
 <summary><strong>Pemasangan portabel via terminal & bangun dari kode sumber</strong></summary>
 
+Perintah arsip di bawah memerlukan paket yang berisi `install.sh` (Linux/macOS) atau `install.ps1` (Windows), misalnya paket yang dibangun dari kode sumber saat ini.
+
 **Arsip portabel Linux / macOS:**
 
 ```sh
-sha256sum -c hycli-0.1.0-*.tar.gz.sha256   # atau di macOS: shasum -a 256 -c
-tar -xzf hycli-0.1.0-*.tar.gz
-cd hycli-0.1.0-*
+sha256sum -c hycli-0.1.1-*.tar.gz.sha256   # atau di macOS: shasum -a 256 -c
+tar -xzf hycli-0.1.1-*.tar.gz
+cd hycli-0.1.1-*
 ./install.sh
 hycli open
 ```
@@ -83,8 +87,8 @@ hycli open
 **Arsip portabel Windows PowerShell:**
 
 ```powershell
-tar -xzf hycli-0.1.0-win32-x64.tar.gz
-cd hycli-0.1.0-win32-x64
+tar -xzf hycli-0.1.1-win32-x64.tar.gz
+cd hycli-0.1.1-win32-x64
 powershell -ExecutionPolicy Bypass -File .\install.ps1
 hycli open
 ```
@@ -180,6 +184,8 @@ Koneksi login Codex berjalan dalam thread sementara dengan eksekusi berkas, shel
 
 Tambahkan Hycli ke klien MCP Anda (**Agen pemrograman → Lihat pengaturan koneksi** menampilkan jalur tepat untuk OS Anda):
 
+Contoh berikut untuk klien yang menerima JSON `mcpServers`. Untuk ChatGPT dan Claude, lihat [pengaturan desktop](../../README.md#use-hycli-with-your-ai); ini berbeda dari login penyedia AI di Hycli.
+
 ```json
 {
   "mcpServers": {
@@ -210,6 +216,8 @@ hycli check SITE
 <a id="browser-sign-in"></a>
 ## Masuk melalui peramban
 
+Penemuan browser native bersifat opsional dan dinonaktifkan secara default di macOS, termasuk pembaruan tanpa pilihan tersimpan. Pengaturan juga berlaku untuk CLI dan MCP dengan direktori data yang sama; akun dan koneksi browser yang ada tetap tersedia. [Native discovery and recovery (English)](../../agent/AGENTS.md#native-discovery-choice-and-recovery).
+
 Hycli menemukan profil Chrome, Chromium, Edge, Brave, Vivaldi, Arc, Whale, dan Firefox lokal (beserta biner Chromium siluman lokal jika terpasang) di Windows, macOS, dan Linux, serta hanya mengimpor sesi situs web yang diminta ke dalam brankas lokal. Profil yang berbagi akun situs web terverifikasi yang sama akan digabungkan secara otomatis.
 
 Jika sesi dikunci oleh enkripsi Windows App-Bound, container privat, atau peramban yang belum diimpor, gunakan **Akun → Hubungkan akun** untuk masuk melalui peramban Anda, hubungkan [ekstensi pendamping peramban](../../browser-companion/guide.html), atau impor berkas cookie JSON/Netscape di dasbor (jangan pernah menempelkan cookie ke dalam obrolan AI).
@@ -232,7 +240,9 @@ npm --prefix dashboard ci
 npm --prefix dashboard run check
 npm --prefix dashboard run build
 cargo test --all-targets --locked
-cargo build --locked --bin hycli --example dashboard_fixture
+cargo test --locked --features dashboard-test-support --test codex_launch
+cargo build --locked --bin hycli
+cargo build --locked --features dashboard-test-support --example dashboard_fixture
 node scripts/test-e2e.mjs --full
 ```
 
@@ -251,3 +261,5 @@ Hycli dilisensikan di bawah [Apache-2.0](../../LICENSE). Gunakan hanya pada situ
    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=Hybirdss/Hycli&type=Date" />
  </picture>
 </a>
+
+Untuk membaca satu halaman JSON atau GraphQL dengan akun terverifikasi, lihat [Account reads](../ACCOUNT_READ.md): `hycli accounts read ACCOUNT --request REQUEST.json`.
