@@ -1,10 +1,42 @@
 use crate::{accounts, apperr::AppError, util};
 use chromiumoxide::{browser::BrowserConfig, cdp::browser_protocol::network};
 
-// Records JSON API responses for capture. It leaves `navigator`, `window.chrome` and
-// `Permissions` untouched: `AutomationControlled` is disabled at launch, so the browser
-// already reports native values, and redefining them adds the traces bot checks look for.
 pub const STEALTH_INIT_SCRIPT: &str = r#"try {
+  delete Object.getPrototypeOf(navigator).webdriver;
+  Object.defineProperty(navigator, 'webdriver', { get: () => false, configurable: true });
+} catch (_) {}
+try {
+  if (!window.chrome) {
+    Object.defineProperty(window, 'chrome', {
+      value: { runtime: {}, app: { isInstalled: false }, csi: () => ({}), loadTimes: () => ({}) },
+      configurable: true
+    });
+  }
+} catch (_) {}
+try {
+  if (!navigator.languages || navigator.languages.length === 0) {
+    Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'], configurable: true });
+  }
+} catch (_) {}
+try {
+  if (navigator.plugins && navigator.plugins.length === 0) {
+    Object.defineProperty(navigator, 'plugins', {
+      get: () => [{ name: 'PDF Viewer', filename: 'internal-pdf-viewer', description: 'Portable Document Format' }],
+      configurable: true
+    });
+  }
+} catch (_) {}
+try {
+  if (window.Notification && window.Permissions && Permissions.prototype.query) {
+    const origQuery = Permissions.prototype.query;
+    Permissions.prototype.query = function(parameters) {
+      return parameters && parameters.name === 'notifications'
+        ? Promise.resolve({ state: Notification.permission, onchange: null })
+        : origQuery.apply(this, arguments);
+    };
+  }
+} catch (_) {}
+try {
   if (!window.__hycli_apis && typeof window.fetch === 'function') {
     window.__hycli_apis = [];
     const origFetch = window.fetch;
@@ -81,21 +113,14 @@ pub fn build_stealth_browser_config(
     if let Some(dir) = profile_dir {
         builder = builder.user_data_dir(dir);
     }
-    // CloakBrowser reports its own fingerprint screen; a fixed window can be larger than it.
-    let fixed_window = !is_cloakbrowser_engine(engine);
     if headed {
         builder = builder
             .with_head()
             .arg("ignore-gpu-blocklist")
-            .arg(("window-position", "-32000,-32000"));
-        if fixed_window {
-            builder = builder.window_size(1920, 1080);
-        }
+            .arg(("window-position", "-32000,-32000"))
+            .window_size(1920, 1080);
     } else {
-        builder = builder.new_headless_mode();
-        if fixed_window {
-            builder = builder.window_size(1920, 947);
-        }
+        builder = builder.new_headless_mode().window_size(1920, 947);
         #[cfg(windows)]
         {
             builder = builder.arg("ignore-gpu-blocklist").arg("disable-gpu");

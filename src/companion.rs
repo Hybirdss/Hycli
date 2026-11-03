@@ -267,18 +267,12 @@ pub async fn observe(
         observation.query.retain(|key, kind| {
             !util::secret_field(key)
                 && key.len() < 100
-                && [
-                    "string", "int", "float", "bool", "json", "object", "array", "null",
-                ]
-                .contains(&kind.as_str())
+                && ["string", "int", "float", "bool", "json"].contains(&kind.as_str())
         });
         observation.body.retain(|key, kind| {
             !util::secret_field(key)
                 && key.len() < 100
-                && [
-                    "string", "int", "float", "bool", "json", "object", "array", "null",
-                ]
-                .contains(&kind.as_str())
+                && ["string", "int", "float", "bool", "json"].contains(&kind.as_str())
         });
         observation
             .response_pointers
@@ -311,14 +305,9 @@ pub async fn observe(
     }
     web.core.state.update(|d| {
         let meta = d.sites.entry(account.site_id.clone()).or_default();
-        for mut observation in observations {
-            observation.account_id = account.id.clone();
-            meta.observations.retain(|old| {
-                old.method != observation.method
-                    || old.path != observation.path
-                    || old.query != observation.query
-                    || old.body != observation.body
-            });
+        for observation in observations {
+            meta.observations
+                .retain(|old| old.method != observation.method || old.path != observation.path);
             meta.observations.push(observation);
         }
         if meta.observations.len() > 160 {

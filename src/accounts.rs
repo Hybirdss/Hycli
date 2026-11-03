@@ -663,8 +663,6 @@ pub fn apply_identity(view: &mut AccountView, identity: Identity) {
 #[derive(Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct Observation {
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub account_id: String,
     pub method: String,
     pub path: String,
     pub query: std::collections::BTreeMap<String, String>,

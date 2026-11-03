@@ -401,13 +401,8 @@ impl Runtime {
                     self.state.update(|data| {
                         let meta = data.sites.entry(context.job.site_id.clone()).or_default();
                         for observation in &capture.observations {
-                            let mut observation = observation.clone();
-                            observation.account_id = account_id.to_owned();
                             if !meta.observations.iter().any(|old| {
-                                old.method == observation.method
-                                    && old.path == observation.path
-                                    && old.query == observation.query
-                                    && old.body == observation.body
+                                old.method == observation.method && old.path == observation.path
                             }) {
                                 meta.observations.push(observation.clone());
                             }

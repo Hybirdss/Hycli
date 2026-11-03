@@ -391,22 +391,6 @@ impl Network {
             defense: defense.as_str().into(),
         })
     }
-    /// Execute a request only while the caller's authority proof remains valid.
-    ///
-    /// The callback is checked immediately before transport and again after the
-    /// response. It cannot replace the transport's own read-only and origin gates;
-    /// it closes the account-selection race around credentialed reads.
-    pub async fn fetch_guarded(
-        &self,
-        input: Request,
-        check_authority: &(dyn Fn() -> AppResult<()> + Sync),
-    ) -> AppResult<Response> {
-        check_authority()?;
-        let response = self.fetch(input).await?;
-        check_authority()?;
-        Ok(response)
-    }
-
     pub async fn fetch(&self, input: Request) -> AppResult<Response> {
         self.fetch_inner(input, None, None, None, None)
             .await

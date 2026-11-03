@@ -182,22 +182,21 @@ pub(crate) fn is_safe_graphql_read_post(url: &url::Url, post_data: Option<&str>)
     let Ok(val) = serde_json::from_str::<Value>(raw) else {
         return false;
     };
-    let Some(query) = val.get("query").and_then(Value::as_str) else {
-        return false;
-    };
-    use graphql_parser::query::{Definition, OperationDefinition};
-    let Some(doc) = crate::policy::parse_graphql_bounded(query) else {
-        return false;
-    };
-    let mut has_query = false;
-    for def in &doc.definitions {
-        if let Definition::Operation(op) = def {
-            match op {
-                OperationDefinition::Mutation(_) | OperationDefinition::Subscription(_) => {
-                    return false;
-                }
-                OperationDefinition::Query(_) | OperationDefinition::SelectionSet(_) => {
-                    has_query = true;
+    if let Some(query) = val.get("query").and_then(Value::as_str) {
+        use graphql_parser::query::{Definition, OperationDefinition};
+        let Some(doc) = crate::policy::parse_graphql_bounded(query) else {
+            return false;
+        };
+        let mut has_query = false;
+        for def in &doc.definitions {
+            if let Definition::Operation(op) = def {
+                match op {
+                    OperationDefinition::Mutation(_) | OperationDefinition::Subscription(_) => {
+                        return false;
+                    }
+                    OperationDefinition::Query(_) | OperationDefinition::SelectionSet(_) => {
+                        has_query = true;
+                    }
                 }
             }
         }
@@ -441,7 +440,6 @@ async fn observe(
                                 if let Ok(mut capture) = captured.lock() {
                                     if capture.observations.len() < 80 {
                                         capture.observations.push(AccountObservation {
-                                            account_id: String::new(),
                                             method,
                                             path: url.path().into(),
                                             query: url
@@ -501,7 +499,6 @@ async fn observe(
                             if let Ok(mut capture) = captured.lock() {
                                 if capture.observations.len() < 80 {
                                     capture.observations.push(AccountObservation {
-                                        account_id: String::new(),
                                         method: req_method.clone(),
                                         path: path_str.clone(),
                                         query: url.query_pairs().filter(|(k, _)| !util::secret_field(k)).map(|(k, _)| (k.into_owned(), "string".into())).collect(),
@@ -639,7 +636,6 @@ async fn observe(
                     } else if capture.observations.len() < 80 {
                         let auth_headers: Vec<String> = capture.headers.keys().cloned().collect();
                         capture.observations.push(AccountObservation {
-                            account_id: String::new(),
                             method,
                             path: path_str,
                             query: parsed

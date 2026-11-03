@@ -1,6 +1,5 @@
 use super::config::{
-    STEALTH_INIT_SCRIPT, build_stealth_browser_config, cookie_param_for, fingerprint_seed,
-    is_cloakbrowser_engine,
+    build_stealth_browser_config, cookie_param_for, fingerprint_seed, is_cloakbrowser_engine,
 };
 use crate::accounts;
 use std::path::PathBuf;
@@ -28,31 +27,7 @@ fn stealth_browser_config_activates_cloakbrowser_flags_without_double_dashes() {
     assert!(debug_str.contains("New"));
     assert!(debug_str.contains("fingerprint"));
     assert!(debug_str.contains("fingerprint-platform"));
-    assert!(debug_str.contains("window_size: None"));
     assert!(!debug_str.contains("\"--"));
-}
-
-#[test]
-fn stealth_browser_config_keeps_fixed_window_for_stock_chromium() {
-    let engine = crate::environment::BrowserEngine {
-        id: "browser-chrome".into(),
-        name: "Chrome".into(),
-        protocol: "chromium-cdp".into(),
-        discovered_from: "application".into(),
-        executable: PathBuf::from("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
-    };
-    assert!(!is_cloakbrowser_engine(&engine));
-    let cfg = build_stealth_browser_config(&engine, None, "https://example.com", false)
-        .expect("config should build");
-    assert!(format!("{cfg:?}").contains("window_size: Some((1920, 947))"));
-}
-
-#[test]
-fn page_init_script_leaves_native_browser_properties_alone() {
-    for spoofed in ["navigator", "window.chrome", "Permissions"] {
-        assert!(!STEALTH_INIT_SCRIPT.contains(spoofed), "{spoofed}");
-    }
-    assert!(STEALTH_INIT_SCRIPT.contains("__hycli_apis"));
 }
 
 #[test]

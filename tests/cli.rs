@@ -3,7 +3,7 @@ use axum::{
     Json, Router,
     extract::Query,
     http::{HeaderMap, StatusCode},
-    routing::{get, post},
+    routing::get,
 };
 use hycli::{runtime::Runtime, spec, util};
 use serde_json::{Value, json};

@@ -7,7 +7,6 @@ mod profile_lock;
 #[cfg(test)]
 mod tests;
 
-pub(crate) use capture::is_safe_graphql_read_post;
 pub use capture::{Capture, capture, capture_with_engine, navigation_safe};
 pub use config::{
     STEALTH_INIT_SCRIPT, build_stealth_browser_config, can_run_headed, fingerprint_seed,
