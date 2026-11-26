@@ -175,6 +175,7 @@ Connecter un agent d'IA à de vrais sites web et à des comptes connectés soul�
 | Claude | Clé API Anthropic |
 | xAI | Clé API xAI |
 | Z.ai / Z.ai Coding Plan | Clé API Z.ai |
+| AI/ML API | Clé API AI/ML API |
 | ChatGPT · connexion | Connexion ChatGPT locale via le protocole officiel Codex app-server |
 
 La connexion via Codex s'exécute dans un fil éphémère où l'accès aux fichiers, au shell, au navigateur et aux serveurs MCP externes est désactivé ; Hycli ne lit ni ne copie jamais les jetons OAuth de Codex.

@@ -175,6 +175,7 @@ Hycli превращает реальные интерфейсы веб-сайт
 | Claude | API-ключ Anthropic |
 | xAI | API-ключ xAI |
 | Z.ai / Z.ai Coding Plan | API-ключ Z.ai |
+| AI/ML API | API-ключ AI/ML API |
 | ChatGPT · вход | Локальный вход в ChatGPT через официальный протокол Codex app-server |
 
 Подключение через вход Codex работает во временном потоке с отключённым доступом к файлам, оболочке, браузеру и внешним MCP-серверам; Hycli никогда не читает и не копирует OAuth-токены Codex.

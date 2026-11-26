@@ -408,6 +408,7 @@
   "connections.xaiHint": "使用 xAI API 金鑰連線至 Grok。",
   "connections.zaiHint": "連線至 Z.ai API 帳號中可用的模型。",
   "connections.zaiPlanHint": "使用另外的 Z.ai Coding Plan 金鑰連線。",
+  "connections.aimlapiHint": "使用一個 AI/ML API 金鑰連線多家供應商的聊天模型。",
   "sites.rename": "重新命名網站",
   "sites.openActions": "查看操作",
   "activity.viewWork": "查看工作紀錄",

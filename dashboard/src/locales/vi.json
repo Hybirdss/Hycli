@@ -408,6 +408,7 @@
   "connections.xaiHint": "Kết nối Grok bằng khóa API xAI.",
   "connections.zaiHint": "Kết nối các mô hình có trong tài khoản API Z.ai của bạn.",
   "connections.zaiPlanHint": "Kết nối bằng khóa Z.ai Coding Plan riêng.",
+  "connections.aimlapiHint": "Kết nối các mô hình trò chuyện của nhiều nhà cung cấp bằng một khóa AI/ML API.",
   "sites.rename": "Đổi tên trang web",
   "sites.openActions": "Xem các thao tác",
   "activity.viewWork": "Xem nhật ký công việc",

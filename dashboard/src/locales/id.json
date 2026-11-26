@@ -394,6 +394,7 @@
   "connections.xaiHint": "Hubungkan Grok dengan kunci API xAI Anda.",
   "connections.zaiHint": "Hubungkan model yang tersedia di akun API Z.ai Anda.",
   "connections.zaiPlanHint": "Hubungkan dengan kunci Z.ai Coding Plan yang terpisah.",
+  "connections.aimlapiHint": "Hubungkan model chat dari banyak penyedia dengan satu kunci AI/ML API.",
   "sites.rename": "Ganti nama situs web",
   "sites.openActions": "Jelajahi tindakan",
   "activity.viewWork": "Lihat log kerja",

@@ -175,6 +175,7 @@ Zobacz [specyfikację operacji](../SITESPEC.md), aby poznać obsługiwane format
 | Claude | Klucz API Anthropic |
 | xAI | Klucz API xAI |
 | Z.ai / Z.ai Coding Plan | Klucz API Z.ai |
+| AI/ML API | Klucz AI/ML API |
 | ChatGPT · logowanie | Lokalne logowanie ChatGPT przez oficjalny protokół Codex app-server |
 
 Połączenie logowania Codex działa w tymczasowym wątku z wyłączonym dostępem do plików, powłoki, przeglądarki i zewnętrznych serwerów MCP; Hycli nigdy nie odczytuje ani nie kopiuje tokenów OAuth narzędzia Codex.

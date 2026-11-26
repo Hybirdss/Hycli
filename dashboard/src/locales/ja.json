@@ -408,6 +408,7 @@
   "connections.xaiHint": "xAI APIキーでGrokに接続します。",
   "connections.zaiHint": "Z.ai APIアカウントで利用できるモデルに接続します。",
   "connections.zaiPlanHint": "別のZ.ai Coding Planキーで接続します。",
+  "connections.aimlapiHint": "1つのAI/ML APIキーで、多数のプロバイダーのチャットモデルに接続します。",
   "sites.rename": "ウェブサイト名を変更",
   "sites.openActions": "操作を見る",
   "activity.viewWork": "作業ログを見る",

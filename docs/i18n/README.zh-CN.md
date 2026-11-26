@@ -175,6 +175,7 @@ Hycli 将网站的各类真实接口转换为自描述的 CLI 子命令与 MCP �
 | Claude | Anthropic API 密钥 |
 | xAI | xAI API 密钥 |
 | Z.ai / Z.ai Coding Plan | Z.ai API 密钥 |
+| AI/ML API | AI/ML API 密钥 |
 | ChatGPT · 登录 | 通过官方 Codex app-server 协议管理的本地 ChatGPT 登录 |
 
 Codex 登录连接在禁用文件、Shell、浏览器和外部 MCP 执行的临时线程中运行；Hycli 从不读取或复制 Codex OAuth 令牌。

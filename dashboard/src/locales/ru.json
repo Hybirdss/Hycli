@@ -394,6 +394,7 @@
   "connections.xaiHint": "Подключите Grok с помощью ключа API xAI.",
   "connections.zaiHint": "Подключите модели, доступные в вашем аккаунте API Z.ai.",
   "connections.zaiPlanHint": "Подключите отдельный ключ Z.ai Coding Plan.",
+  "connections.aimlapiHint": "Подключите чат-модели многих провайдеров одним ключом AI/ML API.",
   "sites.rename": "Переименовать сайт",
   "sites.openActions": "Посмотреть действия",
   "activity.viewWork": "Посмотреть журнал работы",

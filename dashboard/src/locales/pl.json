@@ -394,6 +394,7 @@
   "connections.xaiHint": "Połącz Grok za pomocą klucza API xAI.",
   "connections.zaiHint": "Połącz modele dostępne na Twoim koncie API Z.ai.",
   "connections.zaiPlanHint": "Połącz za pomocą osobnego klucza Z.ai Coding Plan.",
+  "connections.aimlapiHint": "Połącz modele czatu wielu dostawców za pomocą jednego klucza AI/ML API.",
   "sites.rename": "Zmień nazwę strony",
   "sites.openActions": "Przeglądaj działania",
   "activity.viewWork": "Zobacz dziennik pracy",

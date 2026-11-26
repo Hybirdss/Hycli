@@ -188,6 +188,7 @@ Connecting an AI agent to real websites and logged-in accounts raises serious qu
 | Claude | Anthropic API key |
 | xAI | xAI API key |
 | Z.ai / Z.ai Coding Plan | Z.ai API key |
+| AI/ML API | AI/ML API key |
 | ChatGPT · login | Local ChatGPT sign-in via the official Codex app-server protocol |
 
 The Codex login connection runs in an ephemeral thread with file, shell, browser, and external MCP execution disabled; Hycli never reads or copies Codex OAuth tokens.

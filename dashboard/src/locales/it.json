@@ -408,6 +408,7 @@
   "connections.xaiHint": "Connetti Grok con la tua chiave API xAI.",
   "connections.zaiHint": "Connetti i modelli disponibili nel tuo account API Z.ai.",
   "connections.zaiPlanHint": "Connettiti con la tua chiave separata per Z.ai Coding Plan.",
+  "connections.aimlapiHint": "Connetti modelli di chat di molti fornitori con un'unica chiave AI/ML API.",
   "sites.rename": "Rinomina sito web",
   "sites.openActions": "Esplora le azioni",
   "activity.viewWork": "Visualizza registro attività",
