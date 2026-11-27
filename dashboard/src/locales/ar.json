@@ -394,6 +394,7 @@
   "connections.xaiHint": "اتصل بـ Grok باستخدام مفتاح xAI API.",
   "connections.zaiHint": "اتصل بالنماذج المتاحة في حساب Z.ai API الخاص بك.",
   "connections.zaiPlanHint": "اتصل بمفتاح Z.ai Coding Plan منفصل.",
+  "connections.aimlapiHint": "اتصل بنماذج دردشة من مزوّدين متعددين بمفتاح AI/ML API واحد.",
   "sites.rename": "إعادة تسمية الموقع",
   "sites.openActions": "استكشاف الإجراءات",
   "activity.viewWork": "عرض سجل العمل",

@@ -175,6 +175,7 @@ Een AI-agent verbinden met echte websites en ingelogde accounts roept serieuze v
 | Claude | Anthropic API-sleutel |
 | xAI | xAI API-sleutel |
 | Z.ai / Z.ai Coding Plan | Z.ai API-sleutel |
+| AI/ML API | AI/ML API-sleutel |
 | ChatGPT · login | Lokale ChatGPT-aanmelding via het officiële Codex app-server-protocol |
 
 De Codex-aanmeldingsverbinding draait in een tijdelijke thread waarin uitvoering van bestanden, shell, browser en externe MCP's is uitgeschakeld; Hycli leest of kopieert nooit Codex OAuth-tokens.

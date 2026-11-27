@@ -175,6 +175,7 @@ Menghubungkan agen AI ke situs web nyata dan akun yang sedang login menimbulkan 
 | Claude | Kunci API Anthropic |
 | xAI | Kunci API xAI |
 | Z.ai / Z.ai Coding Plan | Kunci API Z.ai |
+| AI/ML API | Kunci API AI/ML API |
 | ChatGPT · login | Login ChatGPT lokal melalui protokol resmi Codex app-server |
 
 Koneksi login Codex berjalan dalam thread sementara dengan eksekusi berkas, shell, peramban, dan MCP eksternal dinonaktifkan; Hycli tidak pernah membaca atau menyalin token OAuth Codex.

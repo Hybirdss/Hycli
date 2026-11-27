@@ -394,6 +394,7 @@
   "connections.xaiHint": "अपनी xAI API कुंजी से Grok कनेक्ट करें।",
   "connections.zaiHint": "अपने Z.ai API खाते में उपलब्ध मॉडल कनेक्ट करें।",
   "connections.zaiPlanHint": "अलग Z.ai Coding Plan कुंजी से कनेक्ट करें।",
+  "connections.aimlapiHint": "एक AI/ML API कुंजी से कई प्रदाताओं के चैट मॉडल कनेक्ट करें।",
   "sites.rename": "वेबसाइट का नाम बदलें",
   "sites.openActions": "कार्रवाइयाँ देखें",
   "activity.viewWork": "कार्य लॉग देखें",

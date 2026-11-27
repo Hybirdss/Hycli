@@ -408,6 +408,7 @@
   "connections.xaiHint": "เชื่อมต่อ Grok ด้วยคีย์ xAI API",
   "connections.zaiHint": "เชื่อมต่อโมเดลที่มีในบัญชี Z.ai API ของคุณ",
   "connections.zaiPlanHint": "เชื่อมต่อด้วยคีย์ Z.ai Coding Plan แยกต่างหาก",
+  "connections.aimlapiHint": "เชื่อมต่อโมเดลแชตจากผู้ให้บริการหลายรายด้วยคีย์ AI/ML API เดียว",
   "sites.rename": "เปลี่ยนชื่อเว็บไซต์",
   "sites.openActions": "ดูคำสั่ง",
   "activity.viewWork": "ดูบันทึกการทำงาน",

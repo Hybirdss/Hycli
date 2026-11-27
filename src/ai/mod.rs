@@ -16,7 +16,7 @@ pub struct Provider {
     pub default_model: &'static str,
     pub key_url: &'static str,
 }
-pub const PROVIDERS: [Provider; 6] = [
+pub const PROVIDERS: [Provider; 7] = [
     Provider {
         id: "openai",
         name: "OpenAI",
@@ -46,6 +46,12 @@ pub const PROVIDERS: [Provider; 6] = [
         name: "Z.ai Coding Plan",
         default_model: "glm-5.3",
         key_url: "https://z.ai/manage-apikey/apikey-list",
+    },
+    Provider {
+        id: "aimlapi",
+        name: "AI/ML API",
+        default_model: "openai/gpt-5.4-mini",
+        key_url: "https://aimlapi.com/app/keys",
     },
     Provider {
         id: "codex",
@@ -132,7 +138,7 @@ impl Client {
                 "/messages",
                 json!({"model":model,"max_tokens":12000,"system":system,"messages":[{"role":"user","content":prompt}]}),
             ),
-            "zai" | "zai-coding-plan" => (
+            "zai" | "zai-coding-plan" | "aimlapi" => (
                 "/chat/completions",
                 json!({"model":model,"max_tokens":16000,"messages":[{"role":"system","content":system},{"role":"user","content":prompt}]}),
             ),
@@ -166,6 +172,14 @@ impl Client {
             let value = self.request(config, "GET", &path, None).await?;
             if let Some(data) = value.get("data").and_then(Value::as_array) {
                 for model in data {
+                    // The AI/ML API catalog also lists image, video, audio and embedding
+                    // models; only Chat Completions models can serve this adapter.
+                    if config.provider == "aimlapi"
+                        && model.get("type").and_then(Value::as_str)
+                            != Some("openai/chat-completions")
+                    {
+                        continue;
+                    }
                     if let Some(id) = model.get("id").and_then(Value::as_str) {
                         models.push(id.into());
                     }
@@ -283,6 +297,7 @@ fn api_origin(provider: &str) -> AppResult<&'static str> {
         "xai" => Ok("https://api.x.ai/v1"),
         "zai" => Ok("https://api.z.ai/api/paas/v4"),
         "zai-coding-plan" => Ok("https://api.z.ai/api/coding/paas/v4"),
+        "aimlapi" => Ok("https://api.aimlapi.com/v1"),
         _ => Err(AppError::api("provider_missing", 400)),
     }
 }
@@ -314,7 +329,7 @@ pub fn extract_text(provider: &str, value: &Value) -> AppResult<String> {
                 }
             }
         }
-        "zai" | "zai-coding-plan" => {
+        "zai" | "zai-coding-plan" | "aimlapi" => {
             if value
                 .pointer("/choices/0/finish_reason")
                 .and_then(Value::as_str)

@@ -175,6 +175,7 @@ Collegare un agente IA a siti web reali e ad account autenticati solleva questio
 | Claude | Chiave API Anthropic |
 | xAI | Chiave API xAI |
 | Z.ai / Z.ai Coding Plan | Chiave API Z.ai |
+| AI/ML API | Chiave API AI/ML API |
 | ChatGPT · accesso | Accesso locale a ChatGPT tramite il protocollo ufficiale Codex app-server |
 
 La connessione di accesso tramite Codex viene eseguita in un thread effimero con esecuzione di file, shell, browser e MCP esterni disabilitata; Hycli non legge né copia mai i token OAuth di Codex.

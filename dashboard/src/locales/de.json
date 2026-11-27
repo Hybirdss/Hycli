@@ -408,6 +408,7 @@
   "connections.xaiHint": "Verbinde Grok mit deinem xAI-API-Schlüssel.",
   "connections.zaiHint": "Verbinde die Modelle, die in deinem Z.ai-API-Konto verfügbar sind.",
   "connections.zaiPlanHint": "Verbinde dich mit deinem separaten Schlüssel für den Z.ai Coding Plan.",
+  "connections.aimlapiHint": "Verbinde Chat-Modelle vieler Anbieter mit einem einzigen AI/ML API-Schlüssel.",
   "sites.rename": "Website umbenennen",
   "sites.openActions": "Aktionen erkunden",
   "activity.viewWork": "Arbeitsprotokoll ansehen",

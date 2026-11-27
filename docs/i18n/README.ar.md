@@ -175,6 +175,7 @@ node scripts/build.mjs
 | Claude | مفتاح Anthropic API |
 | xAI | مفتاح xAI API |
 | Z.ai / Z.ai Coding Plan | مفتاح Z.ai API |
+| AI/ML API | مفتاح AI/ML API |
 | ChatGPT · تسجيل الدخول | تسجيل دخول ChatGPT محلي عبر بروتوكول Codex app-server الرسمي |
 
 يعمل اتصال تسجيل دخول Codex في خيط مؤقت مع تعطيل تنفيذ الملفات والطرفية والمتصفح وخوادم MCP الخارجية؛ ولا يقرأ Hycli رموز OAuth الخاصة بـ Codex أو ينسخها أبدًا.

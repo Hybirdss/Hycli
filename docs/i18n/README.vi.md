@@ -175,6 +175,7 @@ Khi kết nối tác nhân AI với các trang web thực tế và tài khoản 
 | Claude | Khóa API Anthropic |
 | xAI | Khóa API xAI |
 | Z.ai / Z.ai Coding Plan | Khóa API Z.ai |
+| AI/ML API | Khóa AI/ML API |
 | ChatGPT · đăng nhập | Đăng nhập ChatGPT cục bộ qua giao thức Codex app-server chính thức |
 
 Kết nối đăng nhập Codex chạy trong một luồng tạm thời đã vô hiệu hóa quyền thực thi tệp, shell, trình duyệt và MCP bên ngoài; Hycli không bao giờ đọc hay sao chép token OAuth của Codex.

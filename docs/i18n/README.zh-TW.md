@@ -175,6 +175,7 @@ Hycli 將網站的各種真實介面轉換為具自我說明能力的 CLI 子指
 | Claude | Anthropic API 金鑰 |
 | xAI | xAI API 金鑰 |
 | Z.ai / Z.ai Coding Plan | Z.ai API 金鑰 |
+| AI/ML API | AI/ML API 金鑰 |
 | ChatGPT · 登入 | 透過官方 Codex app-server 協定管理的本機 ChatGPT 登入 |
 
 Codex 登入連線在停用檔案、Shell、瀏覽器與外部 MCP 執行的臨時執行緒中運作；Hycli 絕不讀取或複製 Codex OAuth 權杖。

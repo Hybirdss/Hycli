@@ -175,6 +175,7 @@ AIエージェントを実際のウェブサイトやログイン済みアカウ
 | Claude | Anthropic APIキー |
 | xAI | xAI APIキー |
 | Z.ai / Z.ai Coding Plan | Z.ai APIキー |
+| AI/ML API | AI/ML API キー |
 | ChatGPT · ログイン | 公式 Codex app-server プロトコルによるローカル ChatGPT ログイン |
 
 Codexログイン接続は、ファイル・シェル・ブラウザー・外部MCPの実行を無効化した一時スレッドで動作し、HycliがCodexのOAuthトークンを読み取ったりコピーしたりすることはありません。

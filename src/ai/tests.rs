@@ -524,3 +524,111 @@ async fn interrupted_response_body_keeps_known_status_and_never_leaks_body() {
         server.await.unwrap();
     }
 }
+
+#[tokio::test]
+async fn aimlapi_uses_chat_completions_lists_only_chat_models_and_keeps_its_key_on_its_host() {
+    use axum::{http::StatusCode, response::IntoResponse, routing::get};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    let origin = url::Url::parse(api_origin("aimlapi").unwrap()).unwrap();
+    assert_eq!(origin.scheme(), "https");
+    assert_eq!(origin.host_str(), Some("api.aimlapi.com"));
+    assert_eq!(origin.path(), "/v1");
+    let entry = provider("aimlapi").unwrap();
+    assert_eq!(entry.name, "AI/ML API");
+    assert_eq!(entry.default_model, "openai/gpt-5.4-mini");
+    assert!(entry.key_url.starts_with("https://aimlapi.com/"));
+
+    // A different host that must never receive the key, even through a redirect.
+    let foreign_hits = Arc::new(AtomicUsize::new(0));
+    let hits = foreign_hits.clone();
+    let foreign = Router::new().fallback(move |headers: HeaderMap| {
+        let hits = hits.clone();
+        async move {
+            hits.fetch_add(1, Ordering::SeqCst);
+            assert!(headers.get("authorization").is_none());
+            Json(json!({"data":[{"id":"foreign-model","type":"openai/chat-completions"}]}))
+        }
+    });
+    let foreign_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let foreign_url = format!("http://{}", foreign_listener.local_addr().unwrap());
+    let foreign_server = tokio::spawn(async move {
+        axum::serve(foreign_listener, foreign).await.unwrap();
+    });
+
+    let completions = Arc::new(AtomicUsize::new(0));
+    let calls = completions.clone();
+    let redirect_to = foreign_url.clone();
+    let router = Router::new()
+        .route("/v1/models", get(|headers: HeaderMap| async move {
+            assert_eq!(headers.get("authorization").unwrap(), "Bearer synthetic-aimlapi-key");
+            Json(json!({"data":[
+                {"id":"openai/gpt-5.4-mini","type":"openai/chat-completions"},
+                {"id":"deepseek/deepseek-v4.1-flash","type":"openai/chat-completions"},
+                {"id":"flux/schnell","type":"image"},
+                {"id":"text-embedding-3-small","type":"embedding"}
+            ]}))
+        }))
+        .route("/v1/chat/completions", post(move |headers: HeaderMap, Json(body): Json<Value>| {
+            let calls = calls.clone();
+            async move {
+                calls.fetch_add(1, Ordering::SeqCst);
+                assert_eq!(headers.get("authorization").unwrap(), "Bearer synthetic-aimlapi-key");
+                assert!(!body.to_string().contains("synthetic-aimlapi-key"));
+                assert_eq!(body["model"], "openai/gpt-5.4-mini");
+                assert_eq!(body["messages"][0]["role"], "system");
+                assert_eq!(body["messages"][1]["role"], "user");
+                assert!(body.get("input").is_none());
+                Json(json!({"choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"OK"}}]}))
+            }
+        }))
+        .route("/redirect/v1/models", get(move || {
+            let to = redirect_to.clone();
+            async move {
+                (StatusCode::FOUND, [("location", format!("{to}/v1/models"))]).into_response()
+            }
+        }));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let local = format!("http://{}", listener.local_addr().unwrap());
+    let server = tokio::spawn(async move {
+        axum::serve(listener, router).await.unwrap();
+    });
+    let mut client = Client::new(Arc::new(codex::Codex::new(
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(".cache/provider-tests"),
+    )));
+    client
+        .origins
+        .insert("aimlapi".into(), format!("{local}/v1"));
+    let config = Config {
+        provider: "aimlapi".into(),
+        model: String::new(),
+        key: "synthetic-aimlapi-key".into(),
+    };
+    assert_eq!(
+        client.check(&config).await.unwrap(),
+        vec!["deepseek/deepseek-v4.1-flash", "openai/gpt-5.4-mini"]
+    );
+    assert_eq!(completions.load(Ordering::SeqCst), 1);
+
+    client
+        .origins
+        .insert("aimlapi".into(), format!("{local}/redirect/v1"));
+    assert!(client.models(&config).await.is_err());
+    assert_eq!(
+        foreign_hits.load(Ordering::SeqCst),
+        0,
+        "redirect must not be followed"
+    );
+
+    assert_eq!(
+        extract_text(
+            "aimlapi",
+            &json!({"choices":[{"finish_reason":"length","message":{"content":"partial"}}]})
+        )
+        .unwrap_err()
+        .public_code,
+        "ai_response_incomplete"
+    );
+    server.abort();
+    foreign_server.abort();
+}

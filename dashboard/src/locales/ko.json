@@ -408,6 +408,7 @@
   "connections.xaiHint": "xAI API 키로 Grok에 연결하세요.",
   "connections.zaiHint": "Z.ai API 계정에서 사용할 수 있는 모델에 연결하세요.",
   "connections.zaiPlanHint": "별도의 Z.ai Coding Plan 키로 연결하세요.",
+  "connections.aimlapiHint": "AI/ML API 키 하나로 여러 제공업체의 채팅 모델에 연결하세요.",
   "sites.rename": "웹사이트 이름 변경",
   "sites.openActions": "작업 살펴보기",
   "activity.viewWork": "작업 로그 보기",

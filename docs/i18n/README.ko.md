@@ -175,6 +175,7 @@ AI 에이전트를 실제 웹사이트나 로그인된 계정에 연결할 때 �
 | Claude | Anthropic API 키 |
 | xAI | xAI API 키 |
 | Z.ai / Z.ai Coding Plan | Z.ai API 키 |
+| AI/ML API | AI/ML API 키 |
 | ChatGPT · 로그인 | 설치된 Codex app-server가 관리하는 로컬 ChatGPT 로그인 |
 
 Codex 연결은 파일·셸·브라우저·외부 MCP 실행이 비활성화된 임시 스레드에서 공식 app-server 프로토콜을 사용하며, Hycli는 Codex OAuth 토큰을 읽거나 복사하지 않습니다.

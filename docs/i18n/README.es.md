@@ -175,6 +175,7 @@ Conectar un agente de IA a sitios web reales y cuentas con sesión iniciada plan
 | Claude | Clave de API de Anthropic |
 | xAI | Clave de API de xAI |
 | Z.ai / Z.ai Coding Plan | Clave de API de Z.ai |
+| AI/ML API | Clave de API de AI/ML API |
 | ChatGPT · inicio de sesión | Inicio de sesión local de ChatGPT mediante el protocolo oficial Codex app-server |
 
 La conexión mediante inicio de sesión de Codex se ejecuta en un hilo efímero con la ejecución de archivos, shell, navegador y MCP externos desactivada; Hycli nunca lee ni copia tokens OAuth de Codex.

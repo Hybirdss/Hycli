@@ -175,6 +175,7 @@ Hycli वास्तविक वेबसाइट इंटरफ़ेस �
 | Claude | Anthropic API कुंजी |
 | xAI | xAI API कुंजी |
 | Z.ai / Z.ai Coding Plan | Z.ai API कुंजी |
+| AI/ML API | AI/ML API कुंजी |
 | ChatGPT · लॉगिन | आधिकारिक Codex app-server प्रोटोकॉल के माध्यम से स्थानीय ChatGPT साइन-इन |
 
 Codex लॉगिन कनेक्शन एक अस्थायी थ्रेड में चलता है जिसमें फ़ाइल, शेल, ब्राउज़र और बाहरी MCP निष्पादन अक्षम होते हैं; Hycli कभी भी Codex OAuth टोकन को पढ़ता या कॉपी नहीं करता है।

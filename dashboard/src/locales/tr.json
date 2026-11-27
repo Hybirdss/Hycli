@@ -394,6 +394,7 @@
   "connections.xaiHint": "Grok'u xAI API anahtarınızla bağlayın.",
   "connections.zaiHint": "Z.ai API hesabınızdaki modelleri bağlayın.",
   "connections.zaiPlanHint": "Ayrı Z.ai Coding Plan anahtarınızla bağlayın.",
+  "connections.aimlapiHint": "Birçok sağlayıcının sohbet modellerini tek bir AI/ML API anahtarıyla bağlayın.",
   "sites.rename": "Web sitesini yeniden adlandır",
   "sites.openActions": "İşlemleri keşfet",
   "activity.viewWork": "İş günlüğünü görüntüle",
